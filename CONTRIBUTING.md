@@ -10,9 +10,9 @@
 - `main`에는 **직접 push하지 않습니다.** 모든 변경은 `브랜치 → PR → 병합` 순서를 따릅니다.
 - 브랜치 네이밍: **`<이름>/fe-<기능>` / `<이름>/be-<기능>`** (WBS 작업 단위와 1:1)
   - 담당자(영문 로마자)를 네임스페이스로 앞에 붙이고, 뒤에 `fe-`/`be-` 접두로 프론트/백엔드를 구분한 기능명을 붙입니다.
-  - 담당자 영문 표기(팀 확정): 조은솔 → `sol`, 김종국 → `jongkook`, 이승현 → `seunghyun`, 안권형 → `kwonhyeong`
+  - 담당자 영문 표기(팀 확정): 조은솔 → `solcho`, 김종국 → `jongkook`, 이승현 → `seunghyun`, 안권형 → `kwonhyeong`
     *(로마자 스펠링은 팀원 본인 확인 후 확정 — 다르면 이 표를 고쳐 통일)*
-  - 예) 프론트: `sol/fe-auth`, `sol/fe-provisioning`, `sol/fe-inventory`, `sol/fe-dashboard`
+  - 예) 프론트: `solcho/fe-pages`(전체 화면 정적 UI), 이후 `solcho/fe-auth-logic` 등 기능 연동 브랜치
   - 예) 백엔드: `kwonhyeong/be-env-setup` 등 담당자에 맞춰 네임스페이스만 바꿔 동일 규칙 적용
 - **이름은 "누구 것인지" 보여주는 라벨일 뿐**, 병합·리뷰 단위는 항상 기능입니다. 같은 사람이 두 기능을 동시에 작업해도 `<이름>/`은 같고 뒤 기능명이 달라 브랜치·PR은 기능 단위로 분리됩니다.
 - 브랜치는 항상 **최신 `main`에서 분기**합니다. 작업이 길어지면 주기적으로 `main`을 rebase 또는 merge해 충돌을 일찍 발견하세요.
@@ -21,7 +21,7 @@
 ```bash
 git checkout main
 git pull origin main
-git checkout -b <이름>/fe-<기능>   # 예) sol/fe-auth
+git checkout -b <이름>/fe-<기능>   # 예) solcho/fe-pages
 ```
 
 ---

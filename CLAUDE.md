@@ -36,10 +36,10 @@ so skeleton commits don't clutter branch diffs.
 - **Branch naming**: `<name>/fe-<feature>` (frontend), `<name>/be-<feature>`
   (backend). The owner's romanized name is a namespace prefix; the `fe-`/`be-`
   prefix marks frontend/backend. One branch per WBS work item; branch off the
-  latest `main`. Confirmed romanizations: 조은솔 → `sol`, 김종국 → `jongkook`,
+  latest `main`. Confirmed romanizations: 조은솔 → `solcho`, 김종국 → `jongkook`,
   이승현 → `seunghyun`, 안권형 → `kwonhyeong` (confirm spellings with each member).
   The name is just a "whose is this" label — merge/review unit is always the
-  feature (e.g. `sol/fe-auth`, `kwonhyeong/be-env-setup`).
+  feature (e.g. `solcho/fe-pages`, `kwonhyeong/be-env-setup`).
 - **Commit convention**: Conventional Commits with Korean descriptions —
   `<type>: <요약>`, where `type` ∈ `feat | fix | chore | docs | refactor | test`.
   Keep each commit small and reviewable.
@@ -55,13 +55,26 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 
 | WBS 항목 | 브랜치 | 담당 | 상태 |
 |---|---|---|---|
-| 페이지 UI 구현 — 인증/마이페이지 | `sol/fe-auth` | 조은솔 | in progress |
-| 페이지 UI 구현 — 프로비저닝 | `sol/fe-provisioning` | 조은솔 | not started |
-| 페이지 UI 구현 — 인벤토리 | `sol/fe-inventory` | 조은솔 | not started |
-| 페이지 UI 구현 — 대시보드 | `sol/fe-dashboard` | 조은솔 | not started |
+| 페이지 UI 구현 — 확정 화면 12개 정적 UI | `solcho/fe-pages` | 조은솔 | in progress |
 | 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
 
 > Keep this table updated as branches open, progress, and merge.
+
+## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
+
+이번 정적 UI 작업의 확정/가정 항목. **화면설계서에 "[확인 필요]"로 남았지만 프로토타입 개발 프롬프트에서 이미 확정된 것**이라 다시 묻지 않음:
+- **소셜 로그인(Google)**: 버튼만 배치, 클릭 시 "준비 중" 안내만(실제 OAuth 없음).
+- **PROV-01 계정 선택**: 다중 선택 허용 — 같은 설정으로 계정 수만큼 생성된다는 안내 문구 표시.
+- **마이페이지 "보고서 작성" 섹션**: 최신 화면설계서 기준으로 **넣지 않음**(옛 기능명세서엔 있었음).
+- **인벤토리 "서비스 종류" 열**: 삭제하고 **"CSP 원본 리소스 유형"** 열로 대체(09/06 확정).
+
+이 문서(프론트 프롬프트)에서 "가정"으로 처리한 것:
+- **범위**: 화면 12개의 마크업+스타일만. 폼 검증/API/세션/데이터 저장 로직 없음. 순수 UI 상태 전환(사이드바 active, 테마 토글, 모달/드롭다운 open·close, 인트로 탭)만 포함.
+- **다중 상태 화면**(로그인 실패 배너, PROV-02 성공/진행중/실패, 마이페이지 검증 실패 행 등): 조건 분기 없이 화면설계서대로 **정적 예시**로 동시 노출.
+- **브랜드명 미확정**: `"MultiCloud Ops"` 자리표시자 — `frontend/assets/js/ui.js`의 `SERVICE_NAME` 한 곳에서 `data-service-name`로 주입.
+- **인트로(INTRO-01~05) 소개 문구·이미지, 푸터 정책 문서 미확정** → 자리표시자 텍스트/링크.
+- **디자인 스크린샷**(`docs/design/*.png`)은 색·타이포·컴포넌트 룩만 참고 — 화면 구성은 화면설계서 V1.1을 따름.
+- **MAIN-01 헤더 테마 토글**: 화면설계서엔 명시 없으나 라이트/다크 검토가 가능하도록 헤더에 추가.
 
 ## Pointer — where the planning docs live
 
