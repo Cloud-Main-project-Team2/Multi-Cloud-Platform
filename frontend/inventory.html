@@ -13,6 +13,7 @@
       primary:"var(--primary)", sky:"var(--sky)", aero:"var(--aero)", yellow:"var(--yellow)", "cta-text":"var(--cta-text)"
     } } } };
   </script>
+  <link rel="icon" type="image/png" href="assets/imgs/logo-navy.png" />
   <link rel="stylesheet" href="assets/css/theme.css" />
   <link rel="stylesheet" href="assets/css/shell.css" />
 </head>
@@ -22,7 +23,7 @@
     <!-- ===== COMM-01 사이드바 (재사용, 인벤토리 active) ===== -->
     <aside class="sidebar">
       <a href="main.html" class="sidebar__brand">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">☁️</span>
+        <img src="assets/imgs/logo.png" alt="" class="h-8 w-8 object-contain" />
         <span data-service-name>MultiCloud Ops</span>
       </a>
       <nav class="sidebar__nav">
@@ -118,7 +119,7 @@
             <tbody id="inv-tbody">
               <tr class="border-b border-border" data-category="Compute">
                 <td class="px-3 py-3"><input type="checkbox" checked /></td>
-                <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">AWS</span></td>
+                <td class="px-3 py-3"><img src="assets/imgs/aws.png" alt="AWS" class="inline h-5 w-auto align-middle" /><span class="sr-only">AWS</span></td>
                 <td class="px-3 py-3">EC2 Instance</td>
                 <td class="px-3 py-3 font-medium">mcp-a1b2-vm</td>
                 <td class="px-3 py-3">ap-northeast-2</td>
@@ -130,7 +131,7 @@
               </tr>
               <tr class="border-b border-border" data-category="Compute">
                 <td class="px-3 py-3"><input type="checkbox" checked /></td>
-                <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">Azure</span></td>
+                <td class="px-3 py-3"><img src="assets/imgs/azure.png" alt="Azure" class="inline h-5 w-auto align-middle" /><span class="sr-only">Azure</span></td>
                 <td class="px-3 py-3">Virtual Machine</td>
                 <td class="px-3 py-3 font-medium">mcp-c3d4-vm</td>
                 <td class="px-3 py-3">koreacentral</td>
@@ -142,7 +143,7 @@
               </tr>
               <tr class="border-b border-border" data-category="Compute">
                 <td class="px-3 py-3"><input type="checkbox" checked /></td>
-                <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">GCP</span></td>
+                <td class="px-3 py-3"><img src="assets/imgs/gcp.png" alt="GCP" class="inline h-5 w-auto align-middle" /><span class="sr-only">GCP</span></td>
                 <td class="px-3 py-3">Compute Engine</td>
                 <td class="px-3 py-3 font-medium">mcp-g7h8-vm</td>
                 <td class="px-3 py-3">asia-northeast3</td>
@@ -154,7 +155,7 @@
               </tr>
               <tr class="border-b border-border" data-category="Storage">
                 <td class="px-3 py-3"><input type="checkbox" /></td>
-                <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">AWS</span></td>
+                <td class="px-3 py-3"><img src="assets/imgs/aws.png" alt="AWS" class="inline h-5 w-auto align-middle" /><span class="sr-only">AWS</span></td>
                 <td class="px-3 py-3">EBS Volume</td>
                 <td class="px-3 py-3 font-medium">mcp-a1b2-disk</td>
                 <td class="px-3 py-3">ap-northeast-2</td>
@@ -166,7 +167,7 @@
               </tr>
               <tr data-category="Database">
                 <td class="px-3 py-3"><input type="checkbox" /></td>
-                <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">Azure</span></td>
+                <td class="px-3 py-3"><img src="assets/imgs/azure.png" alt="Azure" class="inline h-5 w-auto align-middle" /><span class="sr-only">Azure</span></td>
                 <td class="px-3 py-3">SQL Database</td>
                 <td class="px-3 py-3 font-medium">mcp-e5f6-sql</td>
                 <td class="px-3 py-3">koreacentral</td>
