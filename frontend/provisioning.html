@@ -138,83 +138,26 @@
 
           <!-- ⑥ 액션 -->
           <div class="flex items-center gap-2">
-            <button type="button" onclick="MCUI.open('prov-price-modal')" class="rounded-xl border border-border bg-surface px-5 py-3 text-sm font-semibold hover:bg-muted">비교하기</button>
-            <button type="button" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">생성하기</button>
+            <button type="button" data-modal-open="#prov-price-modal" class="rounded-xl border border-border bg-surface px-5 py-3 text-sm font-semibold hover:bg-muted">비교하기</button>
+            <button type="button" data-modal-open="#prov-progress-modal" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">생성하기</button>
           </div>
         </div>
 
-        <!-- ===== PROV-02: 진행률 모달 — 기본형/축소형 정적 미리보기 (조건 전환 없이 나란히) ===== -->
-        <div class="mt-12 max-w-4xl">
-          <div class="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
-            <span class="h-px flex-1 bg-border"></span>
-            화면 상태 미리보기 — 생성 진행률 모달(기본형/축소형, 정적 표시)
-            <span class="h-px flex-1 bg-border"></span>
-          </div>
-
-          <div class="grid gap-6 lg:grid-cols-2">
-            <!-- 기본형 -->
-            <div class="rounded-xl border border-dashed border-border p-4">
-              <p class="mb-3 text-xs font-medium text-muted-foreground">① 기본형</p>
-              <div class="rounded-2xl border border-border bg-surface p-6 shadow-lg">
-                <h3 class="text-lg font-semibold">리소스를 생성하고 있습니다</h3>
-                <p class="mt-1 text-sm text-muted-foreground">생성에는 몇 분이 걸릴 수 있습니다. 이 창을 닫아도 작업은 계속됩니다.</p>
-
-                <div class="mt-5 space-y-4">
-                  <!-- AWS 완료 -->
-                  <div>
-                    <div class="flex justify-between text-sm"><span>AWS · mcp-a1b2-vm</span><span class="text-primary">완료 100%</span></div>
-                    <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full bg-primary" style="width:100%"></div></div>
-                  </div>
-                  <!-- Azure 진행중 -->
-                  <div>
-                    <div class="flex justify-between text-sm"><span>Azure · mcp-c3d4-vm</span><span class="text-muted-foreground">진행중 72%</span></div>
-                    <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full bg-sky" style="width:72%"></div></div>
-                  </div>
-                  <!-- GCP 실패 -->
-                  <div>
-                    <div class="flex justify-between text-sm"><span>GCP · mcp-g7h8-vm</span><span class="text-white"><span class="rounded px-1.5 py-0.5 text-xs" style="background:#c0392b">실패</span></span></div>
-                    <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full" style="width:40%;background:#c0392b"></div></div>
-                    <p class="mt-1 text-xs" style="color:#c0392b">할당량 초과 — 해당 리전의 vCPU 한도를 넘었습니다.</p>
-                  </div>
-                </div>
-
-                <div class="mt-6 flex items-center justify-end gap-2">
-                  <a href="inventory.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">인벤토리로 이동하기</a>
-                  <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">닫기</button>
-                </div>
-              </div>
-            </div>
-
-            <!-- 축소형 -->
-            <div class="rounded-xl border border-dashed border-border p-4">
-              <p class="mb-3 text-xs font-medium text-muted-foreground">② 축소형 (우측 하단 고정 카드)</p>
-              <div class="w-64 rounded-xl border border-border bg-surface p-4 shadow-lg">
-                <div class="flex items-center justify-between">
-                  <span class="text-sm font-semibold">생성 중 2/3 ▴</span>
-                </div>
-                <div class="mt-2 flex gap-3 text-xs text-muted-foreground">
-                  <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-primary"></span>완료 1</span>
-                  <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-sky"></span>진행 1</span>
-                  <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" style="background:#c0392b"></span>실패 1</span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+        <!-- PROV-02 진행률: 실제 오버레이 모달(#prov-progress-modal) + 우측 하단 축소형 카드(#prov-progress-mini)로 아래에 구현. 생성하기로 열림. -->
 
       </div>
     </div>
   </div>
 
   <!-- ===== 가격 비교 모달 (열기/닫기 순수 UI 토글) ===== -->
-  <div id="prov-price-modal" class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 py-10" onclick="MCUI.close('prov-price-modal')">
-    <div class="w-full max-w-lg rounded-2xl border border-border bg-surface shadow-xl" onclick="event.stopPropagation()">
+  <div id="prov-price-modal" data-modal class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 py-10">
+    <div class="w-full max-w-lg rounded-2xl border border-border bg-surface shadow-xl">
       <div class="flex items-start justify-between border-b border-border p-5">
         <div>
           <h2 class="text-lg font-bold">가격 비교</h2>
           <p class="mt-0.5 text-sm text-muted-foreground">중간 사양(2 vCPU · 4GB) 기준</p>
         </div>
-        <button type="button" onclick="MCUI.close('prov-price-modal')" class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+        <button type="button" data-modal-close class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
       </div>
       <div class="p-5">
         <table class="w-full text-left text-sm">
@@ -231,6 +174,59 @@
     </div>
   </div>
 
+  <!-- 생성 진행률 모달 (기본형) — '생성하기'로 열림 -->
+  <div id="prov-progress-modal" data-modal class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 py-10">
+    <div class="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-xl">
+      <h3 class="text-lg font-semibold">리소스를 생성하고 있습니다</h3>
+      <p class="mt-1 text-sm text-muted-foreground">생성에는 몇 분이 걸릴 수 있습니다. 이 창을 닫아도 작업은 계속됩니다.</p>
+      <div class="mt-5 space-y-4">
+        <div>
+          <div class="flex justify-between text-sm"><span>AWS · mcp-a1b2-vm</span><span class="text-primary">완료 100%</span></div>
+          <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full bg-primary" style="width:100%"></div></div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm"><span>Azure · mcp-c3d4-vm</span><span class="text-muted-foreground">진행중 72%</span></div>
+          <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full bg-sky" style="width:72%"></div></div>
+        </div>
+        <div>
+          <div class="flex justify-between text-sm"><span>GCP · mcp-g7h8-vm</span><span class="text-white"><span class="rounded px-1.5 py-0.5 text-xs" style="background:#c0392b">실패</span></span></div>
+          <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full" style="width:40%;background:#c0392b"></div></div>
+          <p class="mt-1 text-xs" style="color:#c0392b">할당량 초과 — 해당 리전의 vCPU 한도를 넘었습니다.</p>
+        </div>
+      </div>
+      <div class="mt-6 flex items-center justify-end gap-2">
+        <a href="inventory.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">인벤토리로 이동하기</a>
+        <button id="prov-to-mini" type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 생성 진행률 축소형 카드 (우측 하단 고정) — 클릭 시 기본형으로 복귀 -->
+  <div id="prov-progress-mini" class="hidden fixed bottom-4 right-4 z-40 w-64 cursor-pointer rounded-xl border border-border bg-surface p-4 shadow-lg" role="button" aria-label="진행률 모달 열기">
+    <div class="flex items-center justify-between"><span class="text-sm font-semibold">생성 중 2/3 ▴</span></div>
+    <div class="mt-2 flex gap-3 text-xs text-muted-foreground">
+      <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-primary"></span>완료 1</span>
+      <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-sky"></span>진행 1</span>
+      <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" style="background:#c0392b"></span>실패 1</span>
+    </div>
+  </div>
+
   <script src="assets/js/ui.js"></script>
+  <script src="assets/js/modal.js"></script>
+  <script>
+    (function () {
+      var mini = document.getElementById("prov-progress-mini");
+      // 기본형 '닫기' → 모달 닫고 축소형 카드 표시
+      document.getElementById("prov-to-mini").addEventListener("click", function () {
+        MCPModal.close("#prov-progress-modal");
+        mini.classList.remove("hidden");
+      });
+      // 축소형 카드 클릭 → 카드 숨기고 기본형 모달 복귀
+      mini.addEventListener("click", function () {
+        mini.classList.add("hidden");
+        MCPModal.open("#prov-progress-modal");
+      });
+    })();
+  </script>
 </body>
 </html>
