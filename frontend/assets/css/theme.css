@@ -1,3 +1,5 @@
+@import url("https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable.min.css");
+
 /* Cloudlane 디자인 토큰 (화면설계서 V1.1 구조 + Cloudlane 스타일) — 전 화면 공유 */
 :root{
   --background:#f2f6fa; --foreground:#162e40; --surface:#ffffff; --muted:#edf3f8;
@@ -15,16 +17,33 @@
 *{ box-sizing:border-box; }
 html,body{ margin:0; padding:0; }
 body{
-  font-family: Arial, "Malgun Gothic", sans-serif;
+  font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,
+    system-ui, "Malgun Gothic", sans-serif;
   background:var(--background);
   color:var(--foreground);
   transition: background-color .2s ease, color .2s ease;
 }
 
-/* 얇은 오버레이 스크롤바 (2px, 호버 시 진해짐, 레이아웃 폭 차지 최소) */
-*{ scrollbar-width: thin; scrollbar-color: transparent transparent; }
-*:hover{ scrollbar-color: var(--muted-foreground) transparent; }
-*::-webkit-scrollbar{ width:2px; height:2px; }
-*::-webkit-scrollbar-track{ background:transparent; }
-*::-webkit-scrollbar-thumb{ background:transparent; border-radius:9999px; }
-*:hover::-webkit-scrollbar-thumb{ background:var(--muted-foreground); }
+/* 스크롤바: 기본은 연하게, 호버 시 진하게. scrollbar-gutter로 페이지마다 폭이 흔들리지 않게 고정 */
+html{
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+html:hover{ scrollbar-color: var(--muted-foreground) transparent; }
+::-webkit-scrollbar{ width:8px; height:8px; }
+::-webkit-scrollbar-track{ background:transparent; }
+::-webkit-scrollbar-thumb{ background:var(--border); border-radius:9999px; }
+::-webkit-scrollbar-thumb:hover{ background:var(--muted-foreground); }
+
+/* select: 네이티브 화살표 대신 커스텀 셰브론 — 오른쪽 여백을 글자 왼쪽 여백(0.75rem)과 동일하게 */
+select{
+  -webkit-appearance:none; -moz-appearance:none; appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236a7e90' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;
+  background-position:right 0.75rem center;
+  padding-right:2rem !important;
+}
+[data-theme="dark"] select{
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23a0b4c7' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+}

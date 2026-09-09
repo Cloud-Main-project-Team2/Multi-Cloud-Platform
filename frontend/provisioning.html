@@ -13,6 +13,7 @@
       primary:"var(--primary)", sky:"var(--sky)", aero:"var(--aero)", yellow:"var(--yellow)", "cta-text":"var(--cta-text)"
     } } } };
   </script>
+  <link rel="icon" type="image/png" href="assets/imgs/logo-navy.png" />
   <link rel="stylesheet" href="assets/css/theme.css" />
   <link rel="stylesheet" href="assets/css/shell.css" />
 </head>
@@ -22,7 +23,7 @@
     <!-- ===== COMM-01 사이드바 (재사용, 프로비저닝 active) ===== -->
     <aside class="sidebar">
       <a href="main.html" class="sidebar__brand">
-        <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">☁️</span>
+        <img src="assets/imgs/logo.png" alt="" class="h-8 w-8 object-contain" />
         <span data-service-name>MultiCloud Ops</span>
       </a>
       <nav class="sidebar__nav">
@@ -53,10 +54,11 @@
       </div>
 
       <div class="content">
+        <div class="mx-auto max-w-2xl">
         <h1 class="text-2xl font-bold">프로비저닝</h1>
         <p class="mt-1 text-sm text-muted-foreground">여러 플랫폼에 걸쳐 리소스를 한 번에 생성합니다.</p>
 
-        <div class="mt-6 max-w-2xl space-y-4">
+        <div class="mt-6 space-y-4">
           <!-- ① 플랫폼 선택 -->
           <section class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">①</span> 플랫폼 선택 <span class="font-normal text-muted-foreground">(중복 선택 가능)</span></p>
@@ -141,6 +143,7 @@
             <button type="button" data-modal-open="#prov-price-modal" class="rounded-xl border border-border bg-surface px-5 py-3 text-sm font-semibold hover:bg-muted">비교하기</button>
             <button type="button" data-modal-open="#prov-progress-modal" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">생성하기</button>
           </div>
+        </div>
         </div>
 
         <!-- PROV-02 진행률: 실제 오버레이 모달(#prov-progress-modal) + 우측 하단 축소형 카드(#prov-progress-mini)로 아래에 구현. 생성하기로 열림. -->
