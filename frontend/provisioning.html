@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>프로비저닝 · MultiCloud Ops</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: {
+      background:"var(--background)", foreground:"var(--foreground)", surface:"var(--surface)",
+      muted:"var(--muted)", "muted-foreground":"var(--muted-foreground)", border:"var(--border)",
+      sidebar:"var(--sidebar)", "sidebar-accent":"var(--sidebar-accent)",
+      primary:"var(--primary)", sky:"var(--sky)", aero:"var(--aero)", yellow:"var(--yellow)", "cta-text":"var(--cta-text)"
+    } } } };
+  </script>
+  <link rel="stylesheet" href="assets/css/theme.css" />
+  <link rel="stylesheet" href="assets/css/shell.css" />
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ===== COMM-01 사이드바 (재사용, 프로비저닝 active) ===== -->
+    <aside class="sidebar">
+      <a href="main.html" class="sidebar__brand">
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">☁️</span>
+        <span data-service-name>MultiCloud Ops</span>
+      </a>
+      <nav class="sidebar__nav">
+        <a href="dashboard.html" class="nav-item">📊 대시보드</a>
+        <a href="inventory.html" class="nav-item">🗂️ 인벤토리</a>
+        <a href="provisioning.html" class="nav-item active">⚡ 프로비저닝</a>
+        <a href="mypage.html" class="nav-item">👤 마이페이지</a>
+        <p class="sidebar__section">확장</p>
+        <span class="nav-item disabled">💰 비용 관리 <span class="badge">확장</span></span>
+        <span class="nav-item disabled">🛡️ 보안 점검 <span class="badge">확장</span></span>
+      </nav>
+      <div class="sidebar__foot">
+        <div class="sidebar__email">name@company.com</div>
+        <button type="button" class="sidebar__logout">로그아웃</button>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <div class="topbar">
+        <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="topbar__btn" aria-label="테마 전환">🌙</button>
+        <div class="lang-toggle"><span class="active">KOR</span><span>EN</span></div>
+        <span class="bell topbar__btn" role="button" aria-label="알림">🔔<span class="bell__badge">3</span></span>
+      </div>
+
+      <!-- 과금 경고 배너: 상시 노출(sticky), 스크롤해도 유지 -->
+      <div class="sticky top-[56px] z-10 flex items-center gap-2 border-b border-yellow bg-surface px-6 py-2.5 text-sm">
+        <span>⚠️</span><span>실제 리소스를 생성하는 작업이며 과금이 발생할 수 있습니다.</span>
+      </div>
+
+      <div class="content">
+        <h1 class="text-2xl font-bold">프로비저닝</h1>
+        <p class="mt-1 text-sm text-muted-foreground">여러 플랫폼에 걸쳐 리소스를 한 번에 생성합니다.</p>
+
+        <div class="mt-6 max-w-2xl space-y-4">
+          <!-- ① 플랫폼 선택 -->
+          <section class="rounded-2xl border border-border bg-surface p-5">
+            <p class="text-sm font-semibold"><span class="mr-1 text-primary">①</span> 플랫폼 선택 <span class="font-normal text-muted-foreground">(중복 선택 가능)</span></p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" checked /> AWS</label>
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" checked /> Azure</label>
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" /> GCP</label>
+            </div>
+          </section>
+
+          <!-- ② 계정 선택 -->
+          <section class="rounded-2xl border border-border bg-surface p-5">
+            <p class="text-sm font-semibold"><span class="mr-1 text-primary">②</span> 계정 선택 <span class="font-normal text-muted-foreground">(다중 선택 가능)</span></p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" checked /> prod-aws-01</label>
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" checked /> prod-az-01</label>
+              <span class="self-center text-sm text-muted-foreground">(2개 선택)</span>
+            </div>
+            <p class="mt-2 text-xs text-muted-foreground">같은 설정으로 선택한 계정 수만큼 생성됩니다.</p>
+          </section>
+
+          <!-- ③ 리소스 종류 -->
+          <section class="rounded-2xl border border-border bg-surface p-5">
+            <p class="text-sm font-semibold"><span class="mr-1 text-primary">③</span> 리소스 종류 <span class="font-normal text-muted-foreground">(단일 선택)</span></p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="radio" name="restype" checked /> Compute</label>
+              <span class="flex cursor-not-allowed items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground"><input type="radio" name="restype" disabled /> Database</span>
+              <span class="flex cursor-not-allowed items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground"><input type="radio" name="restype" disabled /> Storage</span>
+              <span class="flex cursor-not-allowed items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground"><input type="radio" name="restype" disabled /> CDN</span>
+            </div>
+            <p class="mt-2 text-xs text-muted-foreground">prod-az-01 계정에 Compute 외 생성 권한이 없어 나머지는 선택할 수 없습니다.</p>
+          </section>
+
+          <!-- ④ 공통 설정 -->
+          <section class="rounded-2xl border border-border bg-surface p-5">
+            <p class="text-sm font-semibold"><span class="mr-1 text-primary">④</span> 공통 설정</p>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+              <div>
+                <label class="mb-1 block text-sm font-medium">리소스명 프리픽스</label>
+                <input type="text" value="mcp-" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium">리전</label>
+                <select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>ap-northeast-2 / koreacentral</option><option>us-east-1 / eastus</option></select>
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium">사양</label>
+                <select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>중간 (2 vCPU · 4GB)</option><option>소형 (1 vCPU · 2GB)</option><option>대형 (4 vCPU · 8GB)</option></select>
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium">태그</label>
+                <input type="text" placeholder="env:prod, owner:infra" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+              </div>
+            </div>
+          </section>
+
+          <!-- ⑤ 플랫폼별 추가 설정 -->
+          <section class="rounded-2xl border border-border bg-surface p-5">
+            <p class="text-sm font-semibold"><span class="mr-1 text-primary">⑤</span> 플랫폼별 추가 설정 <span class="font-normal text-muted-foreground">(선택한 플랫폼만)</span></p>
+
+            <div class="mt-3 rounded-xl bg-muted p-4">
+              <p class="text-sm font-medium">AWS</p>
+              <div class="mt-2 grid gap-3 sm:grid-cols-3">
+                <div><label class="mb-1 block text-xs text-muted-foreground">AMI</label><select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>Amazon Linux 2023</option><option>Ubuntu 22.04</option></select></div>
+                <div><label class="mb-1 block text-xs text-muted-foreground">키페어</label><select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>mcp-keypair</option></select></div>
+                <div><label class="mb-1 block text-xs text-muted-foreground">보안그룹</label><select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>sg-default</option></select></div>
+              </div>
+            </div>
+
+            <div class="mt-3 rounded-xl bg-muted p-4">
+              <p class="text-sm font-medium">Azure</p>
+              <div class="mt-2 grid gap-3 sm:grid-cols-3">
+                <div><label class="mb-1 block text-xs text-muted-foreground">이미지</label><select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>Ubuntu Server 22.04 LTS</option></select></div>
+                <div><label class="mb-1 block text-xs text-muted-foreground">리소스 그룹</label><select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>rg-mcp-prod</option></select></div>
+                <div><label class="mb-1 block text-xs text-muted-foreground">NSG</label><select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>nsg-default</option></select></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ⑥ 액션 -->
+          <div class="flex items-center gap-2">
+            <button type="button" onclick="MCUI.open('prov-price-modal')" class="rounded-xl border border-border bg-surface px-5 py-3 text-sm font-semibold hover:bg-muted">비교하기</button>
+            <button type="button" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">생성하기</button>
+          </div>
+        </div>
+
+        <!-- ===== PROV-02: 진행률 모달 — 기본형/축소형 정적 미리보기 (조건 전환 없이 나란히) ===== -->
+        <div class="mt-12 max-w-4xl">
+          <div class="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+            <span class="h-px flex-1 bg-border"></span>
+            화면 상태 미리보기 — 생성 진행률 모달(기본형/축소형, 정적 표시)
+            <span class="h-px flex-1 bg-border"></span>
+          </div>
+
+          <div class="grid gap-6 lg:grid-cols-2">
+            <!-- 기본형 -->
+            <div class="rounded-xl border border-dashed border-border p-4">
+              <p class="mb-3 text-xs font-medium text-muted-foreground">① 기본형</p>
+              <div class="rounded-2xl border border-border bg-surface p-6 shadow-lg">
+                <h3 class="text-lg font-semibold">리소스를 생성하고 있습니다</h3>
+                <p class="mt-1 text-sm text-muted-foreground">생성에는 몇 분이 걸릴 수 있습니다. 이 창을 닫아도 작업은 계속됩니다.</p>
+
+                <div class="mt-5 space-y-4">
+                  <!-- AWS 완료 -->
+                  <div>
+                    <div class="flex justify-between text-sm"><span>AWS · mcp-a1b2-vm</span><span class="text-primary">완료 100%</span></div>
+                    <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full bg-primary" style="width:100%"></div></div>
+                  </div>
+                  <!-- Azure 진행중 -->
+                  <div>
+                    <div class="flex justify-between text-sm"><span>Azure · mcp-c3d4-vm</span><span class="text-muted-foreground">진행중 72%</span></div>
+                    <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full bg-sky" style="width:72%"></div></div>
+                  </div>
+                  <!-- GCP 실패 -->
+                  <div>
+                    <div class="flex justify-between text-sm"><span>GCP · mcp-g7h8-vm</span><span class="text-white"><span class="rounded px-1.5 py-0.5 text-xs" style="background:#c0392b">실패</span></span></div>
+                    <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full" style="width:40%;background:#c0392b"></div></div>
+                    <p class="mt-1 text-xs" style="color:#c0392b">할당량 초과 — 해당 리전의 vCPU 한도를 넘었습니다.</p>
+                  </div>
+                </div>
+
+                <div class="mt-6 flex items-center justify-end gap-2">
+                  <a href="inventory.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">인벤토리로 이동하기</a>
+                  <button type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">닫기</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- 축소형 -->
+            <div class="rounded-xl border border-dashed border-border p-4">
+              <p class="mb-3 text-xs font-medium text-muted-foreground">② 축소형 (우측 하단 고정 카드)</p>
+              <div class="w-64 rounded-xl border border-border bg-surface p-4 shadow-lg">
+                <div class="flex items-center justify-between">
+                  <span class="text-sm font-semibold">생성 중 2/3 ▴</span>
+                </div>
+                <div class="mt-2 flex gap-3 text-xs text-muted-foreground">
+                  <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-primary"></span>완료 1</span>
+                  <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-sky"></span>진행 1</span>
+                  <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" style="background:#c0392b"></span>실패 1</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 가격 비교 모달 (열기/닫기 순수 UI 토글) ===== -->
+  <div id="prov-price-modal" class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 py-10" onclick="MCUI.close('prov-price-modal')">
+    <div class="w-full max-w-lg rounded-2xl border border-border bg-surface shadow-xl" onclick="event.stopPropagation()">
+      <div class="flex items-start justify-between border-b border-border p-5">
+        <div>
+          <h2 class="text-lg font-bold">가격 비교</h2>
+          <p class="mt-0.5 text-sm text-muted-foreground">중간 사양(2 vCPU · 4GB) 기준</p>
+        </div>
+        <button type="button" onclick="MCUI.close('prov-price-modal')" class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+      </div>
+      <div class="p-5">
+        <table class="w-full text-left text-sm">
+          <thead class="border-b border-border text-xs text-muted-foreground">
+            <tr><th class="py-2 font-medium">플랫폼</th><th class="py-2 font-medium">인스턴스</th><th class="py-2 font-medium">시간당</th><th class="py-2 font-medium">월 예상</th></tr>
+          </thead>
+          <tbody>
+            <tr class="border-b border-border"><td class="py-2.5">AWS</td><td class="py-2.5">t3.medium</td><td class="py-2.5">$0.052/h</td><td class="py-2.5">$37.96/mo</td></tr>
+            <tr class="border-b border-border"><td class="py-2.5">Azure</td><td class="py-2.5">B2s</td><td class="py-2.5">$0.050/h</td><td class="py-2.5">$36.50/mo</td></tr>
+            <tr><td class="py-2.5">GCP</td><td class="py-2.5">e2-medium</td><td class="py-2.5">$0.045/h</td><td class="py-2.5">$32.85/mo</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/ui.js"></script>
+</body>
+</html>
