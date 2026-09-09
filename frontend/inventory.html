@@ -126,7 +126,7 @@
                 <td class="px-3 py-3">$61.20</td>
                 <td class="px-3 py-3"><span class="rounded bg-muted px-1.5 py-0.5 text-[11px]">env:prod</span></td>
                 <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary">RUNNING</span></td>
-                <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
+                <td class="px-3 py-3"><button type="button" data-modal-open="#inv-modal" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
               </tr>
               <tr class="border-b border-border" data-category="Compute">
                 <td class="px-3 py-3"><input type="checkbox" checked /></td>
@@ -138,7 +138,7 @@
                 <td class="px-3 py-3">$38.40</td>
                 <td class="px-3 py-3 text-muted-foreground">—</td>
                 <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">STOPPED</span></td>
-                <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
+                <td class="px-3 py-3"><button type="button" data-modal-open="#inv-modal" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
               </tr>
               <tr class="border-b border-border" data-category="Compute">
                 <td class="px-3 py-3"><input type="checkbox" checked /></td>
@@ -150,7 +150,7 @@
                 <td class="px-3 py-3">추정 $18.00</td>
                 <td class="px-3 py-3"><span class="rounded bg-muted px-1.5 py-0.5 text-[11px]">env:dev</span></td>
                 <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary">RUNNING</span></td>
-                <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
+                <td class="px-3 py-3"><button type="button" data-modal-open="#inv-modal" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
               </tr>
               <tr class="border-b border-border" data-category="Storage">
                 <td class="px-3 py-3"><input type="checkbox" /></td>
@@ -162,7 +162,7 @@
                 <td class="px-3 py-3">$12.10</td>
                 <td class="px-3 py-3 text-muted-foreground">—</td>
                 <td class="px-3 py-3"><span class="rounded-full px-2 py-0.5 text-[11px] text-yellow" style="border:1px solid var(--yellow)">미연결</span></td>
-                <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
+                <td class="px-3 py-3"><button type="button" data-modal-open="#inv-modal" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
               </tr>
               <tr data-category="Database">
                 <td class="px-3 py-3"><input type="checkbox" /></td>
@@ -174,7 +174,7 @@
                 <td class="px-3 py-3">$21.20</td>
                 <td class="px-3 py-3"><span class="rounded bg-muted px-1.5 py-0.5 text-[11px]">env:prod</span></td>
                 <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary">RUNNING</span></td>
-                <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
+                <td class="px-3 py-3"><button type="button" data-modal-open="#inv-modal" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
               </tr>
             </tbody>
           </table>
@@ -196,15 +196,15 @@
   </div>
 
   <!-- ===== INV-02 리소스 상세 모달 (열기/닫기 순수 UI 토글) ===== -->
-  <div id="inv-modal" class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 py-10" onclick="MCUI.close('inv-modal')">
-    <div class="w-full max-w-2xl rounded-2xl border border-border bg-surface shadow-xl" onclick="event.stopPropagation()">
+  <div id="inv-modal" data-modal class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 py-10">
+    <div class="w-full max-w-2xl rounded-2xl border border-border bg-surface shadow-xl">
       <!-- 헤더 -->
       <div class="flex items-start justify-between border-b border-border p-5">
         <div>
           <h2 class="text-lg font-bold">mcp-a1b2-vm</h2>
           <p class="mt-0.5 text-sm text-muted-foreground">AWS · EC2 Instance · ap-northeast-2</p>
         </div>
-        <button type="button" onclick="MCUI.close('inv-modal')" class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+        <button type="button" data-modal-close class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
       </div>
 
       <!-- 상세 표 -->
@@ -238,6 +238,7 @@
   </div>
 
   <script src="assets/js/ui.js"></script>
+  <script src="assets/js/modal.js"></script>
   <script>
     (function () {
       var tbody = document.getElementById("inv-tbody");
