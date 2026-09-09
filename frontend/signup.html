@@ -105,60 +105,11 @@
       </div>
     </div>
 
-    <!-- ===== 화면 상태 미리보기: 모달 2종 (화면설계서처럼 나란히 정적으로) ===== -->
-    <div class="mx-auto mt-14 max-w-content">
-      <div class="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
-        <span class="h-px flex-1 bg-border"></span>
-        화면 상태 미리보기 — 아래 두 모달은 실제로는 상황에 따라 뜨는 팝업입니다(정적 표시)
-        <span class="h-px flex-1 bg-border"></span>
-      </div>
-
-      <div class="grid gap-6 md:grid-cols-2">
-        <!-- 소셜 가입 추가정보 모달 -->
-        <div class="rounded-xl border border-dashed border-border p-4">
-          <p class="mb-3 text-xs font-medium text-muted-foreground">① 소셜 가입 추가정보 모달</p>
-          <div class="rounded-2xl border border-border bg-surface p-6 shadow-lg">
-            <h3 class="text-lg font-semibold">추가 정보 입력</h3>
-            <p class="mt-1 text-sm text-muted-foreground">Google 계정으로 처음 가입하시는군요. 이름과 소속만 입력하면 가입이 완료됩니다.</p>
-            <div class="mt-4 space-y-3">
-              <div>
-                <label class="mb-1 block text-sm font-medium">이름</label>
-                <input type="text" placeholder="이름"
-                  class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
-              </div>
-              <div>
-                <label class="mb-1 block text-sm font-medium">소속 <span class="font-normal text-muted-foreground">(생략 가능)</span></label>
-                <div class="flex gap-2">
-                  <select class="shrink-0 rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary">
-                    <option>회사</option>
-                    <option>개인</option>
-                  </select>
-                  <input type="text" placeholder="소속단체명"
-                    class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
-                </div>
-              </div>
-            </div>
-            <button type="button" class="mt-5 w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">가입 완료</button>
-          </div>
-        </div>
-
-        <!-- 가입완료 팝업 -->
-        <div class="rounded-xl border border-dashed border-border p-4">
-          <p class="mb-3 text-xs font-medium text-muted-foreground">② 가입완료 팝업</p>
-          <div class="rounded-2xl border border-border bg-surface p-6 text-center shadow-lg">
-            <div class="mx-auto grid h-14 w-14 place-items-center rounded-full bg-muted text-3xl">✅</div>
-            <h3 class="mt-4 text-lg font-semibold">가입이 완료되었습니다</h3>
-            <p class="mt-1 text-sm text-muted-foreground">로그인 화면으로 이동합니다.</p>
-            <a href="login.html" class="mt-5 block w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">확인</a>
-          </div>
-        </div>
-      </div>
-    </div>
   </main>
 
-  <!-- 가입완료 팝업 (가입하기 통과 시 열리는 기능용 오버레이 모달) -->
-  <div id="signup-done-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onclick="MCUI.close('signup-done-modal')">
-    <div class="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 text-center shadow-xl" onclick="event.stopPropagation()">
+  <!-- 가입완료 팝업 (가입하기 검증 통과 시 MCPModal.open('#signup-done-modal')로 열림) -->
+  <div id="signup-done-modal" data-modal class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div class="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 text-center shadow-xl">
       <div class="mx-auto grid h-14 w-14 place-items-center rounded-full bg-muted text-3xl">✅</div>
       <h3 class="mt-4 text-lg font-semibold">가입이 완료되었습니다</h3>
       <p class="mt-1 text-sm text-muted-foreground">로그인 화면으로 이동합니다.</p>
@@ -166,7 +117,33 @@
     </div>
   </div>
 
+  <!-- 소셜 가입 추가정보 모달 (id만 부여 — 실제 트리거는 OAuth 연동 브랜치에서 연결. MCPModal로 개폐 가능) -->
+  <div id="signup-social-modal" data-modal class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div class="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 shadow-xl">
+      <div class="flex items-start justify-between">
+        <h3 class="text-lg font-semibold">추가 정보 입력</h3>
+        <button type="button" data-modal-close class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+      </div>
+      <p class="mt-1 text-sm text-muted-foreground">Google 계정으로 처음 가입하시는군요. 이름과 소속만 입력하면 가입이 완료됩니다.</p>
+      <div class="mt-4 space-y-3">
+        <div>
+          <label class="mb-1 block text-sm font-medium">이름</label>
+          <input type="text" placeholder="이름" class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-medium">소속 <span class="font-normal text-muted-foreground">(생략 가능)</span></label>
+          <div class="flex gap-2">
+            <select class="shrink-0 rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary"><option>회사</option><option>개인</option></select>
+            <input type="text" placeholder="소속단체명" class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
+          </div>
+        </div>
+      </div>
+      <button type="button" class="mt-5 w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">가입 완료</button>
+    </div>
+  </div>
+
   <script src="assets/js/ui.js"></script>
+  <script src="assets/js/modal.js"></script>
   <script src="assets/js/validate.js"></script>
   <script>
     (function () {
@@ -217,7 +194,7 @@
 
       form.addEventListener("submit", function (e) {
         e.preventDefault();
-        if (!btn.disabled) MCUI.open("signup-done-modal");
+        if (!btn.disabled) MCPModal.open("#signup-done-modal");
       });
 
       refresh();

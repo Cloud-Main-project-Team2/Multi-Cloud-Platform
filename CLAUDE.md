@@ -85,6 +85,14 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 - **검증 실패 메시지**: 대부분 기존 요소 재사용. 없던 곳(중복확인 결과 `#dup-msg`, 비밀번호 불일치 `#pw-match-msg`)만 최소 추가.
 - start/stop/delete·검색·정렬 등 테이블 액션은 하드코딩 예시 행 위에서만 동작(실데이터/서버 없음).
 
+### Assumptions — 모달·팝업 공통 기능 (`solcho/fe-modals`)
+
+- **모달 유틸을 별도 브랜치로 분리한 이유**: 정적 UI 단계(`fe-pages`)에서 "모달 열기/닫기"를 화면의 일부로 포함하라 했으나, 실제 결과물 일부(진행률·소셜 모달 등)가 열고 닫는 토글 없이 평면 정적 블록으로 얹혀 있었음. 이 브랜치에서 `assets/js/modal.js`(`MCPModal`) 공통 유틸(배경클릭/ESC/스크롤 잠금/전역 API)로 표준화하고 빠진 개폐 동작을 채움.
+- **비밀번호 변경 성공 팝업 보완**: 기능명세서엔 있으나 정적 UI 문서에 누락됐던 팝업을 이 브랜치에서 가입완료 팝업과 동일한 결과 팝업 스타일로 `password-reset.html`에 추가(2절 기본값 "포함").
+- **소셜 가입 추가정보 모달**: 마크업+id만 준비(`#signup-social-modal`), 실제 트리거 연결은 OAuth 연동 브랜치로 보류.
+- **PROV-02 진행률**: 기본형↔축소형은 실제 진행 상태 반영이 아니라 정적 두 형태의 UI 토글일 뿐(실 폴링은 백엔드 연동 이후).
+- 기존 `MCUI.open/close`(ui.js)로 열리던 모달들도 이 브랜치에서 `MCPModal`/data 속성으로 통일.
+
 ## Pointer — where the planning docs live
 
 The functional spec (기능명세서), screen design (화면설계서), WBS, and the
