@@ -1,0 +1,795 @@
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=utf-8"/><title>기능 명세서</title><meta name="data-notion-page-icon" content="📄"/><link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Ctext%20y%3D%22.9em%22%20font-size%3D%2290%22%3E%F0%9F%93%84%3C%2Ftext%3E%3C%2Fsvg%3E"/><style>
+/* cspell:disable-file */
+/* webkit printing magic: print all background colors */
+html {
+	-webkit-print-color-adjust: exact;
+}
+* {
+	box-sizing: border-box;
+	-webkit-print-color-adjust: exact;
+}
+
+html,
+body {
+	margin: 0;
+	padding: 0;
+}
+@media only screen {
+	body {
+		margin: 2em auto;
+		max-width: 900px;
+		color: rgb(55, 53, 47);
+	}
+}
+
+body {
+	line-height: 1.5;
+	white-space: pre-wrap;
+}
+
+a,
+a.visited {
+	color: inherit;
+	text-decoration: underline;
+}
+
+.pdf-relative-link-path {
+	font-size: 80%;
+	color: #444;
+}
+
+h1,
+h2,
+h3 {
+	letter-spacing: -0.01em;
+	line-height: 1.2;
+	font-weight: 600;
+	margin-bottom: 0;
+}
+
+/* Override strong tags inside headings to maintain consistent weight */
+h1 strong,
+h2 strong,
+h3 strong {
+	font-weight: 600;
+}
+
+.page-title {
+	font-size: 2.5rem;
+	font-weight: 700;
+	margin-top: 0;
+	margin-bottom: 0.75em;
+}
+
+h1 {
+	font-size: 1.875rem;
+	margin-top: 1.875rem;
+}
+
+h2 {
+	font-size: 1.5rem;
+	margin-top: 1.5rem;
+}
+
+h3 {
+	font-size: 1.25rem;
+	margin-top: 1.25rem;
+}
+
+.source {
+	border: 1px solid #ddd;
+	border-radius: 3px;
+	padding: 1.5em;
+	word-break: break-all;
+}
+
+.callout {
+	border-radius: 10px;
+	padding: 1rem;
+}
+
+/* For default-background callouts, render the border outline. */
+.callout.block-color-default_background {
+	border: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+figure {
+	margin: 1.25em 0;
+	page-break-inside: avoid;
+}
+
+/*
+ * Toggles and callouts hold arbitrary content, so they can easily be taller
+ * than a page. They must stay breakable: avoiding breaks inside them makes
+ * Chromium push the whole block onto the next page, which leaves the previous
+ * page mostly empty before every long toggle.
+ */
+details,
+aside {
+	margin: 1.25em 0;
+}
+
+/* Keep a toggle's title on the same page as the start of its content. */
+summary {
+	page-break-after: avoid;
+	break-after: avoid;
+}
+
+/*
+ * Toggle headings render as <h1/h2/h3 style="display:inline-block"> inside
+ * <summary>. Without this reset, the heading's margin-top pushes it below the
+ * ::marker (▼), so the triangle and the title appear on separate lines.
+ */
+summary h1,
+summary h2,
+summary h3,
+summary h4 {
+	margin-top: 0;
+}
+
+figcaption {
+	opacity: 0.5;
+	font-size: 85%;
+	margin-top: 0.5em;
+}
+
+mark {
+	background-color: transparent;
+}
+
+.indented {
+	padding-left: 1.5em;
+}
+
+hr {
+	background: transparent;
+	display: block;
+	width: 100%;
+	height: 1px;
+	visibility: visible;
+	border: none;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+img {
+	max-width: 100%;
+}
+
+@media only print {
+	img {
+		max-height: 100vh;
+		object-fit: contain;
+	}
+
+	table.collection-content {
+		width: 100%;
+		table-layout: fixed;
+	}
+
+	table.collection-content th,
+	table.collection-content td {
+		overflow-wrap: anywhere;
+	}
+
+	table.collection-content td > .user,
+	table.collection-content td > time {
+		white-space: pre-wrap;
+	}
+}
+
+@page {
+	margin: 1in;
+}
+
+.collection-content-wrapper {
+	overflow-x: auto;
+}
+
+@media only print {
+	.collection-content-wrapper {
+		overflow-x: visible;
+	}
+}
+
+.collection-content {
+	font-size: 0.875rem;
+}
+
+.collection-content td {
+	white-space: pre-wrap;
+	word-break: break-word;
+}
+
+.column-list {
+	display: flex;
+	gap: 46px;
+}
+
+.column {
+	min-width: 0;
+	overflow: hidden;
+}
+
+.column > *:first-child {
+	margin-top: 0;
+}
+
+.table_of_contents-item {
+	display: block;
+	font-size: 0.875rem;
+	line-height: 1.3;
+	padding-inline: 0.125rem;
+	padding-block: 0.375rem;
+}
+
+.table_of_contents-indent-1 {
+	margin-left: 1.5rem;
+}
+
+.table_of_contents-indent-2 {
+	margin-left: 3rem;
+}
+
+.table_of_contents-indent-3 {
+	margin-left: 4.5rem;
+}
+
+.table_of_contents-link {
+	text-decoration: none;
+	opacity: 0.7;
+	border-bottom: 1px solid rgba(55, 53, 47, 0.18);
+}
+
+table,
+th,
+td {
+	border: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+table {
+	border-collapse: collapse;
+	border-left: none;
+	border-right: none;
+}
+
+th,
+td {
+	font-weight: normal;
+	padding: 0.25em 0.5em;
+	line-height: 1.5;
+	min-height: 1.5em;
+	text-align: left;
+}
+
+th {
+	color: rgba(55, 53, 47, 0.6);
+}
+
+ol,
+ul {
+	margin: 0;
+	margin-block-start: 0.6em;
+	margin-block-end: 0.6em;
+}
+
+li > ol:first-child,
+li > ul:first-child {
+	margin-block-start: 0.6em;
+}
+
+ul > li {
+	list-style: disc;
+}
+
+ul.to-do-list {
+	padding-inline-start: 0;
+}
+
+ul.to-do-list > li {
+	list-style: none;
+}
+
+.to-do-children-checked {
+	text-decoration: line-through;
+	opacity: 0.375;
+}
+
+ul.toggle > li {
+	list-style: none;
+}
+
+ul {
+	padding-inline-start: 1.7em;
+}
+
+ul > li {
+	padding-left: 0.1em;
+}
+
+ol {
+	padding-inline-start: 1.6em;
+}
+
+ol.numbered-list.numbered-list-digits-2 {
+	padding-inline-start: 2em;
+}
+
+ol.numbered-list.numbered-list-digits-3plus {
+	padding-inline-start: 2.4em;
+}
+
+ol > li {
+	padding-left: 0.2em;
+}
+
+.mono ol {
+	padding-inline-start: 2em;
+}
+
+.mono ol > li {
+	text-indent: -0.4em;
+}
+
+.toggle {
+	padding-inline-start: 0em;
+	list-style-type: none;
+}
+
+/* Indent toggle children */
+.toggle > li > details {
+	padding-left: 1.7em;
+}
+
+.toggle > li > details > summary {
+	margin-left: -1.1em;
+}
+
+.selected-value {
+	display: inline-block;
+	padding: 0 0.5em;
+	background: rgba(206, 205, 202, 0.5);
+	border-radius: 3px;
+	margin-right: 0.5em;
+	margin-top: 0.3em;
+	margin-bottom: 0.3em;
+	white-space: nowrap;
+}
+
+.collection-title {
+	display: inline-block;
+	margin-right: 1em;
+}
+
+.page-description {
+	margin-bottom: 2em;
+}
+
+.simple-table {
+	margin-top: 1em;
+	font-size: 0.875rem;
+	empty-cells: show;
+}
+.simple-table td {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table th {
+	height: 29px;
+	min-width: 120px;
+}
+
+.simple-table-header-color {
+	background: rgb(247, 246, 243);
+	color: black;
+}
+.simple-table-header {
+	font-weight: 500;
+}
+
+time {
+	opacity: 0.5;
+}
+
+.icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	max-width: 1.2em;
+	max-height: 1.2em;
+	text-decoration: none;
+	vertical-align: text-bottom;
+	margin-right: 0.5em;
+}
+
+/*
+ * Render emoji icons using a ::before pseudo-element to keep the glyph
+ * out of the DOM textContent traversal. This avoids double-rendering icons
+ * in callouts and page titles.
+ * NOTE(slim/html-export-pseudo-icons): I can't tagref this because it will
+ * flag as a duplicate tag after codegen.
+ */
+.icon[data-emoji]::before {
+	content: attr(data-emoji);
+}
+
+img.icon {
+	border-radius: 3px;
+}
+
+.callout img.notion-static-icon {
+	width: 1em;
+	height: 1em;
+}
+
+.callout p {
+	margin: 0;
+}
+
+.callout h1,
+.callout h2,
+.callout h3 {
+	margin: 0 0 0.6rem;
+}
+
+.user-icon {
+	width: 1.5em;
+	height: 1.5em;
+	border-radius: 100%;
+	margin-right: 0.5rem;
+}
+
+.user-icon-inner {
+	font-size: 0.8em;
+}
+
+.text-icon {
+	border: 1px solid #000;
+	text-align: center;
+}
+
+.page-cover-image {
+	display: block;
+	object-fit: cover;
+	width: 100%;
+	max-height: 30vh;
+}
+
+.page-header-icon {
+	font-size: 3rem;
+	margin-bottom: 1rem;
+}
+
+.page-header-icon-with-cover {
+	margin-top: -0.72em;
+	margin-left: 0.07em;
+}
+
+.page-header-icon img {
+	border-radius: 3px;
+}
+
+.link-to-page {
+	margin: 1em 0;
+	padding: 0;
+	border: none;
+	font-weight: 500;
+}
+
+p > .user {
+	opacity: 0.5;
+}
+
+td > .user,
+td > time {
+	white-space: nowrap;
+}
+
+input[type="checkbox"] {
+	margin-right: 0.4em;
+	vertical-align: middle;
+}
+
+p {
+	margin-top: 0.5em;
+	margin-bottom: 0.5em;
+}
+
+.image {
+	border: none;
+	margin: 1.5em 0;
+	padding: 0;
+	border-radius: 0;
+	text-align: center;
+}
+
+.code,
+code {
+	background: rgba(135, 131, 120, 0.15);
+	border-radius: 3px;
+	padding: 0.2em 0.4em;
+	border-radius: 3px;
+	font-size: 85%;
+	tab-size: 2;
+}
+
+code {
+	color: #eb5757;
+}
+
+.code {
+	padding: 1.5em 1em;
+}
+
+.code-wrap {
+	white-space: pre-wrap;
+	word-break: break-all;
+}
+
+.code > code {
+	background: none;
+	padding: 0;
+	font-size: 100%;
+	color: inherit;
+}
+
+blockquote {
+	font-size: 1em;
+	margin: 1em 0;
+	padding-left: 1em;
+	border-left: 3px solid rgb(55, 53, 47);
+}
+
+blockquote.quote-large {
+	font-size: 1.25em;
+}
+
+.bookmark {
+	text-decoration: none;
+	max-height: 8em;
+	padding: 0;
+	display: flex;
+	width: 100%;
+	align-items: stretch;
+}
+
+.bookmark-title {
+	font-size: 0.85em;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	height: 1.75em;
+	white-space: nowrap;
+}
+
+.bookmark-text {
+	display: flex;
+	flex-direction: column;
+}
+
+.bookmark-info {
+	flex: 4 1 180px;
+	padding: 12px 14px 14px;
+	display: flex;
+	flex-direction: column;
+	justify-content: space-between;
+}
+
+.bookmark-image {
+	width: 33%;
+	flex: 1 1 180px;
+	display: block;
+	position: relative;
+	object-fit: cover;
+	border-radius: 1px;
+}
+
+.bookmark-description {
+	color: rgba(55, 53, 47, 0.6);
+	font-size: 0.75em;
+	overflow: hidden;
+	max-height: 4.5em;
+	word-break: break-word;
+}
+
+.bookmark-href {
+	font-size: 0.75em;
+	margin-top: 0.25em;
+}
+
+.tab {
+	margin: 1.25em 0;
+	padding-inline: 1rem;
+	border: 1px solid rgba(55, 53, 47, 0.09);
+}
+
+.sans { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol"; }
+.code { font-family: "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace; }
+.serif { font-family: Lyon-Text, Georgia, ui-serif, serif; }
+.mono { font-family: iawriter-mono, Nitti, Menlo, Courier, monospace; }
+.pdf .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK JP'; }
+.pdf:lang(zh-CN) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK SC'; }
+.pdf:lang(zh-TW) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK TC'; }
+.pdf:lang(ko-KR) .sans { font-family: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", "Noto Sans Arabic", "Noto Sans Hebrew", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol", 'Twemoji', 'Noto Color Emoji', 'Noto Sans CJK KR'; }
+.pdf .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .code { font-family: Source Code Pro, "SFMono-Regular", Menlo, Consolas, "PT Mono", "Liberation Mono", Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.pdf .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK JP'; }
+.pdf:lang(zh-CN) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK SC'; }
+.pdf:lang(zh-TW) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK TC'; }
+.pdf:lang(ko-KR) .serif { font-family: PT Serif, Lyon-Text, Georgia, ui-serif, serif, 'Twemoji', 'Noto Color Emoji', 'Noto Serif CJK KR'; }
+.pdf .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK JP'; }
+.pdf:lang(zh-CN) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK SC'; }
+.pdf:lang(zh-TW) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK TC'; }
+.pdf:lang(ko-KR) .mono { font-family: PT Mono, iawriter-mono, Nitti, Menlo, Courier, monospace, 'Twemoji', 'Noto Color Emoji', 'Noto Sans Mono CJK KR'; }
+.highlight-default {
+	color: rgba(44, 44, 43, 1);
+}
+.highlight-gray {
+	color: rgba(125, 122, 117, 1);
+	fill: rgba(125, 122, 117, 1);
+}
+.highlight-brown {
+	color: rgba(159, 118, 90, 1);
+	fill: rgba(159, 118, 90, 1);
+}
+.highlight-orange {
+	color: rgba(210, 123, 45, 1);
+	fill: rgba(210, 123, 45, 1);
+}
+.highlight-yellow {
+	color: rgba(203, 148, 52, 1);
+	fill: rgba(203, 148, 52, 1);
+}
+.highlight-teal {
+	color: rgba(80, 148, 110, 1);
+	fill: rgba(80, 148, 110, 1);
+}
+.highlight-blue {
+	color: rgba(56, 125, 201, 1);
+	fill: rgba(56, 125, 201, 1);
+}
+.highlight-purple {
+	color: rgba(154, 107, 180, 1);
+	fill: rgba(154, 107, 180, 1);
+}
+.highlight-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.highlight-red {
+	color: rgba(207, 81, 72, 1);
+	fill: rgba(207, 81, 72, 1);
+}
+.highlight-default_background {
+	color: rgba(44, 44, 43, 1);
+}
+.highlight-gray_background {
+	background: rgba(42, 28, 0, 0.07);
+}
+.highlight-brown_background {
+	background: rgba(139, 46, 0, 0.086);
+}
+.highlight-orange_background {
+	background: rgba(224, 101, 1, 0.129);
+}
+.highlight-yellow_background {
+	background: rgba(211, 168, 0, 0.137);
+}
+.highlight-teal_background {
+	background: rgba(0, 100, 45, 0.09);
+}
+.highlight-blue_background {
+	background: rgba(0, 124, 215, 0.094);
+}
+.highlight-purple_background {
+	background: rgba(102, 0, 178, 0.078);
+}
+.highlight-pink_background {
+	background: rgba(197, 0, 93, 0.086);
+}
+.highlight-red_background {
+	background: rgba(223, 22, 0, 0.094);
+}
+.block-color-default {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray {
+	color: rgba(125, 122, 117, 1);
+	fill: rgba(125, 122, 117, 1);
+}
+.block-color-brown {
+	color: rgba(159, 118, 90, 1);
+	fill: rgba(159, 118, 90, 1);
+}
+.block-color-orange {
+	color: rgba(210, 123, 45, 1);
+	fill: rgba(210, 123, 45, 1);
+}
+.block-color-yellow {
+	color: rgba(203, 148, 52, 1);
+	fill: rgba(203, 148, 52, 1);
+}
+.block-color-teal {
+	color: rgba(80, 148, 110, 1);
+	fill: rgba(80, 148, 110, 1);
+}
+.block-color-blue {
+	color: rgba(56, 125, 201, 1);
+	fill: rgba(56, 125, 201, 1);
+}
+.block-color-purple {
+	color: rgba(154, 107, 180, 1);
+	fill: rgba(154, 107, 180, 1);
+}
+.block-color-pink {
+	color: rgba(193, 76, 138, 1);
+	fill: rgba(193, 76, 138, 1);
+}
+.block-color-red {
+	color: rgba(207, 81, 72, 1);
+	fill: rgba(207, 81, 72, 1);
+}
+.block-color-default_background {
+	color: inherit;
+	fill: inherit;
+}
+.block-color-gray_background {
+	background: rgba(240, 239, 237, 1);
+}
+.block-color-brown_background {
+	background: rgba(245, 237, 233, 1);
+}
+.block-color-orange_background {
+	background: rgba(251, 235, 222, 1);
+}
+.block-color-yellow_background {
+	background: rgba(249, 243, 220, 1);
+}
+.block-color-teal_background {
+	background: rgba(232, 241, 236, 1);
+}
+.block-color-blue_background {
+	background: rgba(229, 242, 252, 1);
+}
+.block-color-purple_background {
+	background: rgba(243, 235, 249, 1);
+}
+.block-color-pink_background {
+	background: rgba(250, 233, 241, 1);
+}
+.block-color-red_background {
+	background: rgba(252, 233, 231, 1);
+}
+.select-value-color-default { background-color: rgba(42, 28, 0, 0.07); }
+.select-value-color-gray { background-color: rgba(28, 19, 1, 0.11); }
+.select-value-color-brown { background-color: rgba(127, 51, 0, 0.156); }
+.select-value-color-orange { background-color: rgba(196, 88, 0, 0.203); }
+.select-value-color-yellow { background-color: rgba(209, 156, 0, 0.282); }
+.select-value-color-green { background-color: rgba(0, 96, 38, 0.156); }
+.select-value-color-blue { background-color: rgba(0, 118, 217, 0.203); }
+.select-value-color-purple { background-color: rgba(92, 0, 163, 0.141); }
+.select-value-color-pink { background-color: rgba(183, 0, 78, 0.152); }
+.select-value-color-red { background-color: rgba(206, 24, 0, 0.164); }
+
+.checkbox {
+	display: inline-flex;
+	vertical-align: text-bottom;
+	width: 16;
+	height: 16;
+	background-size: 16px;
+	margin-left: 2px;
+	margin-right: 5px;
+}
+
+.checkbox-on {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20width%3D%2216%22%20height%3D%2216%22%20fill%3D%22%2358A9D7%22%2F%3E%0A%3Cpath%20d%3D%22M6.71429%2012.2852L14%204.9995L12.7143%203.71436L6.71429%209.71378L3.28571%206.2831L2%207.57092L6.71429%2012.2852Z%22%20fill%3D%22white%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+
+.checkbox-off {
+	background-image: url("data:image/svg+xml;charset=UTF-8,%3Csvg%20width%3D%2216%22%20height%3D%2216%22%20viewBox%3D%220%200%2016%2016%22%20fill%3D%22none%22%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%3E%0A%3Crect%20x%3D%220.75%22%20y%3D%220.75%22%20width%3D%2214.5%22%20height%3D%2214.5%22%20fill%3D%22white%22%20stroke%3D%22%2336352F%22%20stroke-width%3D%221.5%22%2F%3E%0A%3C%2Fsvg%3E");
+}
+	
+</style><style>@import url('https://cdn.jsdelivr.net/npm/katex@0.16.25/dist/katex-swap.min.css')</style></head><body><article id="3d0c474d-784e-80d3-a8f1-e9e36c7cdd0c" class="page sans" data-notion-page-icon="📄"><header><div class="page-header-icon undefined"><span class="icon" data-emoji="📄"></span></div><h1 class="page-title" dir="auto">기능 명세서</h1><p class="page-description" dir="auto"></p><table class="properties"><tbody><tr class="property-row property-row-status"><th><span class="icon property-icon"><img src="https://app.notion.com/icons/burst_gray.svg" style="width:14px;height:14px;display:block"/></span>상태</th><td><span class="status-value select-value-color-green"><div class="status-dot status-dot-color-green"></div>Done</span></td></tr><tr class="property-row property-row-date"><th><span class="icon property-icon"><img src="https://app.notion.com/icons/calendar_gray.svg" style="width:14px;height:14px;display:block"/></span>작업 날짜</th><td><time datetime="2026-09-03">2026년 9월 3일</time></td></tr><tr class="property-row property-row-text"><th><span class="icon property-icon"><img src="https://app.notion.com/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>텍스트</th><td><a href="https://claude.ai/code/artifact/9debabdf-dbab-4d11-b880-b9f0d8356414">https://claude.ai/code/artifact/9debabdf-dbab-4d11-b880-b9f0d8356414</a></td></tr></tbody></table></header><div class="page-body"><div id="3d0c474d-784e-80e4-a3dd-cc6abd38879a" class="collection-content" dir="ltr"><h4 class="collection-title">기능명세서 (4)</h4><div class="collection-content-wrapper"><table class="collection-content"><colgroup><col style="width:16.24203821656051%"/><col style="width:11.571125265392782%"/><col style="width:12.526539278131635%"/><col style="width:11.464968152866243%"/><col style="width:26.963906581740975%"/><col style="width:21.23142250530786%"/></colgroup><thead><tr><th><span class="icon property-icon"><img src="https://app.notion.com/icons/font_gray.svg" style="width:14px;height:14px;display:block"/></span>0</th><th><span class="icon property-icon"><img src="https://app.notion.com/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>1st depth</th><th><span class="icon property-icon"><img src="https://app.notion.com/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>2nd depth</th><th><span class="icon property-icon"><img src="https://app.notion.com/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>3rd depth</th><th><span class="icon property-icon"><img src="https://app.notion.com/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>설명</th><th><span class="icon property-icon"><img src="https://app.notion.com/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>비고</th></tr></thead><tbody><tr id="3d0c474d-784e-8014-905f-fc118a9b04a5"><td class="cell-title"><a href="https://app.notion.com/p/1-1-3d0c474d784e8014905ffc118a9b04a5?pvs=21" data-notion-page-id="3d0c474d-784e-8014-905f-fc118a9b04a5" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">1 메인 홈 (로그인전) (1)</a></td><td class="cell-@RWv"></td><td class="cell-G|Mh"></td><td class="cell-HCHR"></td><td class="cell-:P{~">[페이지 내용]<br/>  • 서비스 설명 렌더링(전체 내용)<br/>  • 스크롤 내리면 애니메이션(서서히 내용 렌더링)<br/><br/>[헤더 내용]<br/>  • 로고<br/>  • 서비스명<br/>  • 살펴보기<br/>  • 로그인<br/>  • 회원가입</td><td class="cell-[MQS">  • 홈 외의 모든 페이지는 로그인을 해야 사용 가능하다<br/>  • 로그인을 한 이후에도 메인홈으로 이동할 수 있다(로고+서비스명 클릭 시)<br/>  • 헤더는 메인 홈 페이지에서만 사용이 가능하다</td></tr><tr id="3d0c474d-784e-807e-9d21-d279b1377d29"><td class="cell-title"><a href="https://app.notion.com/p/3d0c474d784e807e9d21d279b1377d29?pvs=21" data-notion-page-id="3d0c474d-784e-807e-9d21-d279b1377d29" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">제목 없음</a></td><td class="cell-@RWv">1.1 로그인</td><td class="cell-G|Mh">1.1.1 일반로그인</td><td class="cell-HCHR"></td><td class="cell-:P{~">[정보 입력]<br/>  • 이메일<br/>  • 비밀번호<br/><br/>소셜로그인 버튼 → <mark class="highlight-teal" data-notion-highlight="teal">1.1.2로 이동</mark><br/><br/>회원가입 버튼 → <mark class="highlight-teal" data-notion-highlight="teal">1.2로 이동<br/><br/></mark>정보 입력 후 로그인 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 인증 성공/실패 여부 표시<br/><br/></mark>비밀번호 찾기 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 1.4로 이동</mark></td><td class="cell-[MQS"></td></tr><tr id="3d1c474d-784e-8068-aba4-fd7bce3de1fd"><td class="cell-title"><a href="https://app.notion.com/p/3d1c474d784e8068aba4fd7bce3de1fd?pvs=21" data-notion-page-id="3d1c474d-784e-8068-aba4-fd7bce3de1fd" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">제목 없음</a></td><td class="cell-@RWv"></td><td class="cell-G|Mh">1.1.2 소셜 로그인</td><td class="cell-HCHR"></td><td class="cell-:P{~">API로 제공되는 로그인 페이지</td><td class="cell-[MQS"></td></tr><tr id="3d1c474d-784e-80d5-b7a6-c31e0290d416"><td class="cell-title"><a href="https://app.notion.com/p/3d1c474d784e80d5b7a6c31e0290d416?pvs=21" data-notion-page-id="3d1c474d-784e-80d5-b7a6-c31e0290d416" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">제목 없음</a></td><td class="cell-@RWv"></td><td class="cell-G|Mh">1.1.3 비밀번호 찾기</td><td class="cell-HCHR"></td><td class="cell-:P{~">  • 이메일 검증으로 비밀번호 재설정</td><td class="cell-[MQS"></td></tr><tr id="3d0c474d-784e-80e8-92c3-dadc80023a74"><td class="cell-title"><a href="https://app.notion.com/p/3d0c474d784e80e892c3dadc80023a74?pvs=21" data-notion-page-id="3d0c474d-784e-80e8-92c3-dadc80023a74" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">제목 없음</a></td><td class="cell-@RWv">1.2 회원가입 (=시작하기)</td><td class="cell-G|Mh"></td><td class="cell-HCHR"></td><td class="cell-:P{~">[정보 입력]<br/>  • 이메일 → 이메일 검증<br/>  • 비밀번호 → 2차확인<br/>  • 이름<br/>  • 소속<br/>   → dropdown으로 옵션(회사/개인) 제공<br/>   → 구체적인 소속단체명은 직접 입력(생략 가능)<br/><br/>회원가입 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 입력 정보 검증 후 회원가입(성공/실패 여부 팝업으로 안내) + 1.1.1 로그인 페이지로 리다이렉트</mark><br/><br/>이미 회원인 사람을 위한 로그인 버튼<br/><mark class="highlight-teal" data-notion-highlight="teal">→ 1.1.1로 이동</mark></td><td class="cell-[MQS"></td></tr><tr id="3d0c474d-784e-8040-8991-d2416bd493a6"><td class="cell-title"><a href="https://app.notion.com/p/3d0c474d784e80408991d2416bd493a6?pvs=21" data-notion-page-id="3d0c474d-784e-8040-8991-d2416bd493a6" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">제목 없음</a></td><td class="cell-@RWv"></td><td class="cell-G|Mh">1.2.1 소셜로그인(회원가입)</td><td class="cell-HCHR"></td><td class="cell-:P{~"><mark class="highlight-default" data-notion-highlight="default"><strong>Google</strong></mark></td><td class="cell-[MQS">확정X</td></tr><tr id="3d0c474d-784e-8078-899a-e1fda2ca352b"><td class="cell-title"><a href="https://app.notion.com/p/3d0c474d784e8078899ae1fda2ca352b?pvs=21" data-notion-page-id="3d0c474d-784e-8078-899a-e1fda2ca352b" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">제목 없음</a></td><td class="cell-@RWv"></td><td class="cell-G|Mh"></td><td class="cell-HCHR">1.1.2.1 추가정보입력창</td><td class="cell-:P{~">새로 가입하는 회원일 경우 정보 입력<br/>-이름<br/>-소속<br/>→ dropdown으로 옵션(회사/개인) 제공<br/>→ 구체적인 소속단체명은 직접 입력(생략 가능)</td><td class="cell-[MQS"></td></tr><tr id="3d0c474d-784e-8032-be01-e19ab947549e"><td class="cell-title"><a href="https://app.notion.com/p/3d0c474d784e8032be01e19ab947549e?pvs=21" data-notion-page-id="3d0c474d-784e-8032-be01-e19ab947549e" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">제목 없음</a></td><td class="cell-@RWv">1.3 살펴보기</td><td class="cell-G|Mh"></td><td class="cell-HCHR"></td><td class="cell-:P{~">  • 어떤 페이지에서 어떤 기능을 사용할 수 있는지 기능별로 소개<br/>  • 헤더의 ‘살펴보기’ 메뉴에 호버 시 드롭다운 메뉴로 선택 가능(살펴보기 페이지클릭 <mark class="highlight-teal" data-notion-highlight="teal">→ 1.3.1 대시보드 설명 페이지로 이동</mark>)<br/><br/>로그인 버튼으로 유도<mark class="highlight-teal" data-notion-highlight="teal"> → 1.1.1로 이동</mark></td><td class="cell-[MQS"></td></tr><tr id="3d0c474d-784e-80b1-af54-da40cf6cea90"><td class="cell-title"><a href="https://app.notion.com/p/3d0c474d784e80b1af54da40cf6cea90?pvs=21" data-notion-page-id="3d0c474d-784e-80b1-af54-da40cf6cea90" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">제목 없음</a></td><td class="cell-@RWv"></td><td class="cell-G|Mh">1.3.1 ~ 1.3.5 설명 페이지</td><td class="cell-HCHR"></td><td class="cell-:P{~">대시보드(1.3.1)/리소스 조회(1.3.2)/프로비저닝(1.3.3)/비용 관리(1.3.4)/로그 통합 관리(1.3.5)</td><td class="cell-[MQS">비용 관리/로그 통합 관리는 확장 기능(개발 후순위)</td></tr></tbody></table></div><br/><br/></div><div id="3d0c474d-784e-8015-9b64-df7e2507a78e" class="collection-content" dir="ltr"><h4 class="collection-title">기능명세서 (3)</h4><div class="collection-content-wrapper"><table class="collection-content"><colgroup><col style="width:21.368715083798882%"/><col style="width:15.223463687150836%"/><col style="width:35.47486033519553%"/><col style="width:27.932960893854755%"/></colgroup><thead><tr><th><span class="icon property-icon"><img src="https://app.notion.com/icons/font_gray.svg" style="width:14px;height:14px;display:block"/></span>0</th><th><span class="icon property-icon"><img src="https://app.notion.com/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>1st depth</th><th><span class="icon property-icon"><img src="https://app.notion.com/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>설명</th><th><span class="icon property-icon"><img src="https://app.notion.com/icons/description_gray.svg" style="width:14px;height:14px;display:block"/></span>비고</th></tr></thead><tbody><tr id="3d0c474d-784e-80ab-92c8-cb2bf05d2efe"><td class="cell-title"><a href="https://app.notion.com/p/2-3d0c474d784e80ab92c8cb2bf05d2efe?pvs=21" data-notion-page-id="3d0c474d-784e-80ab-92c8-cb2bf05d2efe" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">2. 대시보드</a></td><td class="cell-@RWv"></td><td class="cell-:P{~">- 대시보드 아래 안내문구 ‘<mark class="highlight-default" data-notion-highlight="default">AWS·Azure·GCP</mark>는 실시간 연동입니다.’<br/><br/>[리소스 대시보드]<br/>  • ‘전체 리소스 수’ - 연동된 전체 클라우드의 리소스 총합 숫자 표시<br/>  • ‘전체 리전 수’ - 리소스 배포되어 있는 리전(Region)의 총 개수 표시<br/>  • ‘예상 총 비용’ (Estimated) - 리소스 정가 및 Cost Explorer 기반 이번 달 예상 총 비용($/mo)표시 / 하단 보조 문구: “리소스별 정가/Cost Explorer 추정 합계. 정책문서 참고.” 안내<br/>  • <mark class="highlight-red" data-notion-highlight="red"><strong>주요 리소스 요약 카드: Compute, DB, Object Storage 등 주요 리소스 타입별 수량 및 상태 요약 카드</strong></mark><mark class="highlight-blue" data-notion-highlight="blue"><br/>  • </mark><br/><br/>[클라우드별 비용 내역]<br/>  • AWS 연동 리소스 수 표시 /<mark class="highlight-blue" data-notion-highlight="blue"> </mark><mark class="highlight-default" data-notion-highlight="default">AWS 실제 누적 비용 - AWS 계정 연결 상태 및 Cos Explorer 권한 확인</mark> / 예상 월 비용($) (Estimated) 카드 형태 표시 - 리소스가 0개인 경우 “$0.00 / 0개 리소스”로 표시<br/>  • AZURE 연동 리소스 수 표시 / <mark class="highlight-default" data-notion-highlight="default">Azure 실제 누적 비용 - Azure 계정 연결 상태 및 Cost Management Query API 권한 확인</mark> / 예상 월 비용($) (Estimated) 카드 형태 표시 - 리소스가 0개인 경우 “$0.00 / 0개 리소스”로 표시<br/>  • GCP 연동 리소스 수 표시 / <mark class="highlight-default" data-notion-highlight="default">GCP 예상 누적 비용 - GCP 계정 연결 상태 및 Cos Explorer 권한 확인</mark> / 예상 월 비용($) (Estimated) 카드 형태 표시 - 리소스가 0개인 경우 “$0.00 / 0개 리소스”로 표시<br/>  •<strong> </strong><mark class="highlight-red" data-notion-highlight="red"><strong>월별 비용 추이(라벨 명확히+모든 플랫폼 비용 한 그래프로 표시)<br/>  </strong></mark><strong>• </strong><mark class="highlight-red" data-notion-highlight="red"><strong>서비스별 비용 비중(도넛 그래프)<br/>  </strong></mark><strong>• </strong><mark class="highlight-red" data-notion-highlight="red"><strong>최근 프로비저닝 활동<br/>  </strong></mark><strong>• </strong><mark class="highlight-red" data-notion-highlight="red"><strong>예산 임계값 경고 → 경고 아이콘으로<br/>  • 리전 시각화 / 지도 방식으로 구현</strong></mark><br/><br/>[오른쪽 상단의 버튼]<br/>’AWS 콘솔 열기’ 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ </mark><mark class="highlight-teal" data-notion-highlight="teal"><a href="https://aws.amazon.com/ko/?nc2=h_home&amp;trk=78c55dff-53b9-4938-8ed3-d071891360dd&amp;sc_channel=ps">AWS 홈페이지</a></mark><br/>’AZURE 포털 열기’ 버튼 →<mark class="highlight-teal" data-notion-highlight="teal"> </mark><mark class="highlight-teal" data-notion-highlight="teal"><a href="https://azure.microsoft.com/ko-kr">Azure 홈페이지</a></mark><br/>’GCP 콘솔 열기’ 버튼 → <mark class="highlight-teal" data-notion-highlight="teal"><a href="https://cloud.google.com/?hl=ko">GCP 홈페이지</a></mark><br/>-버튼 클릭 시 각 CSP의 관리 화면, 새 창으로 이동<br/> </td><td class="cell-[MQS"><a href="https://app.notion.com/p/3d1c474d784e8059bc83dbca02d53ac0?pvs=21" data-notion-page-id="3d1c474d-784e-8059-bc83-dbca02d53ac0" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">기능명세서 추가할 내용들 정리</a> </td></tr><tr id="3d0c474d-784e-80d3-8aef-d4ae8e17fb56"><td class="cell-title"><a href="https://app.notion.com/p/3-3d0c474d784e80d38aefd4ae8e17fb56?pvs=21" data-notion-page-id="3d0c474d-784e-80d3-8aef-d4ae8e17fb56" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">3. 인벤토리(리소스 조회)</a></td><td class="cell-@RWv"></td><td class="cell-:P{~">[리소스 통합 조회]<br/>  • 사용자가 등록하고 검증 완료한 AWS·Azure·GCP 계정의 리소스를 하나의 목록으로 조회<br/>  • db에 저장된 최근 조회 결과 먼저 표시<br/>  • 화면 좌측 상단에 전체 리소스 수와 마지막 동기화 시각 표시<br/>  • 맨 우측 상단에 새로고침(동기화) 버튼 배치<br/>      ◦ 클릭 → 등록된 계정 전체를 대상으로 재수집 후 목록 갱신<br/>      ◦ 수집 중에는 버튼 비활성 + AWS 완료 / Azure 수집중 / GCP 대기)<br/>  • 화면 우측 상단에 예상 총 비용(추정) 명시 클릭 <mark class="highlight-teal" data-notion-highlight="teal">→ 6. 비용 상세 페이지로 이동<br/>  </mark><mark class="highlight-default" data-notion-highlight="default">• 체크 박스로 리소스 선택 가능(중복 가능)<br/>  • ‘start’ 버튼</mark><mark class="highlight-teal" data-notion-highlight="teal"> → 선택한 리소스 시작</mark><mark class="highlight-default" data-notion-highlight="default"><br/>  • ‘stop’ 버튼 </mark><mark class="highlight-teal" data-notion-highlight="teal">→ 선택한 리소스 중지</mark><mark class="highlight-default" data-notion-highlight="default"><br/>  • ‘delete’ 버튼 </mark><mark class="highlight-teal" data-notion-highlight="teal">→ 선택한 리소스 삭제<br/><br/></mark><mark class="highlight-default" data-notion-highlight="default">[검색 및 필터]<br/>  • 필터 - 클라우드 / 서비스 / 연결 계정 / 상태, 리전, 태그<br/>      ◦ 클라우드 플랫폼 필터 : AWS/Azure/Gcp, 중복 선택 가능<br/>      ◦ 서비스 종류 필터 : Compute, </mark><mark class="highlight-gray" data-notion-highlight="gray"><strong>(Network)</strong></mark><mark class="highlight-default" data-notion-highlight="default"><strong>,</strong></mark><mark class="highlight-default" data-notion-highlight="default"> DB_RDBMS, Storage_Object, CDN<br/>          ‣</mark><mark class="highlight-gray" data-notion-highlight="gray"><strong> </strong></mark><mark class="highlight-default" data-notion-highlight="default"><strong>서비스 종류 필터는 대분류 아래에 EC2 이런 식으로 설정 (AWS 필터 선택 적용 시 EC2 만 뜰 수 있도록 / Azure - Virtual Machine / Gcp - Compute Engine)</strong></mark><mark class="highlight-gray" data-notion-highlight="gray"><strong><br/></strong></mark><mark class="highlight-default" data-notion-highlight="default">      ◦ 연결 계정 필터, 중복 선택 가능<br/>  <br/><br/>  • 필터 초기화 기능<br/><br/>  • 검색 <br/>      ◦ 리소스명 또는 리소스 ID 검색<br/>      ◦ 서비스 검색<br/>      ◦ 리전 검색<br/>      ◦ 계정 검색<br/>  <br/>      ◦ 검색 시 중복 필터링 가능 (교집합)<br/>      ◦ 입력폼은 하나(검색 조건을 드롭다운으로 고르고, 검색 키워드 입력)<br/><br/>  • 정렬<br/><br/>[리소스 목록]<br/>  • 클라우드 플랫폼<br/>      ◦ 아이콘<br/>  • 서비스 종류<br/>  • 리소스명<br/>  • Region<br/>  • 연결 계정명<br/>  • 예상 또는 수집 비용<br/>  • 태그<br/>  • 상태<br/><br/>  • 상세보기로 들어갈 수 있는 </mark><mark class="highlight-gray" data-notion-highlight="gray"><strong>→ 팝업, 페이지 연결</strong></mark><mark class="highlight-default" data-notion-highlight="default"><br/><br/></mark></td><td class="cell-[MQS">새로고침 버튼 어디에<br/>팝업으로 할 지 / <br/><br/><br/><mark class="highlight-default" data-notion-highlight="default"> ◦ 서비스 종류 필터 : Compute, </mark><mark class="highlight-gray" data-notion-highlight="gray"><strong>(Network)</strong></mark><mark class="highlight-default" data-notion-highlight="default"><strong>,</strong></mark><mark class="highlight-default" data-notion-highlight="default"> <br/><br/></mark><mark class="highlight-blue" data-notion-highlight="blue"><strong>→ compute, network 병합<br/></strong></mark><mark class="highlight-default" data-notion-highlight="default"><br/>          ‣</mark><mark class="highlight-gray" data-notion-highlight="gray"><strong> </strong></mark><mark class="highlight-default" data-notion-highlight="default"><strong>서비스 종류 필터는 대분류 아래에 EC2 이런 식으로 설정 (AWS 필터 선택 적용 시 EC2 만 뜰 수 있도록 / Azure - Virtual Machine / Gcp - Compute Engine)<br/> <br/></strong></mark><mark class="highlight-blue" data-notion-highlight="blue">→ 이렇게 진행<br/></mark><mark class="highlight-default" data-notion-highlight="default"><br/></mark>- 상세보기 버튼 <strong>클릭 시 → 팝업, 페이지 연결<br/><br/>서비스 종류 지우고,<br/>CSP 원본리소스 유형 넣고, 나중에 Ui적으로 깨지면 빼기<br/><br/>세세한 내용은 9/6(일)</strong></td></tr><tr id="3d0c474d-784e-8099-91ca-ec830e4d8035"><td class="cell-title"><a href="https://app.notion.com/p/4-3d0c474d784e809991caec830e4d8035?pvs=21" data-notion-page-id="3d0c474d-784e-8099-91ca-ec830e4d8035" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">4. 프로비저닝</a></td><td class="cell-@RWv"></td><td class="cell-:P{~">[경고 내용 출력]<br/>  • “실제 리소스를 생성하는 작업이고 과금이 발생할 수 있음”을 의미하는 안내 문구(페이지 상단에 렌더링)<br/><br/>[프로비저닝 기능]<br/>1. 클라우드 플랫폼 선택<br/>  • AWS/Azure/GCP 중 선택<br/>  • 중복 선택 가능<br/><br/>2. 계정 선택<br/>  • 우리 서비스 사용자가 등록한 전체 계정 중 선택<br/>  • 회사별로 드롭다운 메뉴 고르기<br/><strong>  • 중복 선택 가능<br/></strong><br/>3. 리소스 종류 선택<br/>  • 2번에서 선택한 플랫폼 계정 권한으로 생성 가능한 종류만 렌더링 (권한이 없으면 아예 선택 불가능)<br/>  • 권한이 없어도 선택지를 보이되 비활성화된 상태<br/>  • 최소권한(선택한 계정이 A(AWS)-전체 리소스 가능 / B(Azure)-Compute만 가능 → Compute만 생성 가능)<br/>  • 중복 선택 불가능<br/><br/>4. 공통 설정<br/>  • 서비스 매핑 표에 정리한 기준대로 공통으로 설정 가능한 설정값 입력<br/><br/>5. 선택한 플랫폼에 해당하는 추가 설정<br/>  • 선택한 플랫폼별 추가 설정 진행<br/>  • AWS/Azure/GCP 순서대로 칸을 나눠서 렌더링<br/><br/>6-1. ‘비교하기’ 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 가격 비교 내용을 모달창으로 렌더링<br/></mark>  • 위에서 작성한 설정(생성하려는 리소스)과 유사한 사양의 타 플랫폼 리소스와 가격 비교<br/><br/>6-2. ‘생성하기’ 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 과금 발생 확인 여부 안내<br/>  • ‘확인’ 버튼 → 리소스 생성</mark><br/>      • 리소스 생성에 시간이 걸릴 수 있다는 메세지 출력(팝업 방식)<br/>      • 리소스 생성과 7번 단계 동시 수행<br/><mark class="highlight-teal" data-notion-highlight="teal">  • ‘취소’ 버튼 → 취소</mark><br/><br/>7. 프로그레스바(진행바) 표시<br/>  • ‘생성하기’ 버튼을 클릭해서 리소스 생성을 진행할 때 모달창을 띄워서 진행 정도 렌더링<br/>  • 모든 리소스 과정 전부 렌더링<br/>  • 진행률을 정확하게 알 수 없음 → 90%까지 천천히 진행되다가 생성이 완료되면 100%로 표시(리소스마다 다른 속도로 표시)<br/>  • 중간에 실패하면 해당 리소스에 대해 실패했다는 내용을 해당 프로그레스바 아래에 출력(문구 + 색상 등의 UI)<br/>  • ‘인벤토리로 이동하기’ 버튼<mark class="highlight-teal" data-notion-highlight="teal"><mark class="highlight-default_background" data-notion-highlight="default_background"> → 3.인벤토리로 이동<br/></mark></mark><mark class="highlight-default_background" data-notion-highlight="default_background">      ◦ 다른 페이지에 있는 경우 진행률 모달창을 오른쪽 하단에 띄운다(작은 화면으로)<br/>      ◦ 리소스 생성이 끝나면 결과를 리소스별로 안내 아이콘에 띄운다</mark></td><td class="cell-[MQS">  • 설정값은 텍스트 입력, 드롭다운 선택(중복선택) 등의 방식 사용<br/>  • 설정 입력 폼은 위에서 아래로 1열 정렬<br/><br/>[질문]<br/>  • 계정 중복 선택 가능 → 계정도 중복 선택이 가능해야 하나?</td></tr><tr id="3d0c474d-784e-8047-b2a6-daf4123736b9"><td class="cell-title"><a href="https://app.notion.com/p/5-3d0c474d784e8047b2a6daf4123736b9?pvs=21" data-notion-page-id="3d0c474d-784e-8047-b2a6-daf4123736b9" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">5. 마이페이지</a></td><td class="cell-@RWv"></td><td class="cell-:P{~">[계정 정보]<br/>  • 소속/소속단체명<br/>  • 이메일<br/>  • 이름<br/>  • ‘수정하기’ 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 소속/소속단체명 수정 가능</mark><br/>  • ‘로그아웃’ 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 로그아웃</mark><br/>  • ‘회원탈퇴’ 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 회원탈퇴</mark><br/>  • 로그아웃과 회원탈퇴는 실행 전 반드시 확인<br/><br/>[카테고리화]<br/>  • 연결된 클라우드 계정 / 키&amp;플랫폼 IAM 계정 관리 / 보고서 작성 탭으로 아래 내용을 렌더링<br/><br/>[키&amp;플랫폼 IAM 계정 관리]<br/>  • 클라우드 플랫폼(AWS/Azure/GCP), 이름, 키값<br/>    - 클라우드 플랫폼: 드롭다운<br/>    - 이름: 텍스트 입력<br/>    - 키값: 텍스트 입력 / 비밀키: 텍스트 입력(내용 숨기기)<br/>  • 각 회사가 입력받아야 하는 키값이 다름 → 회사를 선택하면 아래에 다른 입력폼들이 렌더링<br/>  • ‘저장 및 검증’ 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 입력받은 키 정보 저장 + 키값 검증</mark><br/><br/>[연결된 클라우드 계정]<br/>  • 저장된 키 값(계정)을 리스트로 나열<br/>  • 나열 정보: 회사명/이름/계정/키 요약(공개키 맨앞 4글자만 출력+나머지 별표)/검증 상태/’삭제’ 버튼<br/>  • 회사별/태그/이름으로 필터링 가능<br/>  • 사용자가 임의로 순서 변경 가능<br/>  • ‘삭제’ 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 해당 키(계정) 삭제<br/><br/></mark>[보고서 작성]<br/>  • 다운로드 방식과 주기를 선택·관리한다<br/>  • 다운로드 방식(웹 다운로드/메일로 전송)<br/>      ◦ 메일로 전송 선택 시 전송받을 메일 입력받기<br/>  • 다운로드 받을 주기(일간/주간/월간/반기)</td><td class="cell-[MQS"></td></tr><tr id="3d0c474d-784e-80ce-a147-e0e9ce234a84"><td class="cell-title"><a href="https://app.notion.com/p/6-3d0c474d784e80cea147e0e9ce234a84?pvs=21" data-notion-page-id="3d0c474d-784e-80ce-a147-e0e9ce234a84" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">6. 비용 관리(상세)</a></td><td class="cell-@RWv"></td><td class="cell-:P{~">[대시보드]<br/>  • AWS 연동 리소스 수 표시 /<mark class="highlight-blue" data-notion-highlight="blue"> </mark><mark class="highlight-default" data-notion-highlight="default">AWS 실제 누적 비용 - AWS 계정 연결 상태 및 Cos Explorer 권한 확인</mark> / 예상 월 비용($) (Estimated) 카드 형태 표시 - 리소스가 0개인 경우 “$0.00 / 0개 리소스”로 표현<br/>  • <mark class="highlight-default" data-notion-highlight="default">Azure 실제 누적 비용 - Azure 계정 연결 상태 및 Cost Management Query API 권한 확인</mark> / 예상 월 비용($) (Estimated) 카드 형태 표시 - 리소스가 0개인 경우 “$0.00 / 0개 리소스”로 표현<br/>  • GCP 연동 리소스 수 표시 / <mark class="highlight-default" data-notion-highlight="default">GCP 예상 누적 비용 - GCP 계정 연결 상태 및 Cos Explorer 권한 확인</mark> / 예상 월 비용($) (Estimated) 카드 형태 표시 - 리소스가 0개인 경우 “$0.00 / 0개 리소스”로 표시<br/>  •<strong> </strong>월별 비용 추이(라벨 명확히+모든 플랫폼 비용 한 그래프로 표시)<br/>  • 서비스별 비용 비중(도넛 그래프)<br/>  • 최근 프로비저닝 활동<mark class="highlight-red" data-notion-highlight="red"><strong><br/></strong></mark><br/>[AI 추천 서비스]<br/>  • AI에게 추천받기 버튼 클릭 <mark class="highlight-teal" data-notion-highlight="teal">→ 모달창으로 질문 페이지 렌더링<br/>     </mark> ◦ 질문 입력창과 답변 영역<br/>      ◦ 채팅이 아니라 하나의 질문에 답변을 하는 방식<br/>      ◦ 답변은 요약본으로 간단하게<br/>      ◦ 질문은 비용 질문과 비용 기준 추천만 가능 </td><td class="cell-[MQS">추후 발전 가능</td></tr><tr id="3d0c474d-784e-8020-8c67-f8fc594bab0a"><td class="cell-title"><a href="https://app.notion.com/p/7-3d0c474d784e80208c67f8fc594bab0a?pvs=21" data-notion-page-id="3d0c474d-784e-8020-8c67-f8fc594bab0a" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">7. 보고서 작성</a></td><td class="cell-@RWv"></td><td class="cell-:P{~">[보안 요약]<br/>  • 보고서 요약 내용을 화면에 렌더링<br/>  • 비용 → 그래프 활용<br/>  • 보안 → 표 활용<br/><br/>[보고서 다운로드]<br/>  • 마이페이지에서 웹 다운로드 선택 시 렌더링<br/>  • 오늘 다운받을 수 있는 보고서 다운로드 버튼 렌더링(일간/주간/월간/반기)<br/>  • 다운로드 버튼 클릭 <mark class="highlight-teal" data-notion-highlight="teal"><mark class="highlight-default_background" data-notion-highlight="default_background">→ 해당하는 보고서 다운로드</mark></mark></td><td class="cell-[MQS">보고서 작성은 AI 에이전트 활용(ChatGPT)<br/><br/>[참고 기업]<br/>  • 베스핑 글로벌<br/>  • 메가존클라우드</td></tr><tr id="3d0c474d-784e-8030-8f49-c21c478ffa51"><td class="cell-title"><a href="https://app.notion.com/p/3d0c474d784e80308f49c21c478ffa51?pvs=21" data-notion-page-id="3d0c474d-784e-8030-8f49-c21c478ffa51" data-notion-space-id="0d0c474d-784e-818e-848c-0003f8a54db3">공통</a></td><td class="cell-@RWv"></td><td class="cell-:P{~">[사이드바]<br/>  • 메인 홈 제외 모든 페이지<br/>  • 로고+서비스명 <mark class="highlight-teal" data-notion-highlight="teal">→ 클릭시 메인 홈으로 이동</mark><br/>  • 대시보드/인벤토리/프로비저닝/마이페이지 순서로 위에서부터 렌더링 <mark class="highlight-teal" data-notion-highlight="teal">→ 클릭 시 해당 페이지로 이동</mark><br/>  • 사이드바 하단에 이메일/’로그아웃’ 버튼 <mark class="highlight-teal" data-notion-highlight="teal">→ 클릭 시 로그아웃<br/></mark><br/>[기능]<br/>  • 테마 변경 스위치☀️🌙(오른쪽 상단 브라우저 위에 동그란 이모지 렌더링)<br/>  • 영어, 한국어 지원(KOR/EN)<br/>  • 알림 아이콘🚨(테마 변경 스위치 옆에 동일한 방식으로 렌더링) <br/><br/>[UI]<br/>  • 스크롤바: 2px, 호버 시 색 진해짐, 브라우저에서 공간 차지 안 함</td><td class="cell-[MQS"></td></tr></tbody></table></div><br/><br/></div><p id="3d0c474d-784e-80be-953e-d012e6cec7e7" class="" dir="auto">
+</p></div></article><span class="sans" style="font-size:14px;padding-top:2em"></span></body></html>
