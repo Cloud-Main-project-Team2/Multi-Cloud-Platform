@@ -1,6 +1,6 @@
 # 멀티 클라우드 관리 서비스 API 명세서
 
-> 기준일: 2026-09-09  
+> 기준일: 2026-09-10 (2차 DB migration `2964dfe0a706` 반영)  
 > 기준 문서: `AGENTS.md`의 확정 DB 스키마 컨텍스트  
 > 대상: FastAPI 기반 REST API  
 > 상태: 목표 명세(Draft). 현재 저장소에는 API 구현 코드가 없으므로 구현 완료를 의미하지 않는다.
@@ -15,11 +15,11 @@ DB bigint PK를 외부 식별자로 사용하되 모든 사용자 소유 데이�
 
 | 단계 | 범위 | DB 선행 조건 |
 |---|---|---|
-| 1차 | 인증, 사용자, 클라우드 계정·자격 증명, 서비스 카탈로그, 인벤토리, 동기화, 프로비저닝 job, 알림, 상태 확인 | 1차 DB 구축 테이블 |
-| 2차 | resource type 기반 지원 동작, provisioning request 부모 흐름, 비용 이력, 감사 이벤트 | `resource_types`, `provisioning_requests`, `cloud_resource_costs`, `audit_events` migration |
+| 1차 | 인증, 사용자, 클라우드 계정·자격 증명, 서비스 카탈로그, 인벤토리, 동기화, 프로비저닝 job, 알림, 상태 확인 | 1차 DB 구축 테이블 — 완료 (`7bf7892874c3`) |
+| 2차 | resource type 기반 지원 동작, provisioning request 부모 흐름, 비용 이력, 감사 이벤트 | `resource_types`, `provisioning_requests`, `cloud_resource_costs`, `audit_events` migration — 완료 (`2964dfe0a706`) |
 | 확장 | 대시보드 집계, 가격 비교, 실제 비용 고도화, 보고서 | 2차 DB 및 별도 정책 확정 |
 
-최종 API 계약은 2차 DB까지 포함한다. 2차 테이블을 사용하는 엔드포인트는 해당 migration과 서비스 구현 전까지 제공하지 않는다.
+최종 API 계약은 2차 DB까지 포함한다. 2차 테이블의 migration은 이미 적용되어 있으므로(`2964dfe0a706`), 2차 엔드포인트를 막는 조건은 더 이상 "DB 미비"가 아니라 "서비스 코드 미구현"이다. 아래 개별 절의 "2차 DB migration 이후 제공한다"는 문구는 이 의미로 읽는다.
 
 ### 1.2 명세에서 확정하지 않는 사항
 
@@ -602,7 +602,7 @@ query:
 - `provisionable`: boolean
 - `operation`: `start | stop | delete`
 
-2차 DB migration 이후 제공한다.
+`resource_types` migration은 적용되어 있다(`2964dfe0a706`, 12개 provisionable 서비스 각 1개씩 최소 시드). 서비스 구현 시점에 제공한다.
 
 ### 7.3 `GET /provisioning/options`
 
@@ -658,6 +658,8 @@ DB에 저장된 최신 snapshot을 우선 반환하며 요청 시 CSP API를 직
 - `include_deleted`: 기본 `false`
 
 `q`와 모든 필터는 교집합으로 적용한다. `search_field=resource`는 이름과 `external_resource_id`를 대상으로 한다. 상세 식별용 `provider_resource_key`는 검색에는 사용할 수 있으나 기본 응답에 노출하지 않는다.
+
+`resource_type_id`는 `resources.resource_type_id` 컬럼(nullable)을 그대로 필터링한다. 이 컬럼은 서비스당 매핑되는 리소스 유형이 하나로 확실한 기존 행만 채워져 있고, 그 외에는 `NULL`이다(수집 코드가 항상 채우게 되기 전까지 계속 그렇다). `resource_type_id`로 필터링할 때 `NULL`인 행(아직 유형이 매핑되지 않은 리소스)을 제외할지, `unmapped` 같은 별도 값으로 조회 가능하게 할지는 `정책 확정 필요`.
 
 최종 pagination과 정렬 query는 정책 확정 후 추가한다.
 
@@ -820,7 +822,7 @@ Terraform은 생성만 담당한다. 기존 리소스의 조회·시작·중지�
 | GET | `/provisioning/requests/{request_id}` | 요청과 job 진행 조회 |
 | POST | `/provisioning/requests/{request_id}/cancel` | 취소 요청 |
 
-`provisioning_requests` 기반 API는 2차 DB migration 이후 제공한다. 1차 DB만 있는 동안 `provisioning_jobs`를 직접 노출하는 임시 API를 만들지 않는 것을 권장한다.
+`provisioning_requests` 테이블과 `provisioning_jobs.provisioning_request_id`(NOT NULL FK) migration은 적용되어 있다(`2964dfe0a706`). 남은 조건은 서비스 구현이다. `provisioning_requests` 기반 API 구현 전에는 `provisioning_jobs`를 직접 노출하는 임시 API를 만들지 않는 것을 권장한다.
 
 ### 10.2 `POST /provisioning/price-comparisons`
 
@@ -942,11 +944,12 @@ Terraform은 생성만 담당한다. 기존 리소스의 조회·시작·중지�
 }
 ```
 
-- `terraform_state_ref`는 내부 참조이므로 외부 응답에 반환하지 않는다.
+- `terraform_state_ref`는 내부 참조이므로 외부 응답에 반환하지 않는다. DB에도 state 본문이나 민감 output이 아니라 안전한 외부 저장소 참조만 저장한다(`provisioning_jobs.terraform_state_ref`).
 - `spec_json`과 `result_json`은 허용 목록으로 직렬화하며 민감 output을 제거한다.
 - request status는 자식 job 상태를 transaction으로 집계한다.
 - `success|failed|cancelled` job의 progress는 각각 정책에 맞게 종결하며 `success`만 반드시 100이다.
 - 완료 시 알림을 만들고 감사 action `provisioning.complete`를 기록한다.
+- `progress_percent`(0~100 CHECK), `created_resource_count`(0 이상 CHECK), `terraform_state_ref`는 `provisioning_jobs`에 이미 컬럼으로 존재한다(`2964dfe0a706`). 새 migration 없이 이 API를 구현할 수 있다.
 
 ### 10.5 `POST /provisioning/requests/{request_id}/cancel`
 
@@ -963,7 +966,7 @@ Terraform은 생성만 담당한다. 기존 리소스의 조회·시작·중지�
 | GET | `/costs/by-service` | 서비스별 비용 비중 |
 | GET | `/resources/{resource_id}/costs` | 리소스 비용 이력 |
 
-`cloud_resource_costs`가 필요한 상세 이력 API는 2차 DB migration 이후 제공한다.
+`cloud_resource_costs` migration은 적용되어 있다(`2964dfe0a706`, `(provider, source_record_key)` unique로 재수집 멱등 처리). 상세 이력 API는 서비스 구현 시점에 제공한다. 실제 비용 데이터를 채우는 수집 로직(특히 GCP)은 이번 범위에 없다.
 
 ### 11.2 비용 공통 표현
 
