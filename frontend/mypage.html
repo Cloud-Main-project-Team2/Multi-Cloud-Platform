@@ -104,9 +104,9 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
               <p class="font-semibold">연결된 클라우드 계정</p>
               <div class="flex flex-wrap gap-2">
-                <select class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"><option>플랫폼: 전체</option><option>AWS</option><option>Azure</option><option>GCP</option></select>
-                <select class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"><option>태그: 전체</option></select>
-                <input type="text" placeholder="이름 검색" class="rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" />
+                <select id="my-f-platform" class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"><option>플랫폼: 전체</option><option>AWS</option><option>Azure</option><option>GCP</option></select>
+                <select id="my-f-tag" class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"><option>태그: 전체</option></select>
+                <input id="my-search-name" type="text" placeholder="이름 검색" class="rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" />
               </div>
             </div>
 
@@ -125,7 +125,7 @@
                     <th class="px-3 py-3 font-medium">연결 리소스</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody id="accounts-tbody">
                   <tr class="border-b border-border">
                     <td class="px-3 py-3 cursor-grab text-muted-foreground">⋮⋮</td>
                     <td class="px-3 py-3 font-medium">prod-aws-01</td>
@@ -164,5 +164,35 @@
   </div>
 
   <script src="assets/js/ui.js"></script>
+  <script>
+    (function () {
+      var tbody = document.getElementById("accounts-tbody");
+      if (!tbody) return;
+      var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+      var platform = document.getElementById("my-f-platform");
+      var nameInput = document.getElementById("my-search-name");
+
+      function cellText(row, i) { return (row.children[i].textContent || "").trim(); }
+      function optText(sel) { return sel.options[sel.selectedIndex].text; }
+
+      function applyFilters() {
+        var fPlatform = optText(platform);           // 플랫폼: 전체 / AWS / Azure / GCP
+        var kw = nameInput.value.trim().toLowerCase(); // 이름 검색
+        rows.forEach(function (row) {
+          var ok = true;
+          if (!/전체/.test(fPlatform) && cellText(row, 2) !== fPlatform) ok = false; // 플랫폼 = 3번째 열
+          if (ok && kw && cellText(row, 1).toLowerCase().indexOf(kw) === -1) ok = false; // 이름 = 2번째 열
+          row.hidden = !ok;
+        });
+      }
+
+      platform.addEventListener("change", applyFilters);
+      nameInput.addEventListener("input", applyFilters);
+      // 태그 필터는 현재 표에 태그 데이터가 없어 '전체'만 유효 (동일 방식으로 연결만 해둠)
+      document.getElementById("my-f-tag").addEventListener("change", applyFilters);
+
+      applyFilters();
+    })();
+  </script>
 </body>
 </html>
