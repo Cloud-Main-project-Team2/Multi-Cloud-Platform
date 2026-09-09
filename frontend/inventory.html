@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>인벤토리 · MultiCloud Ops</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: {
+      background:"var(--background)", foreground:"var(--foreground)", surface:"var(--surface)",
+      muted:"var(--muted)", "muted-foreground":"var(--muted-foreground)", border:"var(--border)",
+      sidebar:"var(--sidebar)", "sidebar-accent":"var(--sidebar-accent)",
+      primary:"var(--primary)", sky:"var(--sky)", aero:"var(--aero)", yellow:"var(--yellow)", "cta-text":"var(--cta-text)"
+    } } } };
+  </script>
+  <link rel="stylesheet" href="assets/css/theme.css" />
+  <link rel="stylesheet" href="assets/css/shell.css" />
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ===== COMM-01 사이드바 (재사용, 인벤토리 active) ===== -->
+    <aside class="sidebar">
+      <a href="main.html" class="sidebar__brand">
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">☁️</span>
+        <span data-service-name>MultiCloud Ops</span>
+      </a>
+      <nav class="sidebar__nav">
+        <a href="dashboard.html" class="nav-item">📊 대시보드</a>
+        <a href="inventory.html" class="nav-item active">🗂️ 인벤토리</a>
+        <a href="provisioning.html" class="nav-item">⚡ 프로비저닝</a>
+        <a href="mypage.html" class="nav-item">👤 마이페이지</a>
+        <p class="sidebar__section">확장</p>
+        <span class="nav-item disabled">💰 비용 관리 <span class="badge">확장</span></span>
+        <span class="nav-item disabled">🛡️ 보안 점검 <span class="badge">확장</span></span>
+      </nav>
+      <div class="sidebar__foot">
+        <div class="sidebar__email">name@company.com</div>
+        <button type="button" class="sidebar__logout">로그아웃</button>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <div class="topbar">
+        <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="topbar__btn" aria-label="테마 전환">🌙</button>
+        <div class="lang-toggle"><span class="active">KOR</span><span>EN</span></div>
+        <span class="bell topbar__btn" role="button" aria-label="알림">🔔<span class="bell__badge">3</span></span>
+      </div>
+
+      <div class="content">
+        <!-- 상단: 리소스 수/동기화 + 총 비용/새로고침 -->
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h1 class="text-2xl font-bold">전체 리소스 27</h1>
+            <p class="mt-1 text-sm text-muted-foreground">마지막 동기화 2026-09-08 14:40 (2시간 전)</p>
+          </div>
+          <div class="flex items-center gap-3">
+            <p class="text-sm text-muted-foreground">예상 총 비용(추정) <span class="font-semibold text-foreground">$721.88/mo</span></p>
+            <button type="button" class="cursor-not-allowed rounded-lg border border-border bg-muted px-3 py-2 text-sm font-medium text-muted-foreground">⟳ 새로고침</button>
+          </div>
+        </div>
+
+        <!-- 동기화 상태 배너 -->
+        <div class="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
+          <span class="font-medium">수집 중</span>
+          <span class="text-muted-foreground">·</span>
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-primary"></span>AWS 완료</span>
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-yellow"></span>Azure 수집중</span>
+          <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" style="background:var(--muted-foreground)"></span>GCP 대기</span>
+        </div>
+
+        <!-- 필터 바 -->
+        <div class="mt-4 flex flex-wrap items-center gap-2">
+          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>클라우드: 전체</option><option>AWS</option><option>Azure</option><option>GCP</option></select>
+          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>서비스 종류: 전체</option><option>Compute · Network</option><option>Database</option><option>Storage</option><option>CDN</option></select>
+          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>연결 계정: 전체</option><option>prod-aws-01</option><option>prod-az-01</option><option>dev-gcp-01</option></select>
+          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>상태: 전체</option><option>RUNNING</option><option>STOPPED</option><option>미연결</option></select>
+          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>리전: 전체</option><option>ap-northeast-2</option><option>koreacentral</option><option>asia-northeast3</option></select>
+          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>태그: 전체</option><option>env:prod</option><option>env:dev</option></select>
+          <button type="button" class="rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted">초기화</button>
+        </div>
+
+        <!-- 검색 바 -->
+        <div class="mt-2 flex flex-wrap items-center gap-2">
+          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>리소스명·ID</option><option>서비스</option><option>리전</option><option>계정</option></select>
+          <input type="text" placeholder="검색어 입력" class="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+          <button type="button" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">검색</button>
+        </div>
+
+        <!-- 선택 행 액션 바 -->
+        <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted px-4 py-2.5 text-sm">
+          <div class="flex items-center gap-2">
+            <span class="font-medium">3개 선택됨</span>
+            <button type="button" class="rounded-lg border border-border bg-surface px-3 py-1.5 font-medium hover:bg-muted">start</button>
+            <button type="button" class="rounded-lg border border-border bg-surface px-3 py-1.5 font-medium hover:bg-muted">stop</button>
+            <button type="button" class="rounded-lg border border-border bg-surface px-3 py-1.5 font-medium text-white" style="background:#c0392b">delete</button>
+          </div>
+          <select class="rounded-lg border border-border bg-surface px-3 py-1.5"><option>정렬: 비용 높은 순</option><option>정렬: 비용 낮은 순</option><option>정렬: 이름순</option></select>
+        </div>
+
+        <!-- 목록 테이블 -->
+        <div class="mt-3 overflow-x-auto rounded-2xl border border-border bg-surface">
+          <table class="w-full min-w-[900px] text-left text-sm">
+            <thead class="border-b border-border text-xs text-muted-foreground">
+              <tr>
+                <th class="px-3 py-3"><input type="checkbox" /></th>
+                <th class="px-3 py-3 font-medium">CSP</th>
+                <th class="px-3 py-3 font-medium">CSP 원본 리소스 유형</th>
+                <th class="px-3 py-3 font-medium">리소스명</th>
+                <th class="px-3 py-3 font-medium">Region</th>
+                <th class="px-3 py-3 font-medium">연결 계정</th>
+                <th class="px-3 py-3 font-medium">비용</th>
+                <th class="px-3 py-3 font-medium">태그</th>
+                <th class="px-3 py-3 font-medium">상태</th>
+                <th class="px-3 py-3 font-medium">상세</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr class="border-b border-border">
+                <td class="px-3 py-3"><input type="checkbox" checked /></td>
+                <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">AWS</span></td>
+                <td class="px-3 py-3">EC2 Instance</td>
+                <td class="px-3 py-3 font-medium">mcp-a1b2-vm</td>
+                <td class="px-3 py-3">ap-northeast-2</td>
+                <td class="px-3 py-3">prod-aws-01</td>
+                <td class="px-3 py-3">$61.20</td>
+                <td class="px-3 py-3"><span class="rounded bg-muted px-1.5 py-0.5 text-[11px]">env:prod</span></td>
+                <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary">RUNNING</span></td>
+                <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="px-3 py-3"><input type="checkbox" checked /></td>
+                <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">Azure</span></td>
+                <td class="px-3 py-3">Virtual Machine</td>
+                <td class="px-3 py-3 font-medium">mcp-c3d4-vm</td>
+                <td class="px-3 py-3">koreacentral</td>
+                <td class="px-3 py-3">prod-az-01</td>
+                <td class="px-3 py-3">$38.40</td>
+                <td class="px-3 py-3 text-muted-foreground">—</td>
+                <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">STOPPED</span></td>
+                <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="px-3 py-3"><input type="checkbox" checked /></td>
+                <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">GCP</span></td>
+                <td class="px-3 py-3">Compute Engine</td>
+                <td class="px-3 py-3 font-medium">mcp-g7h8-vm</td>
+                <td class="px-3 py-3">asia-northeast3</td>
+                <td class="px-3 py-3">dev-gcp-01</td>
+                <td class="px-3 py-3">추정 $18.00</td>
+                <td class="px-3 py-3"><span class="rounded bg-muted px-1.5 py-0.5 text-[11px]">env:dev</span></td>
+                <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary">RUNNING</span></td>
+                <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
+              </tr>
+              <tr class="border-b border-border">
+                <td class="px-3 py-3"><input type="checkbox" /></td>
+                <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">AWS</span></td>
+                <td class="px-3 py-3">EBS Volume</td>
+                <td class="px-3 py-3 font-medium">mcp-a1b2-disk</td>
+                <td class="px-3 py-3">ap-northeast-2</td>
+                <td class="px-3 py-3">prod-aws-01</td>
+                <td class="px-3 py-3">$12.10</td>
+                <td class="px-3 py-3 text-muted-foreground">—</td>
+                <td class="px-3 py-3"><span class="rounded-full px-2 py-0.5 text-[11px] text-yellow" style="border:1px solid var(--yellow)">미연결</span></td>
+                <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
+              </tr>
+              <tr>
+                <td class="px-3 py-3"><input type="checkbox" /></td>
+                <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">Azure</span></td>
+                <td class="px-3 py-3">SQL Database</td>
+                <td class="px-3 py-3 font-medium">mcp-e5f6-sql</td>
+                <td class="px-3 py-3">koreacentral</td>
+                <td class="px-3 py-3">prod-az-01</td>
+                <td class="px-3 py-3">$21.20</td>
+                <td class="px-3 py-3"><span class="rounded bg-muted px-1.5 py-0.5 text-[11px]">env:prod</span></td>
+                <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary">RUNNING</span></td>
+                <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- 페이지네이션 -->
+        <div class="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+          <span>페이지당 50건</span>
+          <div class="flex items-center gap-1">
+            <button type="button" class="rounded-lg border border-border px-2.5 py-1 hover:bg-muted">‹</button>
+            <button type="button" class="rounded-lg border border-border bg-muted px-3 py-1 font-medium text-foreground">1</button>
+            <button type="button" class="rounded-lg border border-border px-3 py-1 hover:bg-muted">2</button>
+            <button type="button" class="rounded-lg border border-border px-3 py-1 hover:bg-muted">3</button>
+            <button type="button" class="rounded-lg border border-border px-2.5 py-1 hover:bg-muted">›</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== INV-02 리소스 상세 모달 (열기/닫기 순수 UI 토글) ===== -->
+  <div id="inv-modal" class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 py-10" onclick="MCUI.close('inv-modal')">
+    <div class="w-full max-w-2xl rounded-2xl border border-border bg-surface shadow-xl" onclick="event.stopPropagation()">
+      <!-- 헤더 -->
+      <div class="flex items-start justify-between border-b border-border p-5">
+        <div>
+          <h2 class="text-lg font-bold">mcp-a1b2-vm</h2>
+          <p class="mt-0.5 text-sm text-muted-foreground">AWS · EC2 Instance · ap-northeast-2</p>
+        </div>
+        <button type="button" onclick="MCUI.close('inv-modal')" class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+      </div>
+
+      <!-- 상세 표 -->
+      <div class="p-5">
+        <dl class="grid grid-cols-1 gap-x-6 gap-y-3 text-sm sm:grid-cols-2">
+          <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">리소스 ID</dt><dd class="font-medium">i-0abc123def456</dd></div>
+          <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">연결 계정</dt><dd class="font-medium">prod-aws-01</dd></div>
+          <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">상태</dt><dd class="font-medium">RUNNING · 2026-08-14 생성</dd></div>
+          <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">사양</dt><dd class="font-medium">t3.medium · vCPU 2 · RAM 4GB</dd></div>
+          <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">비용</dt><dd class="font-medium">이번달 $61.20 실측 · 예상월 $229.50</dd></div>
+          <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">태그</dt><dd class="font-medium">env:prod · owner:infra</dd></div>
+        </dl>
+
+        <!-- 보안 점검 경고 배너 (확장 기능 적용 후 노출 예정, 오늘은 정적 표시) -->
+        <div class="mt-4 flex items-start gap-2 rounded-xl border border-yellow bg-background p-3 text-sm">
+          <span class="text-yellow">🛡️</span>
+          <span>보안 점검 1건 — 0.0.0.0/0 → SSH(22) 허용</span>
+        </div>
+      </div>
+
+      <!-- 하단 액션 -->
+      <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border p-5">
+        <div class="flex gap-2">
+          <button type="button" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-muted">start</button>
+          <button type="button" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-muted">stop</button>
+          <button type="button" class="rounded-lg px-3 py-2 text-sm font-medium text-white" style="background:#c0392b">delete</button>
+        </div>
+        <a href="https://console.aws.amazon.com" target="_blank" rel="noopener" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">AWS 콘솔에서 열기 ↗</a>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/ui.js"></script>
+</body>
+</html>

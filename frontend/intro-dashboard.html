@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>대시보드 · 서비스 소개 · MultiCloud Ops</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: {
+      background:"var(--background)", foreground:"var(--foreground)", surface:"var(--surface)",
+      muted:"var(--muted)", "muted-foreground":"var(--muted-foreground)", border:"var(--border)",
+      sidebar:"var(--sidebar)", "sidebar-accent":"var(--sidebar-accent)",
+      primary:"var(--primary)", sky:"var(--sky)", aero:"var(--aero)", yellow:"var(--yellow)", "cta-text":"var(--cta-text)"
+    }, maxWidth:{ content:"1180px" } } } };
+  </script>
+  <link rel="stylesheet" href="assets/css/theme.css" />
+</head>
+<body class="min-h-screen">
+
+  <!-- 상단 바 -->
+  <div class="mx-auto flex max-w-content items-center justify-between px-6 py-5">
+    <a href="main.html" class="flex items-center gap-2">
+      <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">☁️</span>
+      <span class="text-lg font-bold" data-service-name>MultiCloud Ops</span>
+    </a>
+    <div class="flex items-center gap-2">
+      <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="grid h-9 w-9 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="테마 전환">🌙</button>
+      <a href="login.html" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">로그인</a>
+      <a href="signup.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">회원가입</a>
+    </div>
+  </div>
+
+  <main class="mx-auto grid max-w-content gap-8 px-6 py-8 md:grid-cols-[240px_1fr]">
+    <!-- 좌측 항목 리스트 -->
+    <aside>
+      <p class="mb-3 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">서비스 소개</p>
+      <nav class="space-y-1">
+        <a href="intro-dashboard.html" class="flex items-center justify-between rounded-lg border-l-2 border-primary bg-muted px-3 py-2 text-sm font-semibold">대시보드</a>
+        <a href="intro-inventory.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">리소스 조회</a>
+        <a href="intro-provisioning.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">프로비저닝</a>
+        <a href="intro-cost.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">비용 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
+        <a href="intro-logs.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">로그 통합 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
+      </nav>
+    </aside>
+
+    <!-- 우측 소개 콘텐츠 -->
+    <section>
+      <h1 class="text-3xl font-extrabold">대시보드</h1>
+      <p class="mt-3 text-lg text-muted-foreground">여러 클라우드의 리소스·비용·활동을 한 화면에서 실시간으로 요약해 봅니다.</p>
+
+      <!-- 소개 이미지 자리표시자 (미확정) -->
+      <div class="mt-6 grid h-56 place-items-center rounded-2xl border border-dashed border-border bg-surface text-sm text-muted-foreground">
+        소개 이미지 (준비 중)
+      </div>
+
+      <ul class="mt-6 space-y-3 text-sm">
+        <li class="flex gap-2"><span class="text-primary">•</span> 전체 리소스 수·리전 수·예상 총 비용을 요약 카드로 한눈에</li>
+        <li class="flex gap-2"><span class="text-primary">•</span> 클라우드(AWS·Azure·GCP)별 비용 내역과 월별 추이</li>
+        <li class="flex gap-2"><span class="text-primary">•</span> 최근 프로비저닝 활동과 예산 임계값 경고</li>
+      </ul>
+
+      <a href="login.html" class="mt-8 inline-block rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white hover:opacity-90">로그인하고 시작하기 →</a>
+      <p class="mt-3 text-xs text-muted-foreground">* 소개 문구·이미지는 확정 전 자리표시자입니다.</p>
+    </section>
+  </main>
+
+  <script src="assets/js/ui.js"></script>
+</body>
+</html>

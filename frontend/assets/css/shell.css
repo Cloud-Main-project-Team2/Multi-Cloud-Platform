@@ -1,0 +1,51 @@
+/* COMM-01 공통 셸 — 사이드바 + 유틸 바 레이아웃 (대시보드/인벤토리/프로비저닝/마이페이지 공유) */
+
+.app-shell{ display:flex; min-height:100vh; }
+
+/* 좌측 사이드바 (고정폭 220px, 라이트/다크 모두 짙은 네이비 고정) */
+.sidebar{
+  width:220px; flex:0 0 220px;
+  background:var(--sidebar);
+  color:#c3d2e0;
+  display:flex; flex-direction:column;
+  position:sticky; top:0; height:100vh;
+}
+.sidebar__brand{ display:flex; align-items:center; gap:.55rem; padding:1.15rem 1rem; color:#fff; font-weight:700; }
+.sidebar__nav{ flex:1 1 auto; padding:.5rem .6rem; display:flex; flex-direction:column; gap:.15rem; overflow-y:auto; }
+.sidebar__section{ margin-top:.75rem; padding:.4rem .9rem .25rem; font-size:.68rem; letter-spacing:.05em; text-transform:uppercase; color:#8098af; }
+
+.nav-item{
+  display:flex; align-items:center; gap:.6rem;
+  padding:.6rem .9rem; border-radius:.55rem;
+  font-size:.9rem; color:#c3d2e0; text-decoration:none;
+}
+.nav-item:hover{ background:rgba(255,255,255,.07); color:#fff; }
+.nav-item.active{ background:var(--sidebar-accent); color:#fff; font-weight:600; }
+.nav-item.disabled{ color:#6f86a0; cursor:not-allowed; }
+.nav-item .badge{ margin-left:auto; font-size:.62rem; border:1px solid currentColor; border-radius:.35rem; padding:0 .3rem; opacity:.8; }
+
+.sidebar__foot{ border-top:1px solid rgba(255,255,255,.08); padding:.85rem 1rem; font-size:.8rem; }
+.sidebar__email{ color:#aebfd0; word-break:break-all; }
+.sidebar__logout{ margin-top:.5rem; width:100%; text-align:left; color:#c3d2e0; background:transparent; border:0; padding:.35rem 0; cursor:pointer; font-size:.85rem; }
+.sidebar__logout:hover{ color:#fff; }
+
+/* 본문 영역 */
+.main-area{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+
+/* 상단 유틸 바 */
+.topbar{
+  display:flex; align-items:center; justify-content:flex-end; gap:.5rem;
+  height:56px; padding:0 1.5rem;
+  border-bottom:1px solid var(--border); background:var(--surface);
+  position:sticky; top:0; z-index:20;
+}
+.topbar__btn{ display:grid; place-items:center; height:36px; min-width:36px; padding:0 .35rem; border-radius:.5rem; background:transparent; border:0; cursor:pointer; font-size:1.05rem; color:var(--foreground); }
+.topbar__btn:hover{ background:var(--muted); }
+.lang-toggle{ display:inline-flex; border:1px solid var(--border); border-radius:.5rem; overflow:hidden; font-size:.75rem; }
+.lang-toggle span{ padding:.3rem .55rem; color:var(--muted-foreground); }
+.lang-toggle span.active{ background:var(--muted); color:var(--foreground); font-weight:600; }
+.bell{ position:relative; }
+.bell__badge{ position:absolute; top:2px; right:2px; min-width:15px; height:15px; padding:0 3px; border-radius:9999px; background:var(--yellow); color:var(--cta-text); font-size:.62rem; font-weight:700; display:grid; place-items:center; }
+
+/* 콘텐츠: 최대 1180px, 본문 영역(사이드바 제외) 가운데 정렬 */
+.content{ width:100%; max-width:1180px; margin-left:auto; margin-right:auto; padding:1.5rem; }
