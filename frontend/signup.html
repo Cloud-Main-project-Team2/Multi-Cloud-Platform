@@ -38,15 +38,16 @@
         <h1 class="text-2xl font-bold">회원가입</h1>
         <p class="mt-1 text-sm text-muted-foreground"><span data-service-name>MultiCloud Ops</span> 계정을 만듭니다.</p>
 
-        <form class="mt-6 space-y-4" onsubmit="return false">
+        <form id="signup-form" class="mt-6 space-y-4">
           <!-- 이메일 + 중복 확인 -->
           <div>
             <label for="email" class="mb-1 block text-sm font-medium">이메일</label>
             <div class="flex gap-2">
               <input id="email" type="email" placeholder="name@company.com" autocomplete="username"
                 class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
-              <button type="button" class="shrink-0 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-muted">중복 확인</button>
+              <button id="dup-check-btn" type="button" class="shrink-0 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-muted">중복 확인</button>
             </div>
+            <p id="dup-msg" class="mt-1 hidden text-xs"></p>
           </div>
 
           <!-- 비밀번호 -->
@@ -59,7 +60,7 @@
                 class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted"
                 aria-label="비밀번호 표시 전환">👁</button>
             </div>
-            <p class="mt-1 text-xs text-muted-foreground">8자 이상, 영문·숫자·기호 중 2종 이상</p>
+            <p id="pw-hint" class="mt-1 text-xs text-muted-foreground">8자 이상, 영문·숫자·기호 중 2종 이상</p>
           </div>
 
           <!-- 비밀번호 확인 -->
@@ -72,6 +73,7 @@
                 class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted"
                 aria-label="비밀번호 표시 전환">👁</button>
             </div>
+            <p id="pw-match-msg" class="mt-1 hidden text-xs" style="color:#c0392b">비밀번호가 일치하지 않습니다.</p>
           </div>
 
           <!-- 이름 -->
@@ -94,7 +96,7 @@
             </div>
           </div>
 
-          <button type="submit" class="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">가입하기</button>
+          <button id="signup-btn" type="submit" class="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">가입하기</button>
         </form>
 
         <p class="mt-6 text-center text-sm text-muted-foreground">
@@ -154,6 +156,72 @@
     </div>
   </main>
 
+  <!-- 가입완료 팝업 (가입하기 통과 시 열리는 기능용 오버레이 모달) -->
+  <div id="signup-done-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onclick="MCUI.close('signup-done-modal')">
+    <div class="w-full max-w-sm rounded-2xl border border-border bg-surface p-6 text-center shadow-xl" onclick="event.stopPropagation()">
+      <div class="mx-auto grid h-14 w-14 place-items-center rounded-full bg-muted text-3xl">✅</div>
+      <h3 class="mt-4 text-lg font-semibold">가입이 완료되었습니다</h3>
+      <p class="mt-1 text-sm text-muted-foreground">로그인 화면으로 이동합니다.</p>
+      <a href="login.html" class="mt-5 block w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">확인</a>
+    </div>
+  </div>
+
   <script src="assets/js/ui.js"></script>
+  <script src="assets/js/validate.js"></script>
+  <script>
+    (function () {
+      var email = document.getElementById("email");
+      var dupBtn = document.getElementById("dup-check-btn");
+      var dupMsg = document.getElementById("dup-msg");
+      var pw = document.getElementById("password");
+      var pwHint = document.getElementById("pw-hint");
+      var cp = document.getElementById("confirm-password");
+      var matchMsg = document.getElementById("pw-match-msg");
+      var name = document.getElementById("name");
+      var btn = document.getElementById("signup-btn");
+      var form = document.getElementById("signup-form");
+      var dupChecked = false;
+
+      function refresh() {
+        var strong = MCVAL.isStrongPassword(pw.value);
+        pwHint.classList.toggle("text-primary", strong);
+        pwHint.classList.toggle("text-muted-foreground", !strong);
+
+        var mismatch = cp.value.length > 0 && cp.value !== pw.value;
+        matchMsg.classList.toggle("hidden", !mismatch);
+
+        var ok = MCVAL.isEmail(email.value) && dupChecked && strong
+          && cp.value === pw.value && cp.value.length > 0 && MCVAL.isNonEmpty(name.value);
+        MCVAL.setEnabled(btn, ok);
+      }
+
+      // 이메일이 바뀌면 중복 확인을 다시 받아야 함
+      email.addEventListener("input", function () { dupChecked = false; dupMsg.classList.add("hidden"); refresh(); });
+      pw.addEventListener("input", refresh);
+      cp.addEventListener("input", refresh);
+      name.addEventListener("input", refresh);
+
+      dupBtn.addEventListener("click", function () {
+        dupMsg.classList.remove("hidden");
+        if (MCVAL.isEmail(email.value)) {
+          dupChecked = true;
+          dupMsg.textContent = "사용 가능한 이메일입니다."; // 데모 — 서버 없이 항상 성공
+          dupMsg.style.color = "var(--primary)";
+        } else {
+          dupChecked = false;
+          dupMsg.textContent = "이메일 형식을 확인해 주세요.";
+          dupMsg.style.color = "#c0392b";
+        }
+        refresh();
+      });
+
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (!btn.disabled) MCUI.open("signup-done-modal");
+      });
+
+      refresh();
+    })();
+  </script>
 </body>
 </html>

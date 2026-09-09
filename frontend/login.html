@@ -37,8 +37,8 @@
         <h1 class="text-2xl font-bold">로그인</h1>
         <p class="mt-1 text-sm text-muted-foreground"><span data-service-name>MultiCloud Ops</span>에 오신 것을 환영합니다.</p>
 
-        <!-- 폼 (정적 — 제출 로직 없음) -->
-        <form class="mt-6 space-y-4" onsubmit="return false">
+        <!-- 폼 (클라이언트 검증만 — 서버 통신 없음) -->
+        <form id="login-form" class="mt-6 space-y-4">
           <div>
             <label for="email" class="mb-1 block text-sm font-medium">이메일</label>
             <input id="email" type="email" placeholder="name@company.com" autocomplete="username"
@@ -56,11 +56,11 @@
             </div>
           </div>
 
-          <button type="submit" class="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">로그인</button>
+          <button id="login-btn" type="submit" class="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">로그인</button>
         </form>
 
-        <!-- 실패 배너 (정적 예시 — 이 상태도 검토 가능하게 항상 노출) -->
-        <div class="mt-4 flex items-center gap-2 rounded-lg border border-yellow bg-background px-3 py-2.5 text-sm">
+        <!-- 실패 배너 (기본 숨김 — 형식 오류 상태로 제출 시도 시에만 노출) -->
+        <div id="login-error" class="mt-4 hidden items-center gap-2 rounded-lg border border-yellow bg-background px-3 py-2.5 text-sm">
           <span class="text-yellow">⚠</span>
           <span>이메일 또는 비밀번호가 일치하지 않습니다.</span>
         </div>
@@ -86,5 +86,35 @@
   </main>
 
   <script src="assets/js/ui.js"></script>
+  <script src="assets/js/validate.js"></script>
+  <script>
+    (function () {
+      var form = document.getElementById("login-form");
+      var email = document.getElementById("email");
+      var pw = document.getElementById("password");
+      var btn = document.getElementById("login-btn");
+      var err = document.getElementById("login-error");
+
+      function valid() { return MCVAL.isEmail(email.value) && MCVAL.isNonEmpty(pw.value); }
+      function refresh() {
+        MCVAL.setEnabled(btn, valid());
+        if (valid()) { err.classList.add("hidden"); err.classList.remove("flex"); }
+      }
+      email.addEventListener("input", refresh);
+      pw.addEventListener("input", refresh);
+      refresh();
+
+      form.addEventListener("submit", function (e) {
+        e.preventDefault();
+        if (valid()) {
+          // 데모 리다이렉트 (실제 인증 없음 — API 연동 단계에서 붙음)
+          window.location.href = "dashboard.html";
+        } else {
+          err.classList.remove("hidden");
+          err.classList.add("flex");
+        }
+      });
+    })();
+  </script>
 </body>
 </html>

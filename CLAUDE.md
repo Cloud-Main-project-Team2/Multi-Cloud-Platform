@@ -76,6 +76,15 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 - **디자인 스크린샷**(`docs/design/*.png`)은 색·타이포·컴포넌트 룩만 참고 — 화면 구성은 화면설계서 V1.1을 따름.
 - **MAIN-01 헤더 테마 토글**: 화면설계서엔 명시 없으나 라이트/다크 검토가 가능하도록 헤더에 추가.
 
+### Assumptions — 기본 기능 JS (`solcho/fe-basic-js`)
+
+순수 클라이언트 검증/필터만 구현(서버 API 호출 없음 — Network 탭에 요청 0건). 데모성 동작:
+- **로그인**: 형식 유효 시 실제 인증 없이 `dashboard.html`로 데모 리다이렉트. 실제 인증은 API 연동 단계에서 붙음.
+- **회원가입 중복 확인**: 서버가 없어 이메일 형식이 유효하면 항상 "사용 가능한 이메일입니다"(데모). 이메일 변경 시 중복 확인 재요구.
+- **비밀번호 찾기**: STEP1 발송 후 안내 노출·폼 비활성(실제 메일 발송 없음), STEP2 통과 시 `login.html` 데모 이동.
+- **검증 실패 메시지**: 대부분 기존 요소 재사용. 없던 곳(중복확인 결과 `#dup-msg`, 비밀번호 불일치 `#pw-match-msg`)만 최소 추가.
+- start/stop/delete·검색·정렬 등 테이블 액션은 하드코딩 예시 행 위에서만 동작(실데이터/서버 없음).
+
 ## Pointer — where the planning docs live
 
 The functional spec (기능명세서), screen design (화면설계서), WBS, and the
