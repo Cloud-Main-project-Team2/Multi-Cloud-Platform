@@ -71,31 +71,31 @@
 
         <!-- 필터 바 -->
         <div class="mt-4 flex flex-wrap items-center gap-2">
-          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>클라우드: 전체</option><option>AWS</option><option>Azure</option><option>GCP</option></select>
-          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>서비스 종류: 전체</option><option>Compute · Network</option><option>Database</option><option>Storage</option><option>CDN</option></select>
-          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>연결 계정: 전체</option><option>prod-aws-01</option><option>prod-az-01</option><option>dev-gcp-01</option></select>
-          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>상태: 전체</option><option>RUNNING</option><option>STOPPED</option><option>미연결</option></select>
-          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>리전: 전체</option><option>ap-northeast-2</option><option>koreacentral</option><option>asia-northeast3</option></select>
-          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>태그: 전체</option><option>env:prod</option><option>env:dev</option></select>
-          <button type="button" class="rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted">초기화</button>
+          <select id="f-cloud" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>클라우드: 전체</option><option>AWS</option><option>Azure</option><option>GCP</option></select>
+          <select id="f-category" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>서비스 종류: 전체</option><option>Compute · Network</option><option>Database</option><option>Storage</option><option>CDN</option></select>
+          <select id="f-account" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>연결 계정: 전체</option><option>prod-aws-01</option><option>prod-az-01</option><option>dev-gcp-01</option></select>
+          <select id="f-status" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>상태: 전체</option><option>RUNNING</option><option>STOPPED</option><option>미연결</option></select>
+          <select id="f-region" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>리전: 전체</option><option>ap-northeast-2</option><option>koreacentral</option><option>asia-northeast3</option></select>
+          <select id="f-tag" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>태그: 전체</option><option>env:prod</option><option>env:dev</option></select>
+          <button id="f-reset" type="button" class="rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted">초기화</button>
         </div>
 
         <!-- 검색 바 -->
         <div class="mt-2 flex flex-wrap items-center gap-2">
-          <select class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>리소스명·ID</option><option>서비스</option><option>리전</option><option>계정</option></select>
-          <input type="text" placeholder="검색어 입력" class="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-          <button type="button" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">검색</button>
+          <select id="search-field" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm"><option>리소스명·ID</option><option>서비스</option><option>리전</option><option>계정</option></select>
+          <input id="search-input" type="text" placeholder="검색어 입력" class="min-w-[220px] flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+          <button id="search-btn" type="button" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">검색</button>
         </div>
 
         <!-- 선택 행 액션 바 -->
         <div class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl bg-muted px-4 py-2.5 text-sm">
           <div class="flex items-center gap-2">
-            <span class="font-medium">3개 선택됨</span>
-            <button type="button" class="rounded-lg border border-border bg-surface px-3 py-1.5 font-medium hover:bg-muted">start</button>
-            <button type="button" class="rounded-lg border border-border bg-surface px-3 py-1.5 font-medium hover:bg-muted">stop</button>
-            <button type="button" class="rounded-lg border border-border bg-surface px-3 py-1.5 font-medium text-white" style="background:#c0392b">delete</button>
+            <span id="sel-count" class="font-medium">0개 선택됨</span>
+            <button type="button" class="row-action rounded-lg border border-border bg-surface px-3 py-1.5 font-medium hover:bg-muted">start</button>
+            <button type="button" class="row-action rounded-lg border border-border bg-surface px-3 py-1.5 font-medium hover:bg-muted">stop</button>
+            <button type="button" class="row-action rounded-lg border border-border bg-surface px-3 py-1.5 font-medium text-white" style="background:#c0392b">delete</button>
           </div>
-          <select class="rounded-lg border border-border bg-surface px-3 py-1.5"><option>정렬: 비용 높은 순</option><option>정렬: 비용 낮은 순</option><option>정렬: 이름순</option></select>
+          <select id="sort-select" class="rounded-lg border border-border bg-surface px-3 py-1.5"><option>정렬: 비용 높은 순</option><option>정렬: 비용 낮은 순</option><option>정렬: 이름순</option></select>
         </div>
 
         <!-- 목록 테이블 -->
@@ -103,7 +103,7 @@
           <table class="w-full min-w-[900px] text-left text-sm">
             <thead class="border-b border-border text-xs text-muted-foreground">
               <tr>
-                <th class="px-3 py-3"><input type="checkbox" /></th>
+                <th class="px-3 py-3"><input id="select-all" type="checkbox" /></th>
                 <th class="px-3 py-3 font-medium">CSP</th>
                 <th class="px-3 py-3 font-medium">CSP 원본 리소스 유형</th>
                 <th class="px-3 py-3 font-medium">리소스명</th>
@@ -115,8 +115,8 @@
                 <th class="px-3 py-3 font-medium">상세</th>
               </tr>
             </thead>
-            <tbody>
-              <tr class="border-b border-border">
+            <tbody id="inv-tbody">
+              <tr class="border-b border-border" data-category="Compute">
                 <td class="px-3 py-3"><input type="checkbox" checked /></td>
                 <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">AWS</span></td>
                 <td class="px-3 py-3">EC2 Instance</td>
@@ -128,7 +128,7 @@
                 <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary">RUNNING</span></td>
                 <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
               </tr>
-              <tr class="border-b border-border">
+              <tr class="border-b border-border" data-category="Compute">
                 <td class="px-3 py-3"><input type="checkbox" checked /></td>
                 <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">Azure</span></td>
                 <td class="px-3 py-3">Virtual Machine</td>
@@ -140,7 +140,7 @@
                 <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-muted-foreground">STOPPED</span></td>
                 <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
               </tr>
-              <tr class="border-b border-border">
+              <tr class="border-b border-border" data-category="Compute">
                 <td class="px-3 py-3"><input type="checkbox" checked /></td>
                 <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">GCP</span></td>
                 <td class="px-3 py-3">Compute Engine</td>
@@ -152,7 +152,7 @@
                 <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary">RUNNING</span></td>
                 <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
               </tr>
-              <tr class="border-b border-border">
+              <tr class="border-b border-border" data-category="Storage">
                 <td class="px-3 py-3"><input type="checkbox" /></td>
                 <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">AWS</span></td>
                 <td class="px-3 py-3">EBS Volume</td>
@@ -164,7 +164,7 @@
                 <td class="px-3 py-3"><span class="rounded-full px-2 py-0.5 text-[11px] text-yellow" style="border:1px solid var(--yellow)">미연결</span></td>
                 <td class="px-3 py-3"><button type="button" onclick="MCUI.open('inv-modal')" class="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted">상세보기</button></td>
               </tr>
-              <tr>
+              <tr data-category="Database">
                 <td class="px-3 py-3"><input type="checkbox" /></td>
                 <td class="px-3 py-3"><span class="rounded border border-border px-1.5 py-0.5 text-[11px]">Azure</span></td>
                 <td class="px-3 py-3">SQL Database</td>
@@ -238,5 +238,94 @@
   </div>
 
   <script src="assets/js/ui.js"></script>
+  <script>
+    (function () {
+      var tbody = document.getElementById("inv-tbody");
+      var rows = Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+      var selCount = document.getElementById("sel-count");
+      var actions = document.querySelectorAll(".row-action");
+      var selectAll = document.getElementById("select-all");
+
+      function cellText(row, i) { return (row.children[i].textContent || "").trim(); }
+      function costOf(row) { var m = cellText(row, 6).match(/([\d.]+)/); return m ? parseFloat(m[1]) : 0; }
+      function optText(sel) { return sel.options[sel.selectedIndex].text; }
+      function isAll(t) { return /전체/.test(t); }
+
+      function applyFilters() {
+        var fCloud = optText(document.getElementById("f-cloud"));
+        var fCat = optText(document.getElementById("f-category"));
+        var fAcct = optText(document.getElementById("f-account"));
+        var fSt = optText(document.getElementById("f-status"));
+        var fRg = optText(document.getElementById("f-region"));
+        var fTg = optText(document.getElementById("f-tag"));
+        var field = document.getElementById("search-field");
+        var kw = document.getElementById("search-input").value.trim().toLowerCase();
+        var fieldIdx = { "리소스명·ID": 3, "서비스": 2, "리전": 4, "계정": 5 }[optText(field)];
+
+        rows.forEach(function (row) {
+          var ok = true;
+          if (!isAll(fCloud) && cellText(row, 1) !== fCloud) ok = false;
+          if (ok && !isAll(fCat)) {
+            var wantCat = /^Compute/.test(fCat) ? "Compute" : fCat;
+            if (row.dataset.category !== wantCat) ok = false;
+          }
+          if (ok && !isAll(fAcct) && cellText(row, 5) !== fAcct) ok = false;
+          if (ok && !isAll(fSt) && cellText(row, 8) !== fSt) ok = false;
+          if (ok && !isAll(fRg) && cellText(row, 4) !== fRg) ok = false;
+          if (ok && !isAll(fTg) && cellText(row, 7) !== fTg) ok = false;
+          if (ok && kw && cellText(row, fieldIdx).toLowerCase().indexOf(kw) === -1) ok = false;
+          row.hidden = !ok;
+        });
+        syncSelectAll();
+      }
+
+      function applySort() {
+        var mode = optText(document.getElementById("sort-select"));
+        rows.slice().sort(function (a, b) {
+          if (/이름순/.test(mode)) return cellText(a, 3).localeCompare(cellText(b, 3));
+          var ca = costOf(a), cb = costOf(b);
+          return /낮은/.test(mode) ? ca - cb : cb - ca;
+        }).forEach(function (r) { tbody.appendChild(r); });
+      }
+
+      function updateSelection() {
+        var checked = rows.filter(function (r) { return r.querySelector('input[type=checkbox]').checked; });
+        selCount.textContent = checked.length + "개 선택됨";
+        actions.forEach(function (b) {
+          b.disabled = checked.length === 0;
+          b.classList.toggle("opacity-50", checked.length === 0);
+          b.classList.toggle("cursor-not-allowed", checked.length === 0);
+        });
+      }
+
+      function syncSelectAll() {
+        var vis = rows.filter(function (r) { return !r.hidden; });
+        selectAll.checked = vis.length > 0 && vis.every(function (r) { return r.querySelector('input[type=checkbox]').checked; });
+      }
+
+      ["f-cloud", "f-category", "f-account", "f-status", "f-region", "f-tag"].forEach(function (id) {
+        document.getElementById(id).addEventListener("change", applyFilters);
+      });
+      document.getElementById("search-btn").addEventListener("click", applyFilters);
+      document.getElementById("search-input").addEventListener("keydown", function (e) { if (e.key === "Enter") applyFilters(); });
+      document.getElementById("sort-select").addEventListener("change", applySort);
+      document.getElementById("f-reset").addEventListener("click", function () {
+        ["f-cloud", "f-category", "f-account", "f-status", "f-region", "f-tag", "search-field"].forEach(function (id) { document.getElementById(id).selectedIndex = 0; });
+        document.getElementById("search-input").value = "";
+        applyFilters();
+      });
+
+      rows.forEach(function (r) {
+        r.querySelector('input[type=checkbox]').addEventListener("change", function () { syncSelectAll(); updateSelection(); });
+      });
+      selectAll.addEventListener("change", function () {
+        rows.forEach(function (r) { if (!r.hidden) r.querySelector('input[type=checkbox]').checked = selectAll.checked; });
+        updateSelection();
+      });
+
+      applyFilters();
+      updateSelection();
+    })();
+  </script>
 </body>
 </html>
