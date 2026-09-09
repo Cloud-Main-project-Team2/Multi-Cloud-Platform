@@ -1,0 +1,30 @@
+/* Cloudlane 디자인 토큰 (화면설계서 V1.1 구조 + Cloudlane 스타일) — 전 화면 공유 */
+:root{
+  --background:#f2f6fa; --foreground:#162e40; --surface:#ffffff; --muted:#edf3f8;
+  --muted-foreground:#6a7e90; --border:#e7edf2;
+  --sidebar:#102f4b; --sidebar-accent:#224966;
+  --primary:#145d91; --sky:#56a5dd; --aero:#77b4e4; --yellow:#ecc815; --cta-text:#162326;
+}
+[data-theme="dark"]{
+  --background:#0b1724; --foreground:#e5edf5; --surface:#142536; --muted:#203348;
+  --muted-foreground:#a0b4c7; --border:#2a3d50;
+  --sidebar:#10283e; --sidebar-accent:#224966;
+  --primary:#77b4e4; --sky:#56a5dd; --aero:#77b4e4; --yellow:#ecc815; --cta-text:#162326;
+}
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; padding:0; }
+body{
+  font-family: Arial, "Malgun Gothic", sans-serif;
+  background:var(--background);
+  color:var(--foreground);
+  transition: background-color .2s ease, color .2s ease;
+}
+
+/* 얇은 오버레이 스크롤바 (2px, 호버 시 진해짐, 레이아웃 폭 차지 최소) */
+*{ scrollbar-width: thin; scrollbar-color: transparent transparent; }
+*:hover{ scrollbar-color: var(--muted-foreground) transparent; }
+*::-webkit-scrollbar{ width:2px; height:2px; }
+*::-webkit-scrollbar-track{ background:transparent; }
+*::-webkit-scrollbar-thumb{ background:transparent; border-radius:9999px; }
+*:hover::-webkit-scrollbar-thumb{ background:var(--muted-foreground); }

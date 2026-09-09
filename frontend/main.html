@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MultiCloud Ops — 멀티클라우드 통합 운영</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: {
+        background: "var(--background)", foreground: "var(--foreground)", surface: "var(--surface)",
+        muted: "var(--muted)", "muted-foreground": "var(--muted-foreground)", border: "var(--border)",
+        sidebar: "var(--sidebar)", "sidebar-accent": "var(--sidebar-accent)",
+        primary: "var(--primary)", sky: "var(--sky)", aero: "var(--aero)",
+        yellow: "var(--yellow)", "cta-text": "var(--cta-text)"
+      }, maxWidth: { content: "1180px" } } }
+    };
+  </script>
+  <link rel="stylesheet" href="assets/css/theme.css" />
+</head>
+<body class="min-h-screen">
+
+  <!-- ===== 헤더 (MAIN-01 전용) ===== -->
+  <header class="sticky top-0 z-30 border-b border-border bg-surface">
+    <div class="mx-auto flex h-16 max-w-content items-center justify-between px-6">
+      <!-- 로고 + 서비스명 (클릭 시 메인 홈) -->
+      <a href="main.html" class="flex items-center gap-2">
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">☁️</span>
+        <span class="text-lg font-bold" data-service-name>MultiCloud Ops</span>
+      </a>
+
+      <nav class="flex items-center gap-1 sm:gap-2">
+        <!-- 문서 드롭다운 (호버 시 5개 소개 페이지) -->
+        <div class="dropdown group relative">
+          <button type="button"
+            class="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted">
+            문서 ▾
+          </button>
+          <!-- 호버 유지용 브릿지 포함: 버튼~메뉴 사이 여백을 group 안에 둠 -->
+          <div class="invisible absolute right-0 top-full z-40 pt-1 opacity-0 transition group-hover:visible group-hover:opacity-100">
+            <div class="w-52 overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-lg">
+              <a href="intro-dashboard.html" class="block px-4 py-2 text-sm hover:bg-muted">대시보드</a>
+              <a href="intro-inventory.html" class="block px-4 py-2 text-sm hover:bg-muted">리소스 조회</a>
+              <a href="intro-provisioning.html" class="block px-4 py-2 text-sm hover:bg-muted">프로비저닝</a>
+              <a href="intro-cost.html" class="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted">비용 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
+              <a href="intro-logs.html" class="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted">로그 통합 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
+            </div>
+          </div>
+        </div>
+
+        <!-- 테마 토글 (라이트/다크 검토용, 순수 UI) -->
+        <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()"
+          class="grid h-9 w-9 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="테마 전환">🌙</button>
+
+        <a href="login.html" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">로그인</a>
+        <a href="signup.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">회원가입</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ===== 히어로 ===== -->
+  <section class="mx-auto max-w-content px-6 py-20 md:py-28">
+    <div class="max-w-2xl">
+      <span class="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted-foreground">
+        <span class="h-1.5 w-1.5 rounded-full bg-sky"></span> AWS · Azure · GCP 통합 운영
+      </span>
+      <h1 class="mt-5 text-4xl font-extrabold leading-tight md:text-5xl">
+        흩어진 클라우드를<br /><span class="text-primary">한 화면에서</span> 운영하세요
+      </h1>
+      <p class="mt-5 text-lg text-muted-foreground">
+        여러 클라우드에 흩어진 자원을 한 곳에서 조회하고, 생성하고, 비용까지 모니터링합니다.
+        콘솔을 넘나들 필요 없이 <span data-service-name>MultiCloud Ops</span> 하나로.
+      </p>
+      <div class="mt-8 flex flex-wrap items-center gap-3">
+        <a href="signup.html" class="rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white shadow-sm hover:opacity-90">무료로 시작하기 →</a>
+        <a href="login.html" class="rounded-xl border border-border bg-surface px-6 py-3 text-base font-semibold hover:bg-muted">로그인</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 서비스 설명 섹션 (정적, 스크롤 애니메이션 없음) ===== -->
+  <section class="border-t border-border bg-surface">
+    <div class="mx-auto max-w-content px-6 py-16">
+      <h2 class="text-2xl font-bold">하나의 대시보드, 모든 클라우드</h2>
+      <p class="mt-2 text-muted-foreground">콘솔마다 흩어진 작업을 한 흐름으로 모았습니다.</p>
+
+      <div class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+        <div class="rounded-2xl border border-border bg-surface p-6">
+          <div class="grid h-11 w-11 place-items-center rounded-xl bg-muted text-xl">📊</div>
+          <h3 class="mt-4 font-semibold">통합 대시보드</h3>
+          <p class="mt-2 text-sm text-muted-foreground">전체 리소스·리전·비용을 한 화면에서 실시간으로 요약해 봅니다.</p>
+        </div>
+        <div class="rounded-2xl border border-border bg-surface p-6">
+          <div class="grid h-11 w-11 place-items-center rounded-xl bg-muted text-xl">🗂️</div>
+          <h3 class="mt-4 font-semibold">리소스 인벤토리</h3>
+          <p class="mt-2 text-sm text-muted-foreground">클라우드·상태·리전·태그로 필터링해 모든 자원을 한 목록에서 조회합니다.</p>
+        </div>
+        <div class="rounded-2xl border border-border bg-surface p-6">
+          <div class="grid h-11 w-11 place-items-center rounded-xl bg-muted text-xl">⚡</div>
+          <h3 class="mt-4 font-semibold">멀티 프로비저닝</h3>
+          <p class="mt-2 text-sm text-muted-foreground">여러 플랫폼에 걸쳐 리소스를 한 번의 마법사로 생성하고 가격을 비교합니다.</p>
+        </div>
+        <div class="rounded-2xl border border-border bg-surface p-6">
+          <div class="grid h-11 w-11 place-items-center rounded-xl bg-muted text-xl">💰</div>
+          <h3 class="mt-4 font-semibold">비용 한눈에</h3>
+          <p class="mt-2 text-sm text-muted-foreground">클라우드별 실측·예상 비용과 예산 임계값 경고를 한 곳에서 확인합니다.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 푸터 ===== -->
+  <footer class="border-t border-border">
+    <div class="mx-auto flex max-w-content flex-col items-center justify-between gap-4 px-6 py-8 text-sm text-muted-foreground sm:flex-row">
+      <div class="flex items-center gap-2">
+        <span class="grid h-6 w-6 place-items-center rounded-md bg-primary text-white text-xs">☁️</span>
+        <span data-service-name>MultiCloud Ops</span>
+      </div>
+      <!-- 정책 문서 미확정 → 링크 자리표시자(#) -->
+      <nav class="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <a href="#" class="hover:text-foreground">서비스 정책</a>
+        <a href="#" class="hover:text-foreground">개인정보처리방침</a>
+        <a href="#" class="hover:text-foreground">문의</a>
+      </nav>
+      <p>© 2026 <span data-service-name>MultiCloud Ops</span></p>
+    </div>
+  </footer>
+
+  <script src="assets/js/ui.js"></script>
+</body>
+</html>
