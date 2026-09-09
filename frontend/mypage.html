@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>마이페이지 · MultiCloud Ops</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = { theme: { extend: { colors: {
+      background:"var(--background)", foreground:"var(--foreground)", surface:"var(--surface)",
+      muted:"var(--muted)", "muted-foreground":"var(--muted-foreground)", border:"var(--border)",
+      sidebar:"var(--sidebar)", "sidebar-accent":"var(--sidebar-accent)",
+      primary:"var(--primary)", sky:"var(--sky)", aero:"var(--aero)", yellow:"var(--yellow)", "cta-text":"var(--cta-text)"
+    } } } };
+  </script>
+  <link rel="stylesheet" href="assets/css/theme.css" />
+  <link rel="stylesheet" href="assets/css/shell.css" />
+</head>
+<body>
+  <div class="app-shell">
+
+    <!-- ===== COMM-01 사이드바 (재사용, 마이페이지 active) ===== -->
+    <aside class="sidebar">
+      <a href="main.html" class="sidebar__brand">
+        <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">☁️</span>
+        <span data-service-name>MultiCloud Ops</span>
+      </a>
+      <nav class="sidebar__nav">
+        <a href="dashboard.html" class="nav-item">📊 대시보드</a>
+        <a href="inventory.html" class="nav-item">🗂️ 인벤토리</a>
+        <a href="provisioning.html" class="nav-item">⚡ 프로비저닝</a>
+        <a href="mypage.html" class="nav-item active">👤 마이페이지</a>
+        <p class="sidebar__section">확장</p>
+        <span class="nav-item disabled">💰 비용 관리 <span class="badge">확장</span></span>
+        <span class="nav-item disabled">🛡️ 보안 점검 <span class="badge">확장</span></span>
+      </nav>
+      <div class="sidebar__foot">
+        <div class="sidebar__email">name@company.com</div>
+        <button type="button" class="sidebar__logout">로그아웃</button>
+      </div>
+    </aside>
+
+    <div class="main-area">
+      <div class="topbar">
+        <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="topbar__btn" aria-label="테마 전환">🌙</button>
+        <div class="lang-toggle"><span class="active">KOR</span><span>EN</span></div>
+        <span class="bell topbar__btn" role="button" aria-label="알림">🔔<span class="bell__badge">3</span></span>
+      </div>
+
+      <div class="content">
+        <h1 class="text-2xl font-bold">마이페이지</h1>
+
+        <div class="mt-6 space-y-4">
+
+          <!-- 1. 계정 정보 -->
+          <section class="rounded-2xl border border-border bg-surface p-5">
+            <p class="font-semibold">계정 정보</p>
+            <dl class="mt-3 max-w-xl space-y-2 text-sm">
+              <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">이메일</dt><dd class="font-medium">name@company.com</dd></div>
+              <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">이름</dt><dd class="font-medium">조은솔</dd></div>
+              <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">소속</dt><dd class="font-medium">회사 · MultiCloud Team</dd></div>
+            </dl>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <button type="button" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">수정하기</button>
+              <button type="button" class="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted">로그아웃</button>
+              <button type="button" class="rounded-lg px-4 py-2 text-sm font-medium text-white" style="background:#c0392b">회원탈퇴</button>
+            </div>
+          </section>
+
+          <!-- 2. 키 & 플랫폼 IAM 계정 관리 -->
+          <section class="rounded-2xl border border-border bg-surface p-5">
+            <p class="font-semibold">키 &amp; 플랫폼 IAM 계정 관리</p>
+            <div class="mt-3 grid max-w-2xl gap-3">
+              <div class="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label class="mb-1 block text-sm font-medium">클라우드 플랫폼</label>
+                  <select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>AWS</option><option>Azure</option><option>GCP</option></select>
+                </div>
+                <div>
+                  <label class="mb-1 block text-sm font-medium">이름 (별칭)</label>
+                  <input type="text" placeholder="prod-aws-01" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+                </div>
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium">Access Key ID</label>
+                <input type="text" placeholder="AKIA..." class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label class="mb-1 block text-sm font-medium">Secret Access Key</label>
+                <div class="relative">
+                  <input id="secret-key" type="password" value="****************" class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary" />
+                  <button type="button" onclick="MCUI.togglePassword('secret-key', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환">👁</button>
+                </div>
+              </div>
+              <div>
+                <button type="button" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">저장 및 검증</button>
+              </div>
+              <p class="text-xs text-muted-foreground">플랫폼을 바꾸면 필요한 입력 항목이 달라집니다. Azure: 구독 ID·테넌트 ID·클라이언트 ID/Secret / GCP: 서비스 계정 JSON</p>
+            </div>
+          </section>
+
+          <!-- 3. 연결된 클라우드 계정 -->
+          <section class="rounded-2xl border border-border bg-surface p-5">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <p class="font-semibold">연결된 클라우드 계정</p>
+              <div class="flex flex-wrap gap-2">
+                <select class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"><option>플랫폼: 전체</option><option>AWS</option><option>Azure</option><option>GCP</option></select>
+                <select class="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm"><option>태그: 전체</option></select>
+                <input type="text" placeholder="이름 검색" class="rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" />
+              </div>
+            </div>
+
+            <p class="mt-2 text-xs text-muted-foreground">행을 드래그해 순서를 바꿀 수 있습니다. (순서는 대시보드·인벤토리 표시 우선순위에 반영됩니다)</p>
+
+            <div class="mt-3 overflow-x-auto rounded-xl border border-border">
+              <table class="w-full min-w-[760px] text-left text-sm">
+                <thead class="border-b border-border text-xs text-muted-foreground">
+                  <tr>
+                    <th class="px-3 py-3"></th>
+                    <th class="px-3 py-3 font-medium">이름</th>
+                    <th class="px-3 py-3 font-medium">플랫폼</th>
+                    <th class="px-3 py-3 font-medium">계정 식별자</th>
+                    <th class="px-3 py-3 font-medium">키</th>
+                    <th class="px-3 py-3 font-medium">검증 상태</th>
+                    <th class="px-3 py-3 font-medium">연결 리소스</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="border-b border-border">
+                    <td class="px-3 py-3 cursor-grab text-muted-foreground">⋮⋮</td>
+                    <td class="px-3 py-3 font-medium">prod-aws-01</td>
+                    <td class="px-3 py-3">AWS</td>
+                    <td class="px-3 py-3">1234-5678-9012</td>
+                    <td class="px-3 py-3">AKIA****XYZ7</td>
+                    <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary">✓ 검증 · 2시간 전</span></td>
+                    <td class="px-3 py-3">12건</td>
+                  </tr>
+                  <tr class="border-b border-border">
+                    <td class="px-3 py-3 cursor-grab text-muted-foreground">⋮⋮</td>
+                    <td class="px-3 py-3 font-medium">prod-az-01</td>
+                    <td class="px-3 py-3">Azure</td>
+                    <td class="px-3 py-3">sub-9f2a…</td>
+                    <td class="px-3 py-3">sp-****a91f</td>
+                    <td class="px-3 py-3"><span class="rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary">✓ 검증 · 3시간 전</span></td>
+                    <td class="px-3 py-3">8건</td>
+                  </tr>
+                  <tr>
+                    <td class="px-3 py-3 cursor-grab text-muted-foreground">⋮⋮</td>
+                    <td class="px-3 py-3 font-medium">dev-gcp-01</td>
+                    <td class="px-3 py-3">GCP</td>
+                    <td class="px-3 py-3">proj-mcp-dev</td>
+                    <td class="px-3 py-3">sa-****@proj</td>
+                    <td class="px-3 py-3"><span class="rounded-full px-2 py-0.5 text-[11px] text-white" style="background:#c0392b">✗ 검증 실패</span></td>
+                    <td class="px-3 py-3">7건</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="assets/js/ui.js"></script>
+</body>
+</html>
