@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>로그인 · MultiCloud Ops</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: {
+        background: "var(--background)", foreground: "var(--foreground)", surface: "var(--surface)",
+        muted: "var(--muted)", "muted-foreground": "var(--muted-foreground)", border: "var(--border)",
+        sidebar: "var(--sidebar)", "sidebar-accent": "var(--sidebar-accent)",
+        primary: "var(--primary)", sky: "var(--sky)", aero: "var(--aero)",
+        yellow: "var(--yellow)", "cta-text": "var(--cta-text)"
+      } } }
+    };
+  </script>
+  <link rel="stylesheet" href="assets/css/theme.css" />
+</head>
+<body class="min-h-screen">
+
+  <!-- 상단 바: 로고(홈) + 테마 토글 -->
+  <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
+    <a href="main.html" class="flex items-center gap-2">
+      <span class="grid h-8 w-8 place-items-center rounded-lg bg-primary text-white">☁️</span>
+      <span class="text-lg font-bold" data-service-name>MultiCloud Ops</span>
+    </a>
+    <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()"
+      class="grid h-9 w-9 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="테마 전환">🌙</button>
+  </div>
+
+  <!-- 중앙 로그인 카드 -->
+  <main class="flex items-start justify-center px-6 py-10 md:py-16">
+    <div class="w-full max-w-md">
+      <div class="rounded-2xl border border-border bg-surface p-8 shadow-sm">
+        <h1 class="text-2xl font-bold">로그인</h1>
+        <p class="mt-1 text-sm text-muted-foreground"><span data-service-name>MultiCloud Ops</span>에 오신 것을 환영합니다.</p>
+
+        <!-- 폼 (정적 — 제출 로직 없음) -->
+        <form class="mt-6 space-y-4" onsubmit="return false">
+          <div>
+            <label for="email" class="mb-1 block text-sm font-medium">이메일</label>
+            <input id="email" type="email" placeholder="name@company.com" autocomplete="username"
+              class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
+          </div>
+
+          <div>
+            <label for="password" class="mb-1 block text-sm font-medium">비밀번호</label>
+            <div class="relative">
+              <input id="password" type="password" placeholder="비밀번호" autocomplete="current-password"
+                class="w-full rounded-lg border border-border bg-background px-3 py-2.5 pr-10 text-sm outline-none focus:border-primary" />
+              <button type="button" onclick="MCUI.togglePassword('password', this)"
+                class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted"
+                aria-label="비밀번호 표시 전환">👁</button>
+            </div>
+          </div>
+
+          <button type="submit" class="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">로그인</button>
+        </form>
+
+        <!-- 실패 배너 (정적 예시 — 이 상태도 검토 가능하게 항상 노출) -->
+        <div class="mt-4 flex items-center gap-2 rounded-lg border border-yellow bg-background px-3 py-2.5 text-sm">
+          <span class="text-yellow">⚠</span>
+          <span>이메일 또는 비밀번호가 일치하지 않습니다.</span>
+        </div>
+
+        <!-- 구분선 -->
+        <div class="my-6 flex items-center gap-3 text-xs text-muted-foreground">
+          <span class="h-px flex-1 bg-border"></span>또는<span class="h-px flex-1 bg-border"></span>
+        </div>
+
+        <!-- Google 소셜 로그인 (정적, 클릭 동작 없음) -->
+        <button type="button"
+          class="flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-surface py-2.5 text-sm font-medium hover:bg-muted">
+          <span class="text-base">🔵</span> Google 계정으로 로그인
+        </button>
+
+        <!-- 하단 링크 -->
+        <div class="mt-6 flex items-center justify-between text-sm">
+          <a href="password-reset.html" class="text-muted-foreground hover:text-foreground">비밀번호 찾기</a>
+          <a href="signup.html" class="font-medium text-primary hover:underline">회원가입</a>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <script src="assets/js/ui.js"></script>
+</body>
+</html>

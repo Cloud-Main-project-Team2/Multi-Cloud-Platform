@@ -37,6 +37,14 @@
       try { localStorage.setItem("mcops-theme", next); } catch (e) {}
       syncThemeIcons();
     },
+    // 비밀번호 마스킹 토글 (순수 UI) — 눈 아이콘 버튼에서 호출
+    togglePassword: function (inputId, btn) {
+      var el = document.getElementById(inputId);
+      if (!el) return;
+      var show = el.type === "password";
+      el.type = show ? "text" : "password";
+      if (btn) btn.textContent = show ? "🙈" : "👁";
+    },
     // 드롭다운/모달 공용 토글 — 대상 엘리먼트의 .hidden 클래스만 뒤집는다
     toggle: function (id) { var el = document.getElementById(id); if (el) el.classList.toggle("hidden"); },
     open:   function (id) { var el = document.getElementById(id); if (el) el.classList.remove("hidden"); },
