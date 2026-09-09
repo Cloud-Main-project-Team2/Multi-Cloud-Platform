@@ -33,7 +33,7 @@ repo-root/
 ## 브랜치 · PR 규칙 (요약)
 
 - `main`은 유일한 보호 브랜치. 모든 변경은 **브랜치 → PR → 병합** 순서를 따른다.
-- 브랜치 네이밍: `feature/fe-<기능>`(프론트), `feature/be-<기능>`(백엔드). WBS 작업 단위와 1:1.
+- 브랜치 네이밍: `<이름>/fe-<기능>`(프론트), `<이름>/be-<기능>`(백엔드). 담당자 영문명을 네임스페이스로. WBS 작업 단위와 1:1. 예) `sol/fe-auth`
 - 커밋: Conventional Commits(`feat`/`fix`/`chore`/`docs`/`refactor`/`test`), 설명은 한국어.
 - 병합: **Squash and merge**로 통일. `main` 병합 권한은 **조은솔**에게만.
 
