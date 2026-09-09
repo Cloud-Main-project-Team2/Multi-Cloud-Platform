@@ -33,8 +33,13 @@ so skeleton commits don't clutter branch diffs.
 
 ## Team workflow
 
-- **Branch naming**: `feature/fe-<feature>` (frontend), `feature/be-<feature>`
-  (backend). One branch per WBS work item. Branch off the latest `main`.
+- **Branch naming**: `<name>/fe-<feature>` (frontend), `<name>/be-<feature>`
+  (backend). The owner's romanized name is a namespace prefix; the `fe-`/`be-`
+  prefix marks frontend/backend. One branch per WBS work item; branch off the
+  latest `main`. Confirmed romanizations: 조은솔 → `sol`, 김종국 → `jongkook`,
+  이승현 → `seunghyun`, 안권형 → `kwonhyeong` (confirm spellings with each member).
+  The name is just a "whose is this" label — merge/review unit is always the
+  feature (e.g. `sol/fe-auth`, `kwonhyeong/be-env-setup`).
 - **Commit convention**: Conventional Commits with Korean descriptions —
   `<type>: <요약>`, where `type` ∈ `feat | fix | chore | docs | refactor | test`.
   Keep each commit small and reviewable.
@@ -50,11 +55,11 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 
 | WBS 항목 | 브랜치 | 담당 | 상태 |
 |---|---|---|---|
-| 페이지 UI 구현 — 인증/마이페이지 | `feature/fe-auth` | 조은솔 | in progress |
-| 페이지 UI 구현 — 프로비저닝 | `feature/fe-provisioning` | 조은솔 | not started |
-| 페이지 UI 구현 — 인벤토리 | `feature/fe-inventory` | 조은솔 | not started |
-| 페이지 UI 구현 — 대시보드 | `feature/fe-dashboard` | 조은솔 | not started |
-| 개발 환경 구축 — DB 구축 | `feature/be-env-setup` | 안권형/김종국/이승현 | not started |
+| 페이지 UI 구현 — 인증/마이페이지 | `sol/fe-auth` | 조은솔 | in progress |
+| 페이지 UI 구현 — 프로비저닝 | `sol/fe-provisioning` | 조은솔 | not started |
+| 페이지 UI 구현 — 인벤토리 | `sol/fe-inventory` | 조은솔 | not started |
+| 페이지 UI 구현 — 대시보드 | `sol/fe-dashboard` | 조은솔 | not started |
+| 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
 
 > Keep this table updated as branches open, progress, and merge.
 
