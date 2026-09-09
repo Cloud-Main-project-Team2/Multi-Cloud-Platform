@@ -1,0 +1,37 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# ---- Node (해당 시) ----
+node_modules/
+npm-debug.log*
+yarn-error.log*
+
+# ---- 환경변수 / 시크릿 ----
+.env
+.env.*
+!.env.example
+
+# ---- Terraform ----
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# ---- 로그 ----
+logs/
+*.log
+
+# ---- OS / 편집기 잡파일 ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
