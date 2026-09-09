@@ -1,0 +1,2395 @@
+<!DOCTYPE html>
+<html lang="ko" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>멀티클라우드 통합운영 플랫폼 — 화면설계서 (WEB) V1.0</title>
+<style>
+/* ═══════════════════════════════════════════════════════════
+   화면설계서 (WEB) — 문서 토큰
+   문서 크롬: 무채색 / 와이어프레임: 무채색 / 시안: CSP 색상
+   ═══════════════════════════════════════════════════════════ */
+:root{
+  --doc-bg:#eeedea; --paper:#ffffff; --ink:#141412; --ink-2:#575652; --ink-3:#8d8b85;
+  --rule:#d9d8d3; --rule-2:#c6c5bf; --bar:#1a1a18; --bar-ink:#ffffff;
+  --label:#e6e5e1; --marker:#d03b3b;
+  --wf-fill:#f3f2ef; --wf-line:#c9c8c2; --wf-ink:#5a5955;
+  --aws:#2a78d6; --azure:#eb6834; --gcp:#1baf7a;
+  --sv1:#e87ba4; --sv2:#008300; --sv3:#4a3aa7; --sv4:#898781;
+  --good:#0ca30c; --good-ink:#006300; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --wash:rgba(11,11,11,.045); --surface:#fcfcfb; --page:#f9f9f7; --grid:#e1e0d9; --baseline:#c3c2b7;
+  --text-1:#0b0b0b; --text-2:#52514e; --muted:#898781; --border:rgba(11,11,11,.10);
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--doc-bg);color:var(--ink);
+  font-family:Pretendard,"Apple SD Gothic Neo","Malgun Gothic",system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:13px;line-height:1.6;-webkit-font-smoothing:antialiased;
+}
+.layout{display:grid;grid-template-columns:212px minmax(0,1fr);gap:0;max-width:1440px;margin:0 auto}
+
+/* ── 좌측 목차 레일 ── */
+.rail{position:sticky;top:0;align-self:start;height:100vh;overflow-y:auto;
+  background:var(--bar);color:#cfceca;padding:22px 0 40px}
+.rail .brand{padding:0 18px 16px;border-bottom:1px solid #34342f;margin-bottom:12px}
+.rail .brand b{display:block;color:#fff;font-size:13.5px;letter-spacing:-.2px}
+.rail .brand span{font-size:10.5px;color:#8d8b85}
+.rail .grp{font-size:10px;color:#75746f;padding:14px 18px 5px;letter-spacing:.6px}
+.rail a{display:flex;gap:8px;padding:5px 18px;color:#cfceca;text-decoration:none;font-size:12px}
+.rail a code{color:#75746f;font-size:10px;font-family:ui-monospace,monospace;min-width:56px}
+.rail a:hover{background:#2a2a26;color:#fff}
+.rail a.on{background:#2a2a26;color:#fff;box-shadow:inset 3px 0 0 var(--marker)}
+.rail::-webkit-scrollbar{width:2px}
+.rail::-webkit-scrollbar-thumb{background:#4a4a44}
+
+.main{padding:0 0 120px;min-width:0}
+
+/* ── 문서 표지 ── */
+.cover{background:#3d3d38;color:#fff;padding:74px 56px 40px;position:relative;min-height:420px;
+  display:flex;flex-direction:column}
+.cover h1{font-size:27px;font-weight:600;margin:0;letter-spacing:-.6px;line-height:1.35}
+.cover h1 em{font-style:normal;color:#ffd9a0}
+.cover .sub{font-size:17px;margin-top:10px;color:#e6e5e1;font-weight:500}
+.cover .ver{font-size:13px;margin-top:18px;color:#b4b2ac}
+.cover .meta{margin-top:auto;display:flex;gap:44px;padding-top:44px;font-size:12px;color:#b4b2ac}
+.cover .meta b{display:block;color:#fff;font-weight:600;font-size:13px;margin-top:2px}
+.cover .copy{text-align:center;color:#e8a33d;font-size:12px;letter-spacing:.3px;padding-top:34px}
+
+/* ── 섹션 ── */
+.sec{padding:34px 30px 6px}
+.sec-h{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+.sec-h h2{font-size:19px;margin:0;letter-spacing:-.4px;
+  border-bottom:3px solid var(--marker);padding-bottom:2px}
+.sec-h .en{font-size:11px;color:var(--ink-3)}
+.sec-note{background:#fff;border:1px solid var(--rule);border-left:3px solid var(--ink);
+  padding:11px 14px;font-size:12px;color:var(--ink-2);margin-bottom:14px;border-radius:0 6px 6px 0}
+.sec-note b{color:var(--ink)}
+
+/* ── 표 공통 ── */
+.dt{width:100%;border-collapse:collapse;background:#fff;font-size:12px}
+.dt th,.dt td{border:1px solid var(--rule);padding:7px 9px;text-align:left;vertical-align:top}
+.dt th{background:var(--label);font-weight:600;color:var(--ink-2);font-size:11.5px}
+.dt td.c,.dt th.c{text-align:center}
+.dt .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11px}
+
+/* ── 간트 ── */
+.gantt{width:100%;border-collapse:collapse;background:#fff;font-size:10.5px;margin-top:10px}
+.gantt th,.gantt td{border:1px solid var(--rule);height:26px;padding:0 3px;text-align:center;color:var(--ink-3)}
+.gantt th.row-h,.gantt td.row-h{text-align:left;padding-left:9px;color:var(--ink);font-size:11.5px;width:112px;background:#fafaf8}
+.gantt td.f{background:repeating-linear-gradient(45deg,var(--c),var(--c) 3px,transparent 3px,transparent 7px)}
+
+/* ── IA 트리 ── */
+.ia{background:#fff;border:1px solid var(--rule);padding:26px 22px;overflow-x:auto}
+.ia-row{display:flex;gap:10px;align-items:stretch;margin-bottom:9px}
+.node{border:1.5px solid var(--rule-2);background:#fff;border-radius:3px;padding:7px 12px;
+  font-size:11.5px;min-width:118px;text-align:center;color:var(--ink)}
+.node.main{background:#1a1a18;color:#fff;border-color:#1a1a18;font-weight:700}
+.node.menu{border-color:#3a9ad9}
+.node.sub{border-color:#c6c5bf}
+.node.auth{border-color:#e26fa5;border-style:dashed}
+.node.fn{border-color:#e8a33d}
+.ia-lvl{display:flex;flex-direction:column;gap:7px}
+.ia-col{display:flex;gap:10px;align-items:flex-start}
+.ia-tag{writing-mode:vertical-rl;font-size:10px;color:var(--ink-3);background:#f4f3f0;
+  border:1px solid var(--rule);padding:6px 3px;letter-spacing:2px}
+.ia-legend{display:flex;gap:18px;flex-wrap:wrap;margin-top:16px;padding-top:13px;border-top:1px solid var(--rule);font-size:11px;color:var(--ink-2)}
+.ia-legend i{display:inline-block;width:20px;height:11px;border:1.5px solid;vertical-align:-1px;margin-right:6px}
+
+/* ═══ 화면설계 프레임 ═══ */
+.screen{margin:26px 30px 0;background:#fff;border:1px solid var(--rule-2)}
+.metabar{display:grid;grid-template-columns:62px 1fr 70px 1fr 82px 122px 300px;
+  border-bottom:1px solid var(--rule-2);font-size:11.5px}
+.metabar .k{background:var(--label);color:var(--ink-2);padding:7px 9px;font-weight:600;
+  border-right:1px solid var(--rule)}
+.metabar .v{padding:7px 10px;border-right:1px solid var(--rule);color:var(--ink)}
+.metabar .v.code{font-family:ui-monospace,monospace;font-size:11px}
+.metabar .dh{background:var(--bar);color:var(--bar-ink);text-align:center;font-weight:700;padding:7px}
+.sbody{display:grid;grid-template-columns:minmax(0,1fr) 300px}
+.canvas{padding:22px 20px;background:#fff;border-right:1px solid var(--rule);min-width:0;position:relative}
+.desc{background:#fdfdfc;font-size:11.5px}
+.desc dl{margin:0}
+.desc .d{display:grid;grid-template-columns:26px 1fr;gap:8px;padding:9px 11px;border-bottom:1px solid var(--rule);align-items:start}
+.desc .d:last-child{border-bottom:0}
+.desc .d.hd{background:#f4f3f0;grid-template-columns:1fr;font-weight:700;color:var(--ink-2);font-size:11px;letter-spacing:.3px}
+.desc .n{background:var(--marker);color:#fff;border-radius:50%;width:17px;height:17px;
+  display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;margin-top:1px}
+.desc .n.g{background:var(--ink-3)}
+.desc .t{color:var(--ink-2);line-height:1.55}
+.desc .t b{color:var(--ink)}
+.desc .t .go{color:#1a6fbf;font-weight:600}
+.desc .t code{background:var(--wash);padding:1px 4px;border-radius:3px;font-size:10.5px;font-family:ui-monospace,monospace}
+.desc .t ul{margin:4px 0 0;padding-left:15px}
+.desc .t li{margin-bottom:2px}
+
+/* 캔버스 라벨 */
+.cap{font-size:11px;color:var(--ink-3);margin:0 0 9px}
+.cap b{color:var(--ink-2)}
+
+/* ═══ 와이어프레임 프리미티브 ═══ */
+.wf{border:1px solid var(--wf-line);background:#fff;position:relative;font-size:11px;color:var(--wf-ink)}
+.wf-area{border:1.5px dashed #8ec48e;padding:8px;position:relative;border-radius:2px}
+.wf-area>.al{position:absolute;top:-9px;left:8px;background:#fff;padding:0 5px;font-size:9.5px;color:#4f8f4f}
+.wf-area.r{border-color:#e0a0a0}
+.wf-area.r>.al{color:#b06a6a}
+.box{background:var(--wf-fill);border:1px solid var(--wf-line);border-radius:2px;
+  display:flex;align-items:center;justify-content:center;color:var(--wf-ink);font-size:11px;text-align:center;padding:6px}
+.box.img::after{content:"";width:22px;height:18px;border:1.5px solid var(--wf-line);border-radius:2px;
+  background:linear-gradient(135deg,transparent 46%,var(--wf-line) 46%,var(--wf-line) 54%,transparent 54%)}
+.inp{background:#fff;border:1px solid var(--wf-line);border-radius:2px;padding:7px 9px;color:#a8a6a0;font-size:11px}
+.btn-w{background:var(--wf-fill);border:1px solid #9b9a94;border-radius:2px;padding:7px 14px;
+  font-size:11px;color:var(--ink);text-align:center;font-weight:600}
+.btn-w.pri{background:#4b4a45;color:#fff;border-color:#4b4a45}
+.btn-w.sm{padding:4px 10px;font-size:10.5px;font-weight:500}
+.txt{height:9px;background:var(--wf-fill);border-radius:2px}
+.txt.s{width:50%}.txt.m{width:74%}.txt.l{width:92%}
+.row{display:flex;gap:9px;align-items:center}
+.col{display:flex;flex-direction:column;gap:9px}
+.grow{flex:1;min-width:0}
+.m{position:relative}
+.mk{position:absolute;background:var(--marker);color:#fff;border-radius:50%;width:17px;height:17px;
+  display:flex;align-items:center;justify-content:center;font-size:9.5px;font-weight:700;z-index:5;
+  box-shadow:0 0 0 2px #fff}
+.mk.tl{top:-8px;left:-8px}.mk.tr{top:-8px;right:-8px}.mk.bl{bottom:-8px;left:-8px}
+.mk.inl{position:static;display:inline-flex;box-shadow:none;margin-right:5px;flex:none}
+.stack{display:grid;gap:9px}
+.g2{grid-template-columns:1fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}.g4{grid-template-columns:repeat(4,1fr)}
+.wtab{width:100%;border-collapse:collapse;font-size:10.5px;color:var(--wf-ink)}
+.wtab th,.wtab td{border:1px solid var(--wf-line);padding:5px 6px;text-align:left}
+.wtab th{background:var(--wf-fill);font-weight:600;font-size:10px}
+hr.sp{border:0;border-top:1px dashed var(--rule);margin:16px 0}
+.hint-i{font-size:10.5px;color:var(--ink-3);margin-top:7px}
+.canvas .box.col{text-align:left}
+.canvas .mk + div[style*="font-weight:700"]{padding-left:15px}
+.canvas .mk + div[style*="font-size:10.5px;margin-bottom:4px"]{padding-left:15px}
+.mk.inl{vertical-align:-3px}
+.wtab .btn-w{white-space:nowrap}
+.metabar .k{white-space:nowrap}
+@media(max-width:1180px){
+  .layout{grid-template-columns:1fr}.rail{position:static;height:auto}
+  .sbody{grid-template-columns:1fr}.canvas{border-right:0;border-bottom:1px solid var(--rule)}
+  .metabar{grid-template-columns:64px 1fr;grid-auto-rows:auto}
+  .metabar .dh{grid-column:1/-1}
+}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="rail">
+  <div class="brand"><b>화면설계서 (WEB)</b><span>멀티클라우드 통합운영 플랫폼 · V1.0</span></div>
+  <div class="grp">문서</div>
+  <a href="#cover"><code>—</code>표지</a>
+  <a href="#toc"><code>—</code>목차</a>
+  <a href="#ia"><code>—</code>사이트맵 (IA)</a>
+  <a href="#flow"><code>—</code>플로우차트</a>
+  <a href="#fnspec"><code>—</code>기능정의서</a>
+  <div class="grp">로그인 전</div>
+  <a href="#MAIN-01"><code>MAIN-01</code>메인 홈</a>
+  <a href="#LOGIN-01"><code>LOGIN-01</code>로그인</a>
+  <a href="#LOGIN-02"><code>LOGIN-02</code>비밀번호 찾기</a>
+  <a href="#JOIN-01"><code>JOIN-01</code>회원가입</a>
+  <a href="#INTRO-01"><code>INTRO-01</code>문서</a>
+  <div class="grp">로그인 후</div>
+  <a href="#COMM-01"><code>COMM-01</code>공통 사이드바</a>
+  <a href="#DASH-01"><code>DASH-01</code>대시보드</a>
+  <a href="#INV-01"><code>INV-01</code>인벤토리</a>
+  <a href="#INV-02"><code>INV-02</code>리소스 상세</a>
+  <a href="#PROV-01"><code>PROV-01</code>프로비저닝</a>
+  <a href="#PROV-02"><code>PROV-02</code>생성 진행률</a>
+  <a href="#MY-01"><code>MY-01</code>마이페이지</a>
+  <div class="grp">확장 기능</div>
+  <a href="#COST-01"><code>COST-01</code>비용 관리</a>
+  <a href="#SEC-01"><code>SEC-01</code>보안 점검</a>
+  <a href="#mockup"><code>—</code>비용·보안 시안</a>
+</nav>
+
+<main class="main">
+
+<!-- ═════════ 표지 ═════════ -->
+<header class="cover" id="cover">
+  <h1>멀티클라우드 통합운영 플랫폼<br><em>화면설계서 (WEB)</em></h1>
+  <div class="sub">UI GUIDELINE_BY 서비스기획 · 이승현</div>
+  <div class="ver">V1.0 &nbsp; 2026/09/08</div>
+  <div class="meta">
+    <div>대상 플랫폼<b>Web (Desktop 1440 기준)</b></div>
+    <div>연동 대상<b>AWS · Azure · GCP</b></div>
+    <div>선행 문서<b>기능명세서 (2026/09/03)</b></div>
+    <div>상태<b>검토 요청</b></div>
+  </div>
+  <div class="copy">COPYRIGHT 2026 MULTICLOUD OPS. ALL RIGHTS RESERVED</div>
+</header>
+
+<!-- ═════════ 목차 ═════════ -->
+<section class="sec" id="toc">
+  <div class="sec-h"><h2>목차</h2><span class="en">Table of Contents</span></div>
+  <table class="dt">
+    <thead><tr><th class="c" style="width:80px">페이지 코드</th><th style="width:230px">화면명</th><th>화면 경로</th><th style="width:270px">비고</th></tr></thead>
+    <tbody>
+      <tr><td class="c">—</td><td>사이트맵 (IA)</td><td>설계 문서</td><td>로그인 전/후 접근 권한 구분</td></tr>
+      <tr><td class="c">—</td><td>플로우차트</td><td>설계 문서</td><td>로그인·회원가입 / 프로비저닝 2종</td></tr>
+      <tr><td class="c">—</td><td>기능정의서</td><td>설계 문서</td><td>Depth · Element · Function 정의</td></tr>
+      <tr><td class="c mono">MAIN-01</td><td>메인 홈 (로그인 전)</td><td>Home</td><td>헤더는 이 화면에서만 사용</td></tr>
+      <tr><td class="c mono">LOGIN-01</td><td>로그인 (일반 · 소셜)</td><td>Home &gt; 로그인</td><td>소셜은 Google, 확정 전</td></tr>
+      <tr><td class="c mono">LOGIN-02</td><td>비밀번호 찾기</td><td>Home &gt; 로그인 &gt; 비밀번호 찾기</td><td>이메일 검증 후 재설정</td></tr>
+      <tr><td class="c mono">JOIN-01</td><td>회원가입 (=시작하기)</td><td>Home &gt; 회원가입</td><td>소셜 가입 시 추가정보 모달</td></tr>
+      <tr><td class="c mono">INTRO-01</td><td>문서</td><td>Home &gt; 문서</td><td>기능별 소개 5종</td></tr>
+      <tr><td class="c mono">COMM-01</td><td>공통 사이드바 · 유틸</td><td>공통</td><td>메인 홈 제외 전 페이지</td></tr>
+      <tr><td class="c mono">DASH-01</td><td>대시보드</td><td>Main &gt; 대시보드</td><td>실시간 연동 안내 문구 포함</td></tr>
+      <tr><td class="c mono">INV-01</td><td>인벤토리 (리소스 조회)</td><td>Main &gt; 인벤토리</td><td>동기화 · 필터 · 일괄 제어</td></tr>
+      <tr><td class="c mono">INV-02</td><td>리소스 상세</td><td>Main &gt; 인벤토리 &gt; 상세</td><td>모달로 확정</td></tr>
+      <tr><td class="c mono">PROV-01</td><td>프로비저닝</td><td>Main &gt; 프로비저닝</td><td>과금 경고 상시 노출</td></tr>
+      <tr><td class="c mono">PROV-02</td><td>생성 진행률</td><td>Main &gt; 프로비저닝 &gt; 진행</td><td>페이지 이동 시 우하단 축소</td></tr>
+      <tr><td class="c mono">MY-01</td><td>마이페이지</td><td>Main &gt; 마이페이지</td><td>키 등록 · 검증 · 삭제</td></tr>
+      <tr><td class="c mono">COST-01</td><td>비용 관리 (상세)</td><td>Main &gt; 비용</td><td>확장 기능 · 개발 후순위</td></tr>
+      <tr><td class="c mono">SEC-01</td><td>보안 점검</td><td>Main &gt; 보안</td><td>확장 기능 · 신규 수집기 선행</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<!-- ═════════ 사이트맵 (IA) ═════════ -->
+<section class="sec" id="ia">
+  <div class="sec-h"><h2>사이트맵 (IA)</h2><span class="en">Information Architecture</span></div>
+  <div class="sec-note"><b>메인 홈을 제외한 모든 화면은 로그인 후에만 접근할 수 있다.</b>
+    로그인 후에도 로고+서비스명을 누르면 메인 홈으로 돌아온다. 헤더는 메인 홈에만, 사이드바는 그 외 전 화면에 놓는다.</div>
+  <style>
+    .tree{background:#fff;border:1px solid var(--rule);padding:24px 26px}
+    .tree ul{list-style:none;margin:0;padding-left:26px;position:relative}
+    .tree>ul{padding-left:0}
+    .tree li{position:relative;padding:4px 0}
+    .tree ul ul::before{content:"";position:absolute;left:0;top:-4px;bottom:16px;border-left:1px solid var(--rule-2)}
+    .tree ul ul>li::before{content:"";position:absolute;left:-26px;top:17px;width:19px;border-top:1px solid var(--rule-2)}
+    .tree .n{display:inline-flex;align-items:center;gap:7px;border:1.5px solid var(--rule-2);
+      background:#fff;border-radius:3px;padding:5px 11px;font-size:11.5px}
+    .tree .n code{font-family:ui-monospace,monospace;font-size:10px;color:var(--ink-3)}
+    .tree .n.home{background:#1a1a18;color:#fff;border-color:#1a1a18;font-weight:700}
+    .tree .n.home code{color:#9b9a94}
+    .tree .n.menu{border-color:#3a9ad9}
+    .tree .n.sub{border-color:var(--rule-2);border-style:dashed;color:var(--ink-2)}
+    .tree .n.auth{border-color:#e26fa5}
+    .tree .n.later{border-color:#e8a33d;color:var(--ink-2)}
+    .tree .gate{display:inline-block;font-size:10px;color:#b4436f;border:1px solid #e26fa5;
+      border-radius:10px;padding:0 7px;margin-left:8px}
+    .tree .later-tag{display:inline-block;font-size:10px;color:#9c6a10;border:1px solid #e8a33d;
+      border-radius:10px;padding:0 7px;margin-left:8px}
+  </style>
+  <div class="tree">
+    <ul>
+      <li><span class="n home"><code>MAIN-01</code>메인 홈 (로그인 전)</span>
+        <ul>
+          <li><span class="n menu"><code>INTRO-01</code>문서</span>
+            <ul>
+              <li><span class="n sub">대시보드 소개</span></li>
+              <li><span class="n sub">리소스 조회 소개</span></li>
+              <li><span class="n sub">프로비저닝 소개</span></li>
+              <li><span class="n sub">비용 관리 소개<span class="later-tag">확장</span></span></li>
+              <li><span class="n sub">로그 통합 관리 소개<span class="later-tag">확장</span></span></li>
+            </ul>
+          </li>
+          <li><span class="n auth"><code>LOGIN-01</code>로그인</span>
+            <ul>
+              <li><span class="n sub">일반 로그인 (이메일)</span></li>
+              <li><span class="n sub">소셜 로그인 (Google)</span></li>
+              <li><span class="n sub"><code>LOGIN-02</code>비밀번호 찾기</span></li>
+            </ul>
+          </li>
+          <li><span class="n auth"><code>JOIN-01</code>회원가입 (=시작하기)</span>
+            <ul><li><span class="n sub">소셜 가입 추가정보 입력</span></li></ul>
+          </li>
+          <li><span class="n menu">서비스 영역<span class="gate">로그인 필요</span></span>
+            <ul>
+              <li><span class="n menu"><code>DASH-01</code>대시보드</span></li>
+              <li><span class="n menu"><code>INV-01</code>인벤토리 (리소스 조회)</span>
+                <ul><li><span class="n sub"><code>INV-02</code>리소스 상세 (모달)</span></li></ul>
+              </li>
+              <li><span class="n menu"><code>PROV-01</code>프로비저닝</span>
+                <ul>
+                  <li><span class="n sub">가격 비교 (모달)</span></li>
+                  <li><span class="n sub"><code>PROV-02</code>생성 진행률 (모달)</span></li>
+                </ul>
+              </li>
+              <li><span class="n menu"><code>MY-01</code>마이페이지</span>
+                <ul>
+                  <li><span class="n sub">계정 정보 · 수정 · 탈퇴</span></li>
+                  <li><span class="n sub">키 &amp; IAM 계정 관리</span></li>
+                  <li><span class="n sub">연결된 클라우드 계정</span></li>
+                </ul>
+              </li>
+              <li><span class="n later"><code>COST-01</code>비용 관리 (상세)<span class="later-tag">확장</span></span></li>
+              <li><span class="n later"><code>SEC-01</code>보안 점검<span class="later-tag">확장</span></span></li>
+            </ul>
+          </li>
+        </ul>
+      </li>
+    </ul>
+    <div class="ia-legend">
+      <span><i style="border-color:#1a1a18;background:#1a1a18"></i>Main</span>
+      <span><i style="border-color:#3a9ad9"></i>Menu</span>
+      <span><i style="border-color:#c6c5bf;border-style:dashed"></i>Sub menu</span>
+      <span><i style="border-color:#e26fa5"></i>인증</span>
+      <span><i style="border-color:#e8a33d"></i>확장 기능 (개발 후순위)</span>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ 플로우차트 ═════════ -->
+<section class="sec" id="flow">
+  <div class="sec-h"><h2>플로우차트</h2><span class="en">Flow Chart</span></div>
+  <div class="sec-note">작업자가 헷갈릴 수 있는 두 흐름만 그린다 — <b>인증 분기</b>와 <b>과금이 발생하는 생성 분기</b>.
+    나머지 화면은 Description으로 충분하다.</div>
+
+  <div class="screen" style="margin:0 0 18px">
+    <div class="metabar" style="grid-template-columns:62px 1fr 70px 1fr 82px 122px">
+      <span class="k">화면명</span><span class="v">로그인 / 회원가입 (Flow Chart)</span>
+      <span class="k">화면 경로</span><span class="v">Home &gt; 로그인 · 회원가입</span>
+      <span class="k">페이지 코드</span><span class="v code">FLOW-01</span>
+    </div>
+    <div style="padding:18px 20px">
+      <svg viewBox="0 0 1040 400" style="width:100%;height:auto;display:block" role="img" aria-label="로그인 회원가입 플로우차트">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#3a3a35"/></marker>
+          <marker id="arb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#2a78d6"/></marker>
+          <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="#d03b3b"/></marker>
+        </defs>
+        <style>
+          .fn{fill:#fff;stroke:#3a3a35;stroke-width:1.5}
+          .fd{fill:#2b2b28;stroke:none}
+          .ft{font-size:12px;fill:#1a1a18;text-anchor:middle;font-family:inherit}
+          .ftw{font-size:12px;fill:#fff;text-anchor:middle;font-family:inherit;font-weight:600}
+          .fl{font-size:10.5px;fill:#6b6a66;font-family:inherit}
+          .yes{font-size:10.5px;fill:#2a78d6;font-weight:700;font-family:inherit}
+          .no{font-size:10.5px;fill:#d03b3b;font-weight:700;font-family:inherit}
+          .ln{stroke:#3a3a35;stroke-width:1.3;fill:none;marker-end:url(#ar)}
+          .lnb{stroke:#2a78d6;stroke-width:1.3;fill:none;marker-end:url(#arb)}
+          .lnr{stroke:#d03b3b;stroke-width:1.3;fill:none;marker-end:url(#arr)}
+        </style>
+        <rect class="fn" x="24" y="156" width="132" height="44" rx="22"/>
+        <text class="ft" x="90" y="183">로그인 / 회원가입</text>
+        <path class="fd" d="M250,140 L306,178 L250,216 L194,178 Z"/>
+        <text class="ftw" x="250" y="174">로그인</text><text class="ftw" x="250" y="189">방법</text>
+        <path class="ln" d="M156,178 L188,178"/>
+        <path class="ln" d="M250,140 L250,84 L334,84"/>
+        <path class="ln" d="M250,216 L250,272 L334,272"/>
+        <rect class="fn" x="336" y="62" width="152" height="44"/>
+        <text class="ft" x="412" y="80">이메일 · 비밀번호</text><text class="ft" x="412" y="96">입력</text>
+        <rect class="fn" x="336" y="250" width="152" height="44"/>
+        <text class="ft" x="412" y="268">Google OAuth</text><text class="ft" x="412" y="284">인증 요청</text>
+        <path class="ln" d="M488,84 L522,84"/>
+        <path class="ln" d="M488,272 L522,272"/>
+        <path class="fd" d="M586,48 L644,84 L586,120 L528,84 Z"/>
+        <text class="ftw" x="586" y="81">인증</text><text class="ftw" x="586" y="95">성공</text>
+        <path class="fd" d="M586,236 L644,272 L586,308 L528,272 Z"/>
+        <text class="ftw" x="586" y="269">기존</text><text class="ftw" x="586" y="283">회원</text>
+        <path class="lnr" d="M586,48 L586,24 L690,24"/>
+        <text class="no" x="596" y="38">NO</text>
+        <rect class="fn" x="692" y="6" width="176" height="36" stroke="#d03b3b"/>
+        <text class="ft" x="780" y="29">실패 사유 표시 · 재입력</text>
+        <path class="lnb" d="M644,84 L940,84 L940,150"/>
+        <text class="yes" x="656" y="76">YES</text>
+        <path class="lnb" d="M644,272 L940,272 L940,206"/>
+        <text class="yes" x="656" y="264">YES</text>
+        <path class="lnr" d="M586,308 L586,346 L690,346"/>
+        <text class="no" x="596" y="330">NO</text>
+        <rect class="fn" x="692" y="324" width="176" height="44"/>
+        <text class="ft" x="780" y="342">추가정보 입력창</text><text class="ft" x="780" y="358">이름 · 소속</text>
+        <path class="ln" d="M868,346 L940,346 L940,208"/>
+        <rect class="fn" x="874" y="156" width="132" height="44" rx="22" stroke-width="2"/>
+        <text class="ft" x="940" y="174" style="font-weight:600">로그인 완료</text>
+        <text class="fl" x="940" y="190" style="text-anchor:middle">→ 대시보드</text>
+        <rect x="24" y="296" width="230" height="82" fill="#fafaf8" stroke="#d9d8d3"/>
+        <text class="fl" x="36" y="315" style="fill:#1a1a18;font-weight:600">로그인 방법</text>
+        <text class="fl" x="36" y="332">· 일반 로그인 (이메일)</text>
+        <text class="fl" x="36" y="348">· Google 소셜 로그인</text>
+        <text class="fl" x="36" y="364" style="fill:#b0aea8;text-decoration:line-through">· Naver / Kakao — 미정</text>
+      </svg>
+      <div class="hint-i">소셜 가입자는 이름·소속만 추가로 받는다. 이메일·비밀번호는 Provider가 관리하므로 우리 폼에 두지 않는다.</div>
+    </div>
+  </div>
+
+  <div class="screen" style="margin:0">
+    <div class="metabar" style="grid-template-columns:64px 1fr 74px 1fr 74px 132px">
+      <span class="k">화면명</span><span class="v">프로비저닝 (Flow Chart)</span>
+      <span class="k">화면 경로</span><span class="v">Main &gt; 프로비저닝</span>
+      <span class="k">페이지 코드</span><span class="v code">FLOW-02</span>
+    </div>
+    <div style="padding:18px 20px">
+      <svg viewBox="0 0 1040 300" style="width:100%;height:auto;display:block" role="img" aria-label="프로비저닝 플로우차트">
+        <style>
+          .s{fill:#fff;stroke:#3a3a35;stroke-width:1.5}
+          .st{font-size:11.5px;fill:#1a1a18;text-anchor:middle;font-family:inherit}
+          .sn{font-size:10px;fill:#8d8b85;text-anchor:middle;font-family:inherit}
+        </style>
+        <g>
+          <rect class="s" x="16" y="30" width="126" height="46"/>
+          <text class="sn" x="79" y="48">1</text><text class="st" x="79" y="64">플랫폼 선택</text>
+          <rect class="s" x="170" y="30" width="126" height="46"/>
+          <text class="sn" x="233" y="48">2</text><text class="st" x="233" y="64">계정 선택</text>
+          <rect class="s" x="324" y="30" width="126" height="46"/>
+          <text class="sn" x="387" y="48">3</text><text class="st" x="387" y="64">리소스 종류</text>
+          <rect class="s" x="478" y="30" width="126" height="46"/>
+          <text class="sn" x="541" y="48">4</text><text class="st" x="541" y="64">공통 설정</text>
+          <rect class="s" x="632" y="30" width="140" height="46"/>
+          <text class="sn" x="702" y="48">5</text><text class="st" x="702" y="64">플랫폼별 추가 설정</text>
+          <path class="ln" d="M142,53 L166,53"/><path class="ln" d="M296,53 L320,53"/>
+          <path class="ln" d="M450,53 L474,53"/><path class="ln" d="M604,53 L628,53"/>
+        </g>
+        <path class="ln" d="M772,42 L820,42 L820,26 L858,26"/>
+        <rect class="s" x="860" y="6" width="164" height="40" stroke-dasharray="4 3"/>
+        <text class="st" x="942" y="23">6-1 가격 비교 모달</text><text class="sn" x="942" y="37">타 플랫폼 동급 사양 비교</text>
+        <path d="M860,40 C800,52 780,60 774,64" stroke="#8d8b85" stroke-width="1.2" fill="none" stroke-dasharray="3 3" marker-end="url(#ar)"/>
+        <path class="ln" d="M772,64 L820,64 L820,88 L858,88"/>
+        <rect class="s" x="860" y="68" width="164" height="40"/>
+        <text class="st" x="942" y="93">6-2 생성하기</text>
+        <path class="ln" d="M942,108 L942,128"/>
+        <path class="fd" d="M942,130 L1024,164 L942,198 L860,164 Z"/>
+        <text class="ftw" x="942" y="161" style="font-size:11px">과금 발생</text>
+        <text class="ftw" x="942" y="175" style="font-size:11px">확인</text>
+        <path class="lnr" d="M860,164 L790,164"/>
+        <text class="no" x="800" y="157">취소</text>
+        <rect class="s" x="640" y="144" width="148" height="40" stroke="#d03b3b"/>
+        <text class="st" x="714" y="168">폼 유지 · 생성 안 함</text>
+        <path class="lnb" d="M942,198 L942,238 L860,238"/>
+        <text class="yes" x="950" y="222">확인</text>
+        <rect class="s" x="640" y="216" width="218" height="46"/>
+        <text class="st" x="749" y="234">7 진행률 모달 (리소스별)</text>
+        <text class="sn" x="749" y="250">90%까지 진행 → 완료 시 100%</text>
+        <path class="ln" d="M640,239 L616,239"/>
+        <rect class="s" x="386" y="216" width="228" height="46"/>
+        <text class="st" x="500" y="234">성공 / 실패 결과 표시</text>
+        <text class="sn" x="500" y="250">실패 시 프로그레스바 하단에 사유</text>
+        <path class="ln" d="M386,239 L362,239"/>
+        <rect class="s" x="176" y="217" width="184" height="44" rx="22"/>
+        <text class="st" x="268" y="243">인벤토리로 이동</text>
+        <text class="sn" x="90" y="230">다른 페이지로 이동해도</text>
+        <text class="sn" x="90" y="245">진행률은 우하단 축소 모달로</text>
+        <text class="sn" x="90" y="260">계속 표시된다</text>
+      </svg>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════ 기능정의서 ═════════ -->
+<section class="sec" id="fnspec">
+  <div class="sec-h"><h2>기능정의서</h2><span class="en">Function Definition</span></div>
+  <div class="sec-note">화면설계서와 짝을 이루는 문서다. 화면에 놓인 <b>Element</b>가 어떤 <b>Function</b>을 갖는지, 개발자가 코드로 옮길 수 있는 단위까지 적는다.</div>
+  <table class="dt">
+    <thead>
+      <tr>
+        <th class="c" style="width:52px">Role</th><th class="c" style="width:64px">TYPE</th>
+        <th style="width:96px">1 Depth</th><th style="width:104px">2 Depth</th><th style="width:104px">3 Depth</th>
+        <th style="width:124px">Element</th><th style="width:88px">Function</th><th>Comment</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td class="c">전체</td><td class="c">WEB</td><td>메인 홈</td><td>헤더</td><td>로고 + 서비스명</td><td>button</td><td>link</td><td>로그인 후에도 클릭 시 메인 홈으로 이동. 헤더는 메인 홈에서만 노출한다.</td></tr>
+      <tr><td class="c">전체</td><td class="c">WEB</td><td>메인 홈</td><td>헤더</td><td>문서</td><td>dropdown</td><td>hover</td><td>호버 시 5개 소개 페이지 목록 노출. 클릭 시 대시보드 소개(INTRO-01)로 이동.</td></tr>
+      <tr><td class="c">전체</td><td class="c">WEB</td><td>메인 홈</td><td>본문</td><td>서비스 설명</td><td>section</td><td>scroll</td><td>스크롤 위치에 따라 순차 페이드인. 전체 내용을 한 페이지에 렌더링한다.</td></tr>
+      <tr><td class="c">비회원</td><td class="c">WEB</td><td>로그인</td><td>일반 로그인</td><td>이메일</td><td>input box</td><td>validation</td><td>형식 오류는 입력창 하단에 즉시 표시한다.</td></tr>
+      <tr><td class="c">비회원</td><td class="c">WEB</td><td>로그인</td><td>일반 로그인</td><td>비밀번호</td><td>input box</td><td>mask</td><td>기본 마스킹, 눈 아이콘으로 표시 전환.</td></tr>
+      <tr><td class="c">비회원</td><td class="c">WEB</td><td>로그인</td><td>일반 로그인</td><td>로그인</td><td>button</td><td>auth</td><td>성공 → 대시보드. 실패 → 사유 표시, 입력값 유지(비밀번호 제외).</td></tr>
+      <tr><td class="c">비회원</td><td class="c">WEB</td><td>로그인</td><td>소셜 로그인</td><td>Google</td><td>button</td><td>OAuth</td><td>Provider 제공 페이지로 이동. 신규면 추가정보 입력창 노출. <b>확정 전</b>.</td></tr>
+      <tr><td class="c">비회원</td><td class="c">WEB</td><td>로그인</td><td>비밀번호 찾기</td><td>이메일</td><td>input box</td><td>mail send</td><td>이메일 검증 후 재설정 링크 발송. 가입 여부는 응답으로 구분하지 않는다.</td></tr>
+      <tr><td class="c">비회원</td><td class="c">WEB</td><td>회원가입</td><td>정보 입력</td><td>이메일</td><td>input box</td><td>verify</td><td>중복 확인 + 형식 검증. 검증 완료 전에는 가입 버튼 비활성.</td></tr>
+      <tr><td class="c">비회원</td><td class="c">WEB</td><td>회원가입</td><td>정보 입력</td><td>비밀번호 확인</td><td>input box</td><td>match</td><td>1차와 불일치 시 하단 경고. 규칙(길이·조합)은 입력 중 안내.</td></tr>
+      <tr><td class="c">비회원</td><td class="c">WEB</td><td>회원가입</td><td>정보 입력</td><td>소속</td><td>dropdown</td><td>select</td><td>회사 / 개인. 소속단체명은 직접 입력이며 생략할 수 있다.</td></tr>
+      <tr><td class="c">비회원</td><td class="c">WEB</td><td>회원가입</td><td>정보 입력</td><td>가입하기</td><td>button</td><td>submit</td><td>검증 후 성공·실패를 팝업으로 안내하고 로그인 화면으로 이동한다.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>공통</td><td>사이드바</td><td>메뉴 4종</td><td>navigation</td><td>link</td><td>대시보드 / 인벤토리 / 프로비저닝 / 마이페이지 순서 고정. 현재 위치 강조.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>공통</td><td>유틸</td><td>테마 · 언어 · 알림</td><td>button</td><td>toggle</td><td>라이트/다크, KOR/EN, 알림 목록. 우측 상단 고정.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>대시보드</td><td>요약</td><td>전체 리소스 · 리전 수</td><td>card</td><td>aggregate</td><td>연동된 전 클라우드 합계. 조회 실패 계정은 합계에서 제외하고 별도 표기.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>대시보드</td><td>비용</td><td>CSP별 비용 카드</td><td>card</td><td>fetch</td><td>실측/추정 배지와 수집 시각을 함께 표시. 기준이 다른 값은 합산하지 않는다.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>대시보드</td><td>차트</td><td>월별 비용 추이</td><td>chart</td><td>render</td><td>3사 한 그래프, y축 1개. 데이터 없는 계열은 0이 아니라 제외 후 범례에 사유 표기.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>대시보드</td><td>바로가기</td><td>콘솔 열기 3종</td><td>button</td><td>new window</td><td>AWS / Azure / GCP 콘솔을 새 창으로 연다.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>인벤토리</td><td>동기화</td><td>새로고침</td><td>button</td><td>sync</td><td>수집 중 비활성 + CSP별 진행 상태(완료/수집중/대기) 표시.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>인벤토리</td><td>검색·필터</td><td>검색 폼</td><td>dropdown + input</td><td>filter</td><td>입력폼은 하나. 조건을 드롭다운으로 고르고 키워드를 입력한다. 필터와 교집합.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>인벤토리</td><td>목록</td><td>체크박스</td><td>check box</td><td>multi select</td><td>선택 후 start / stop / delete 일괄 실행. delete는 재확인 모달 필수.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>인벤토리</td><td>목록</td><td>상세보기</td><td>button</td><td>modal</td><td>목록 맥락을 유지하기 위해 페이지 이동이 아닌 모달로 연다.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>프로비저닝</td><td>안내</td><td>과금 경고</td><td>banner</td><td>static</td><td>실제 리소스가 생성되고 과금될 수 있음을 페이지 상단에 상시 노출.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>프로비저닝</td><td>설정</td><td>리소스 종류</td><td>radio</td><td>permission</td><td>선택한 계정 권한으로 만들 수 없는 종류는 비활성 상태로 보이되 사유를 표시.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>프로비저닝</td><td>실행</td><td>비교하기</td><td>button</td><td>modal</td><td>동급 사양 타 플랫폼 가격을 모달로 비교.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>프로비저닝</td><td>실행</td><td>생성하기</td><td>button</td><td>confirm</td><td>과금 확인 후 진행. 확인 시 생성과 진행률 모달을 동시에 시작한다.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>마이페이지</td><td>계정 정보</td><td>수정하기</td><td>button</td><td>update</td><td>소속 · 소속단체명만 수정 가능. 이메일과 이름은 읽기 전용.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>마이페이지</td><td>계정 정보</td><td>로그아웃 · 탈퇴</td><td>button</td><td>confirm</td><td>실행 전 반드시 재확인. 탈퇴는 등록 키 삭제 범위를 함께 안내한다.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>마이페이지</td><td>키 관리</td><td>저장 및 검증</td><td>button</td><td>validate</td><td>선택한 플랫폼에 따라 입력폼이 바뀐다. 저장과 동시에 권한을 검증한다.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>마이페이지</td><td>연결 계정</td><td>키 요약</td><td>text</td><td>mask</td><td>공개키 앞 4자리만 노출하고 나머지는 마스킹. 비밀키는 어떤 경로로도 표시하지 않는다.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>비용 관리</td><td>필터</td><td>기간 · CSP · 통화</td><td>dropdown</td><td>filter</td><td>화면 전체에 동일 적용. 차트별 개별 필터는 두지 않는다.</td></tr>
+      <tr><td class="c">회원</td><td class="c">WEB</td><td>보안 점검</td><td>결과</td><td>검사 불가</td><td>card</td><td>status</td><td>위반 0건과 검사하지 못한 것을 구분한다. 사유를 반드시 함께 표시.</td></tr>
+    </tbody>
+  </table>
+</section>
+<!-- ═════════ 화면설계 시작 ═════════ -->
+<section class="sec" style="padding-bottom:0">
+  <div class="sec-h"><h2>화면설계 (WEB)</h2><span class="en">Wireframe &amp; Description</span></div>
+  <div class="sec-note">좌측은 <b>레이아웃과 UI 요소</b>, 우측 Description은 <b>그 요소가 무엇을 하는지</b>를 적는다.
+    번호는 화면의 빨간 마커와 1:1로 대응한다. 색·타이포 같은 디자인 디테일은 이 문서에서 확정하지 않는다.</div>
+</section>
+
+<!-- ── MAIN-01 ── -->
+<article class="screen" id="MAIN-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">메인 홈 (로그인 전)</span>
+    <span class="k">화면 경로</span><span class="v">Home</span>
+    <span class="k">페이지 코드</span><span class="v code">MAIN-01</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap"><b>Desktop 1440</b> · 비로그인 상태에서 유일하게 열리는 화면</p>
+      <div class="wf">
+        <div class="wf-area" style="margin:10px"><span class="al">Header 영역 (메인 홈 전용)</span>
+          <div class="row">
+            <div class="m row" style="gap:7px">
+              <span class="mk tl">1</span>
+              <div class="box" style="width:26px;height:26px"></div>
+              <div class="txt" style="width:96px"></div>
+            </div>
+            <div class="grow"></div>
+            <div class="m row" style="gap:16px"><span class="mk tl">2</span>
+              <span>문서 ▾</span>
+            </div>
+            <div class="m row" style="gap:7px"><span class="mk tr">3</span>
+              <div class="btn-w sm">로그인</div><div class="btn-w sm pri">회원가입</div>
+            </div>
+          </div>
+        </div>
+        <div class="m" style="padding:34px 40px 30px;text-align:center;border-bottom:1px dashed var(--wf-line)">
+          <span class="mk tl" style="left:14px;top:12px">4</span>
+          <div class="col" style="align-items:center">
+            <div class="txt" style="width:58%;height:18px"></div>
+            <div class="txt" style="width:40%;height:18px"></div>
+            <div class="txt s" style="width:34%;height:9px;margin-top:4px"></div>
+            <div class="btn-w pri" style="margin-top:8px">무료로 시작하기</div>
+          </div>
+        </div>
+        <div class="m" style="padding:22px 24px">
+          <span class="mk tl" style="left:12px;top:12px">5</span>
+          <div class="stack g3">
+            <div class="col"><div class="box img" style="height:74px"></div><div class="txt l"></div><div class="txt m"></div></div>
+            <div class="col"><div class="box img" style="height:74px"></div><div class="txt l"></div><div class="txt m"></div></div>
+            <div class="col"><div class="box img" style="height:74px"></div><div class="txt l"></div><div class="txt m"></div></div>
+          </div>
+          <div style="text-align:center;font-size:10.5px;color:#a8a6a0;margin-top:12px">↓ 스크롤 시 섹션 단위로 순차 등장</div>
+        </div>
+        <div class="m" style="padding:16px 24px;background:#fafaf8;border-top:1px solid var(--wf-line)">
+          <span class="mk tl" style="left:12px;top:8px">6</span>
+          <div class="row"><div class="txt" style="width:80px"></div><div class="grow"></div>
+            <div class="txt" style="width:60px"></div><div class="txt" style="width:60px"></div><div class="txt" style="width:60px"></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d hd">기본</div>
+      <div class="d"><span class="n g">·</span><span class="t">홈을 제외한 모든 화면은 <b>로그인 후에만</b> 열린다. 비로그인 상태로 URL 직접 접근 시 로그인 화면으로 보낸다.</span></div>
+      <div class="d"><span class="n g">·</span><span class="t">헤더는 이 화면에서만 사용한다. 로그인 후 화면은 사이드바(COMM-01)를 쓴다.</span></div>
+      <div class="d"><span class="n">1</span><span class="t"><b>로고 + 서비스명</b> — 클릭 시 메인 홈으로 이동한다. 로그인 후 화면에서도 동일하게 동작한다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>문서</b> — 호버하면 드롭다운으로 5개 소개 페이지가 열린다. 메뉴 자체를 클릭하면 <span class="go">INTRO-01 대시보드 소개</span>로 이동.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>로그인 / 회원가입</b><ul><li>로그인 → <span class="go">LOGIN-01</span></li><li>회원가입 → <span class="go">JOIN-01</span></li></ul></span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>히어로</b> — 서비스 한 줄 정의와 시작 버튼. 버튼은 회원가입과 같은 곳으로 보내되 문구는 <code>시작하기</code>로 통일한다.</span></div>
+      <div class="d"><span class="n">5</span><span class="t"><b>서비스 설명</b> — 전체 내용을 한 페이지에 담는다. 스크롤 위치에 따라 섹션이 순차적으로 나타난다. 등장 효과는 1회만 실행하고 되돌아가도 반복하지 않는다.</span></div>
+      <div class="d"><span class="n">6</span><span class="t"><b>푸터</b> — 서비스 정책 · 개인정보처리방침 · 문의. 정책 문서는 별도 확정 필요.</span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ── LOGIN-01 ── -->
+<article class="screen" id="LOGIN-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">로그인 (일반 · 소셜)</span>
+    <span class="k">화면 경로</span><span class="v">Home &gt; 로그인</span>
+    <span class="k">페이지 코드</span><span class="v code">LOGIN-01</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap"><b>1.1.1 일반 로그인 / 1.1.2 소셜 로그인</b> · 카드 중앙 정렬, 최대 폭 400</p>
+      <div class="wf" style="padding:26px 20px;background:#fafaf8">
+        <div style="max-width:380px;margin:0 auto;background:#fff;border:1px solid var(--wf-line);padding:24px 26px">
+          <div style="text-align:center;font-size:14px;font-weight:700;color:var(--ink);margin-bottom:20px">로그인</div>
+          <div class="col">
+            <div class="m"><span class="mk tl">1</span>
+              <div style="font-size:10.5px;margin-bottom:4px">이메일</div>
+              <div class="inp">name@company.com</div>
+            </div>
+            <div class="m"><span class="mk tl">2</span>
+              <div style="font-size:10.5px;margin-bottom:4px">비밀번호</div>
+              <div class="inp row"><span class="grow">••••••••</span><span style="color:#8d8b85">👁</span></div>
+            </div>
+            <div class="m" style="margin-top:2px"><span class="mk tl">3</span>
+              <div class="btn-w pri" style="width:100%">로그인</div>
+            </div>
+            <div class="row" style="margin:4px 0"><div class="grow" style="height:1px;background:var(--wf-line)"></div>
+              <span style="font-size:10px;color:#a8a6a0">또는</span>
+              <div class="grow" style="height:1px;background:var(--wf-line)"></div></div>
+            <div class="m"><span class="mk tl">4</span>
+              <div class="btn-w row" style="width:100%;justify-content:center;gap:8px">
+                <span style="width:14px;height:14px;border:1px solid var(--wf-line);border-radius:50%;display:inline-block"></span>
+                Google 계정으로 계속하기</div>
+            </div>
+            <div class="m row" style="justify-content:center;gap:14px;margin-top:6px;font-size:10.5px">
+              <span class="mk inl">5</span>
+              <span style="text-decoration:underline">비밀번호 찾기</span>
+              <span style="color:var(--wf-line)">|</span>
+              <span style="text-decoration:underline">회원가입</span>
+            </div>
+          </div>
+        </div>
+        <div class="m" style="max-width:380px;margin:14px auto 0">
+          <span class="mk tl">6</span>
+          <div style="border:1px dashed #e0a0a0;background:#fdf6f6;padding:8px 11px;font-size:10.5px;color:#a5504f">
+            ⚠ 이메일 또는 비밀번호가 일치하지 않습니다.</div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d hd">입력 · 인증</div>
+      <div class="d"><span class="n">1</span><span class="t"><b>이메일</b> — 형식 검증. 오류 문구는 입력창 바로 아래에 놓고 레이아웃을 밀지 않는다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>비밀번호</b> — 기본 마스킹. 눈 아이콘으로 표시/숨김 전환.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>로그인</b> — 인증 성공 시 <span class="go">DASH-01 대시보드</span>로 이동. 요청 중에는 버튼을 비활성하고 스피너를 넣는다.</span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>소셜 로그인 (Google)</b> — Provider가 제공하는 로그인 페이지로 이동한다(1.1.2). 신규 계정이면 <span class="go">JOIN-01 추가정보 입력창</span>을 띄운다.<br><b>비고: 제공 범위 확정 전.</b></span></div>
+      <div class="d"><span class="n">5</span><span class="t">비밀번호 찾기 → <span class="go">LOGIN-02</span> / 회원가입 → <span class="go">JOIN-01</span></span></div>
+      <div class="d"><span class="n">6</span><span class="t"><b>실패 안내</b> — 어느 쪽이 틀렸는지 특정하지 않는다. 계정 존재 여부가 드러나지 않게 한 문장으로 통일한다.</span></div>
+      <div class="d hd">예외</div>
+      <div class="d"><span class="n g">·</span><span class="t">연속 실패 5회 시 일정 시간 잠금 + 안내. 잠금 정책은 서비스 정책 문서에서 확정한다.</span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ── LOGIN-02 ── -->
+<article class="screen" id="LOGIN-02">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">비밀번호 찾기</span>
+    <span class="k">화면 경로</span><span class="v">Home &gt; 로그인 &gt; 비밀번호 찾기</span>
+    <span class="k">페이지 코드</span><span class="v code">LOGIN-02</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap">2단계 — <b>STEP 1</b> 재설정 메일 요청 · <b>STEP 2</b> 메일 링크 진입 후 새 비밀번호 설정</p>
+      <div class="stack g2">
+        <div class="wf" style="padding:20px">
+          <div style="font-size:10px;color:#a8a6a0;margin-bottom:8px">STEP 1</div>
+          <div class="col">
+            <div style="font-size:13px;font-weight:700;color:var(--ink)">비밀번호 재설정</div>
+            <div style="font-size:10.5px">가입한 이메일로 재설정 링크를 보냅니다.</div>
+            <div class="m"><span class="mk tl">1</span><div class="inp">name@company.com</div></div>
+            <div class="btn-w pri">재설정 링크 보내기</div>
+            <div class="m"><span class="mk tl">2</span>
+              <div style="border:1px dashed var(--wf-line);background:#fafaf8;padding:8px 10px;font-size:10.5px">
+                입력하신 주소로 메일을 보냈습니다. 5분 내 도착하지 않으면 다시 요청해 주세요.</div>
+            </div>
+          </div>
+        </div>
+        <div class="wf" style="padding:20px">
+          <div style="font-size:10px;color:#a8a6a0;margin-bottom:8px">STEP 2</div>
+          <div class="col">
+            <div style="font-size:13px;font-weight:700;color:var(--ink)">새 비밀번호 설정</div>
+            <div class="m"><span class="mk tl">3</span>
+              <div style="font-size:10.5px;margin-bottom:4px">새 비밀번호</div><div class="inp">••••••••</div></div>
+            <div>
+              <div style="font-size:10.5px;margin-bottom:4px">새 비밀번호 확인</div><div class="inp">••••••••</div></div>
+            <div class="m"><span class="mk tl">4</span><div class="btn-w pri">비밀번호 변경</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d"><span class="n">1</span><span class="t"><b>이메일 검증</b> — 가입된 주소인지와 무관하게 같은 문구로 응답한다. 계정 존재 여부를 노출하지 않는다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>발송 안내</b> — 재요청은 60초 간격으로 제한한다.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>새 비밀번호</b> — 규칙은 회원가입과 동일하게 적용한다. 두 칸 불일치 시 변경 버튼 비활성.</span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>비밀번호 변경</b> — 성공 시 팝업으로 안내하고 <span class="go">LOGIN-01</span>로 이동한다. 링크 유효시간은 30분.</span></div>
+      <div class="d hd">소셜 가입자</div>
+      <div class="d"><span class="n g">·</span><span class="t">Google로 가입한 계정은 우리 쪽에 비밀번호가 없다. 이 경우 <b>소셜 로그인을 사용하라는 안내</b>로 대체한다.</span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ── JOIN-01 ── -->
+<article class="screen" id="JOIN-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">회원가입 (=시작하기)</span>
+    <span class="k">화면 경로</span><span class="v">Home &gt; 회원가입</span>
+    <span class="k">페이지 코드</span><span class="v code">JOIN-01</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <div class="stack g2" style="grid-template-columns:1.15fr .85fr">
+        <div>
+          <p class="cap"><b>기본 가입 폼</b> · 1열 정렬</p>
+          <div class="wf" style="padding:22px 24px">
+            <div style="text-align:center;font-size:14px;font-weight:700;color:var(--ink);margin-bottom:18px">회원가입</div>
+            <div class="col">
+              <div class="m"><span class="mk tl">1</span>
+                <div style="font-size:10.5px;margin-bottom:4px">이메일</div>
+                <div class="row"><div class="inp grow">name@company.com</div><div class="btn-w sm">중복 확인</div></div>
+              </div>
+              <div class="m"><span class="mk tl">2</span>
+                <div style="font-size:10.5px;margin-bottom:4px">비밀번호</div><div class="inp">••••••••</div>
+                <div style="font-size:9.5px;color:#a8a6a0;margin-top:3px">8자 이상, 영문·숫자·기호 중 2종 이상</div>
+              </div>
+              <div>
+                <div style="font-size:10.5px;margin-bottom:4px">비밀번호 확인</div><div class="inp">••••••••</div>
+              </div>
+              <div><div style="font-size:10.5px;margin-bottom:4px">이름</div><div class="inp">홍길동</div></div>
+              <div class="m"><span class="mk tl">3</span>
+                <div style="font-size:10.5px;margin-bottom:4px">소속</div>
+                <div class="row">
+                  <div class="inp" style="width:120px">회사 ▾</div>
+                  <div class="inp grow">소속단체명 (생략 가능)</div>
+                </div>
+              </div>
+              <div class="m" style="margin-top:4px"><span class="mk tl">4</span><div class="btn-w pri" style="width:100%">회원가입</div></div>
+              <div style="text-align:center;font-size:10.5px"><span class="mk inl">5</span>이미 회원이신가요? <span style="text-decoration:underline">로그인</span></div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <p class="cap"><b>1.2.1 소셜 가입 — 추가정보 입력창</b> (모달)</p>
+          <div class="wf" style="padding:18px;background:#fafaf8">
+            <div class="m" style="background:#fff;border:1px solid var(--wf-line);padding:18px 20px">
+              <span class="mk tl">6</span>
+              <div style="font-size:12.5px;font-weight:700;color:var(--ink);margin-bottom:4px">추가 정보를 입력해 주세요</div>
+              <div style="font-size:10.5px;margin-bottom:14px">Google 계정으로 처음 가입하는 경우에만 표시됩니다.</div>
+              <div class="col">
+                <div><div style="font-size:10.5px;margin-bottom:4px">이름</div><div class="inp">홍길동</div></div>
+                <div><div style="font-size:10.5px;margin-bottom:4px">소속</div>
+                  <div class="row"><div class="inp" style="width:96px">개인 ▾</div><div class="inp grow">단체명 (생략 가능)</div></div></div>
+                <div class="btn-w pri" style="margin-top:4px">시작하기</div>
+              </div>
+            </div>
+          </div>
+          <div class="m" style="margin-top:14px">
+            <span class="mk tl">7</span>
+            <div class="wf" style="padding:16px 18px;text-align:center">
+              <div style="font-size:12px;font-weight:700;color:var(--ink)">가입이 완료되었습니다</div>
+              <div style="font-size:10.5px;margin:6px 0 12px">로그인 화면으로 이동합니다.</div>
+              <div class="btn-w pri" style="display:inline-block">확인</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d"><span class="n">1</span><span class="t"><b>이메일</b> — 형식 검증 + 중복 확인. 확인 전에는 가입 버튼을 비활성으로 둔다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>비밀번호</b> — 규칙을 입력 전에 미리 보여준다. 확인 칸과 불일치하면 하단에 즉시 표시.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>소속</b> — 드롭다운으로 <code>회사</code> / <code>개인</code> 선택. 소속단체명은 직접 입력이며 <b>생략할 수 있다.</b></span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>회원가입</b> — 입력 정보 검증 후 성공·실패를 팝업으로 안내하고 <span class="go">LOGIN-01</span>로 리다이렉트한다.</span></div>
+      <div class="d"><span class="n">5</span><span class="t">기존 회원용 로그인 링크 → <span class="go">LOGIN-01</span></span></div>
+      <div class="d"><span class="n">6</span><span class="t"><b>추가정보 입력창</b> — 소셜 신규 가입자에게만 뜬다. 이메일·비밀번호는 Provider가 관리하므로 받지 않는다. 닫기로 빠져나가면 가입을 완료하지 않은 상태로 본다.</span></div>
+      <div class="d"><span class="n">7</span><span class="t"><b>결과 팝업</b> — 성공·실패를 같은 위치·같은 형태로 알린다. 확인 버튼 하나만 둔다.</span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ── INTRO-01 ── -->
+<article class="screen" id="INTRO-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">문서 (기능 소개)</span>
+    <span class="k">화면 경로</span><span class="v">Home &gt; 문서</span>
+    <span class="k">페이지 코드</span><span class="v code">INTRO-01 ~ 05</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap">헤더 드롭다운으로 5개 소개 페이지를 오간다 · 비로그인 상태에서 열람 가능</p>
+      <div class="wf">
+        <div class="row" style="padding:9px 14px;border-bottom:1px solid var(--wf-line)">
+          <div class="box" style="width:22px;height:22px"></div><div class="txt" style="width:82px"></div>
+          <div class="grow"></div>
+          <div class="m" style="position:relative"><span class="mk tr">1</span>
+            <span style="font-weight:700;color:var(--ink)">문서 ▾</span></div>
+          <div class="btn-w sm">로그인</div>
+        </div>
+        <div class="row" style="align-items:flex-start;gap:0">
+          <div class="m" style="width:172px;border-right:1px solid var(--wf-line);padding:14px 12px">
+            <span class="mk tl" style="left:6px">2</span>
+            <div class="col" style="gap:6px;font-size:11px">
+              <div style="background:var(--wf-fill);padding:5px 8px;font-weight:700;color:var(--ink)">대시보드</div>
+              <div style="padding:5px 8px">리소스 조회</div>
+              <div style="padding:5px 8px">프로비저닝</div>
+              <div style="padding:5px 8px;color:#a8a6a0">비용 관리 · 확장</div>
+              <div style="padding:5px 8px;color:#a8a6a0">로그 통합 관리 · 확장</div>
+            </div>
+          </div>
+          <div class="grow m" style="padding:18px 20px">
+            <span class="mk tl" style="left:12px;top:10px">3</span>
+            <div class="col">
+              <div class="txt" style="width:38%;height:14px"></div>
+              <div class="box img" style="height:118px"></div>
+              <div class="txt l"></div><div class="txt m"></div>
+              <div class="m" style="text-align:center;margin-top:12px;padding-top:14px;border-top:1px dashed var(--wf-line)">
+                <span class="mk tl" style="left:38%;top:4px">4</span>
+                <div style="font-size:10.5px;margin-bottom:8px">직접 연결해서 확인해 보세요</div>
+                <div class="btn-w pri" style="display:inline-block">로그인하고 시작하기</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d"><span class="n">1</span><span class="t"><b>드롭다운</b> — 헤더의 문서 메뉴에 호버하면 5개 항목이 열린다. 항목 선택 시 해당 소개 페이지로 이동.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>소개 목록</b><ul><li>INTRO-01 대시보드</li><li>INTRO-02 리소스 조회</li><li>INTRO-03 프로비저닝</li><li>INTRO-04 비용 관리 <b>(확장)</b></li><li>INTRO-05 로그 통합 관리 <b>(확장)</b></li></ul>확장 기능 2종은 <b>준비 중</b> 배지를 달고, 눌러도 같은 형태의 예고 페이지를 연다.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>기능 설명</b> — 어떤 화면에서 무엇을 할 수 있는지 화면 이미지와 함께 설명한다. 페이지 구조는 5개 모두 동일하게 맞춘다.</span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>로그인 유도</b> — 각 소개 페이지 하단 고정. 클릭 시 <span class="go">LOGIN-01</span>로 이동한다.</span></div>
+    </div>
+  </div>
+</article>
+<!-- ── COMM-01 ── -->
+<article class="screen" id="COMM-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">공통 — 사이드바 · 유틸</span>
+    <span class="k">화면 경로</span><span class="v">공통 (메인 홈 제외 전 화면)</span>
+    <span class="k">페이지 코드</span><span class="v code">COMM-01</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap">모든 로그인 후 화면의 골격 · 사이드바 폭 220 고정, 본문 가변</p>
+      <div class="wf" style="display:flex;min-height:320px">
+        <div class="m" style="width:196px;border-right:1px solid var(--wf-line);padding:14px 12px;display:flex;flex-direction:column;background:#fafaf8">
+          <span class="mk tl" style="left:6px">1</span>
+          <div class="row" style="gap:8px;padding-bottom:14px;border-bottom:1px solid var(--wf-line)">
+            <div class="box" style="width:24px;height:24px"></div><div class="txt" style="width:86px"></div>
+          </div>
+          <div class="m col" style="gap:4px;margin-top:14px;font-size:11.5px">
+            <span class="mk tl" style="left:-19px;top:-6px">2</span>
+            <div style="background:#e7e6e2;padding:7px 10px;font-weight:700;color:var(--ink)">대시보드</div>
+            <div style="padding:7px 10px">인벤토리</div>
+            <div style="padding:7px 10px">프로비저닝</div>
+            <div style="padding:7px 10px">마이페이지</div>
+            <div style="padding:7px 10px;color:#a8a6a0">비용 관리 · 확장</div>
+            <div style="padding:7px 10px;color:#a8a6a0">보안 점검 · 확장</div>
+          </div>
+          <div style="flex:1"></div>
+          <div class="m" style="border-top:1px solid var(--wf-line);padding-top:11px">
+            <span class="mk tl" style="left:-2px">3</span>
+            <div style="font-size:10.5px">name@company.com</div>
+            <div class="btn-w sm" style="margin-top:7px">로그아웃</div>
+          </div>
+        </div>
+        <div class="grow" style="padding:14px 16px">
+          <div class="row">
+            <div class="txt" style="width:120px;height:13px"></div>
+            <div class="grow"></div>
+            <div class="m row" style="gap:9px"><span class="mk tr" style="top:-12px;right:-10px">4</span>
+              <span style="font-size:13px">☀️</span><span style="font-size:11px">KOR / EN</span><span style="font-size:13px">🔔</span>
+            </div>
+          </div>
+          <div class="m" style="margin-top:16px;border:1px dashed var(--wf-line);height:180px;display:flex;align-items:center;justify-content:center;color:#a8a6a0;font-size:11px">
+            <span class="mk tl" style="left:-8px;top:-8px">5</span>
+            각 페이지 본문 영역
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d"><span class="n">1</span><span class="t"><b>로고 + 서비스명</b> — 클릭 시 메인 홈(MAIN-01)으로 이동한다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>메뉴</b> — 대시보드 / 인벤토리 / 프로비저닝 / 마이페이지 순서로 위에서부터 고정. 현재 페이지는 배경으로 강조한다. 확장 기능 2종은 개발 완료 전까지 비활성으로 노출.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>계정 영역</b> — 로그인 이메일과 로그아웃 버튼. 로그아웃은 실행 전 반드시 재확인한다.</span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>유틸</b><ul><li>테마 전환 ☀️/🌙 — 선택값은 계정에 저장</li><li>KOR / EN 전환</li><li>알림 🔔 — 프로비저닝 결과, 예산 경고, 키 검증 실패</li></ul></span></div>
+      <div class="d"><span class="n">5</span><span class="t"><b>본문</b> — 좌측 정렬, 최대 폭 1180. 이 아래 모든 화면은 이 골격 안에 들어간다.</span></div>
+      <div class="d hd">UI 규칙</div>
+      <div class="d"><span class="n g">·</span><span class="t">스크롤바는 2px, 호버 시 색이 진해지고, 브라우저 레이아웃 폭을 차지하지 않는다.</span></div>
+      <div class="d"><span class="n g">·</span><span class="t">삭제·중지·생성처럼 되돌릴 수 없는 동작은 예외 없이 확인 단계를 둔다.</span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ── DASH-01 ── -->
+<article class="screen" id="DASH-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">대시보드</span>
+    <span class="k">화면 경로</span><span class="v">Main &gt; 대시보드</span>
+    <span class="k">페이지 코드</span><span class="v code">DASH-01</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap">로그인 직후 첫 화면 · 사이드바 생략(COMM-01 참조)</p>
+      <div class="wf" style="padding:16px 18px">
+        <div class="row">
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--ink)">대시보드</div>
+            <div style="font-size:10.5px;margin-top:3px"><span class="mk inl">1</span>AWS · Azure · GCP는 실시간 연동입니다.</div>
+          </div>
+          <div class="grow"></div>
+          <div class="m row" style="gap:6px"><span class="mk tr">2</span>
+            <div class="btn-w sm">AWS 콘솔 열기 ↗</div>
+            <div class="btn-w sm">Azure 포털 열기 ↗</div>
+            <div class="btn-w sm">GCP 콘솔 열기 ↗</div>
+          </div>
+        </div>
+
+        <div class="m stack g3" style="margin-top:18px">
+          <span class="mk tl" style="left:-8px;top:-8px">3</span>
+          <div class="box col" style="align-items:flex-start;padding:12px 14px;gap:4px">
+            <div style="font-size:10px">전체 리소스 수</div>
+            <div style="font-size:20px;font-weight:700;color:var(--ink)">27</div>
+            <div style="font-size:9.5px;color:#a8a6a0">AWS 12 · Azure 8 · GCP 7</div>
+          </div>
+          <div class="box col" style="align-items:flex-start;padding:12px 14px;gap:4px">
+            <div style="font-size:10px">전체 리전 수</div>
+            <div style="font-size:20px;font-weight:700;color:var(--ink)">4</div>
+            <div style="font-size:9.5px;color:#a8a6a0">리소스가 배포된 리전</div>
+          </div>
+          <div class="box col" style="align-items:flex-start;padding:12px 14px;gap:4px">
+            <div class="row" style="gap:6px"><span style="font-size:10px">예상 총 비용</span>
+              <span style="font-size:9px;border:1px solid var(--wf-line);border-radius:9px;padding:0 6px">Estimated</span></div>
+            <div style="font-size:20px;font-weight:700;color:var(--ink)">$721.88 <span style="font-size:10px;font-weight:400">/mo</span></div>
+            <div style="font-size:9.5px;color:#a8a6a0">리소스별 정가 / Cost Explorer 추정 합계. 정책문서 참고.</div>
+          </div>
+        </div>
+
+        <div class="m" style="margin-top:16px"><span class="mk tl" style="left:-8px;top:-8px">4</span>
+          <div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:7px">주요 리소스 요약</div>
+          <div class="stack g4">
+            <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:2px"><span style="font-size:10px">Compute</span><b style="color:var(--ink)">14</b><span style="font-size:9.5px;color:#a8a6a0">실행 9 · 중지 5</span></div>
+            <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:2px"><span style="font-size:10px">Database</span><b style="color:var(--ink)">4</b><span style="font-size:9.5px;color:#a8a6a0">실행 4</span></div>
+            <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:2px"><span style="font-size:10px">Object Storage</span><b style="color:var(--ink)">6</b><span style="font-size:9.5px;color:#a8a6a0">—</span></div>
+            <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:2px"><span style="font-size:10px">CDN</span><b style="color:var(--ink)">3</b><span style="font-size:9.5px;color:#a8a6a0">—</span></div>
+          </div>
+        </div>
+
+        <div class="m" style="margin-top:16px"><span class="mk tl" style="left:-8px;top:-8px">5</span>
+          <div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:7px">클라우드별 비용 내역</div>
+          <div class="stack g3">
+            <div class="box col" style="padding:11px 13px;align-items:stretch;gap:5px">
+              <div class="row"><b style="color:var(--ink);font-size:11px">AWS</b><div class="grow"></div><span style="font-size:9px;border:1px solid var(--wf-line);border-radius:9px;padding:0 6px">실측</span></div>
+              <div style="font-size:16px;font-weight:700;color:var(--ink)">$128.40</div>
+              <div style="font-size:9.5px;color:#a8a6a0">12개 리소스 · 예상 월 $481.50<br>Cost Explorer · 2시간 전 수집</div>
+            </div>
+            <div class="box col" style="padding:11px 13px;align-items:stretch;gap:5px">
+              <div class="row"><b style="color:var(--ink);font-size:11px">Azure</b><div class="grow"></div><span style="font-size:9px;border:1px solid var(--wf-line);border-radius:9px;padding:0 6px">실측</span></div>
+              <div style="font-size:16px;font-weight:700;color:var(--ink)">$64.10</div>
+              <div style="font-size:9.5px;color:#a8a6a0">8개 리소스 · 예상 월 $240.38<br>Cost Management · 3시간 전 수집</div>
+            </div>
+            <div class="box col" style="padding:11px 13px;align-items:stretch;gap:5px;border-style:dashed;border-color:#e0a0a0">
+              <div class="row"><b style="color:var(--ink);font-size:11px">GCP</b><div class="grow"></div><span style="font-size:9px;border:1px solid #e0a0a0;color:#a5504f;border-radius:9px;padding:0 6px">데이터 없음</span></div>
+              <div style="font-size:12px;font-weight:600;color:#a5504f">export 미설정</div>
+              <div style="font-size:9.5px;color:#a8a6a0">7개 리소스 (조회는 정상)<br>BigQuery billing export 필요</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack g2" style="margin-top:16px">
+          <div class="m"><span class="mk tl" style="left:-8px;top:-8px">6</span>
+            <div class="box col" style="height:172px;padding:11px 13px;align-items:stretch">
+              <div class="row"><b style="color:var(--ink);font-size:11px">월별 비용 추이</b><div class="grow"></div><span style="font-size:9.5px">4~9월 · USD</span></div>
+              <div class="grow row" style="align-items:flex-end;gap:12px;padding:12px 4px 0">
+                <div class="col" style="gap:0;flex:1"><div style="height:36px;background:#c9c8c2"></div><div style="height:22px;background:#e2e1dc"></div></div>
+                <div class="col" style="gap:0;flex:1"><div style="height:48px;background:#c9c8c2"></div><div style="height:28px;background:#e2e1dc"></div></div>
+                <div class="col" style="gap:0;flex:1"><div style="height:58px;background:#c9c8c2"></div><div style="height:32px;background:#e2e1dc"></div></div>
+                <div class="col" style="gap:0;flex:1"><div style="height:66px;background:#c9c8c2"></div><div style="height:36px;background:#e2e1dc"></div></div>
+                <div class="col" style="gap:0;flex:1"><div style="height:74px;background:#c9c8c2"></div><div style="height:40px;background:#e2e1dc"></div></div>
+                <div class="col" style="gap:0;flex:1"><div style="height:52px;background:#c9c8c2"></div><div style="height:29px;background:#e2e1dc"></div></div>
+              </div>
+              <div style="border-top:1px solid var(--wf-line);margin-top:0;padding-top:6px;font-size:9.5px;color:#a8a6a0">
+                ■ AWS ■ Azure · GCP 데이터 없음 → 그래프에서 제외</div>
+            </div>
+          </div>
+          <div class="m"><span class="mk tl" style="left:-8px;top:-8px">7</span>
+            <div class="box row" style="height:172px;padding:11px 13px;align-items:center;gap:16px">
+              <div style="width:104px;height:104px;border-radius:50%;border:22px solid #d5d4cf;border-top-color:#b3b2ac;border-right-color:#c4c3bd;flex:none"></div>
+              <div class="col" style="gap:6px;flex:1;font-size:10px;text-align:left">
+                <div style="font-weight:700;color:var(--ink);font-size:11px">서비스별 비용 비중</div>
+                <div class="row"><span class="grow">컴퓨트</span><b>63%</b></div>
+                <div class="row"><span class="grow">스토리지</span><b>21%</b></div>
+                <div class="row"><span class="grow">데이터베이스</span><b>11%</b></div>
+                <div class="row"><span class="grow">기타</span><b>5%</b></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="stack g2" style="margin-top:16px">
+          <div class="m"><span class="mk tl" style="left:-8px;top:-8px">8</span>
+            <div class="box col" style="padding:11px 13px;align-items:stretch;gap:7px">
+              <b style="color:var(--ink);font-size:11px;text-align:left">최근 프로비저닝 활동</b>
+              <table class="wtab"><tbody>
+                <tr><td>09-08 14:22</td><td>CREATE</td><td>Azure</td><td>mcp-c3d4-vm</td><td>성공</td></tr>
+                <tr><td>09-08 11:05</td><td>STOP</td><td>AWS</td><td>mcp-a1b2-vm</td><td>성공</td></tr>
+                <tr><td>09-07 18:12</td><td>CREATE</td><td>GCP</td><td>mcp-g7h8-vm</td><td>실패</td></tr>
+              </tbody></table>
+            </div>
+          </div>
+          <div class="col">
+            <div class="m"><span class="mk tl" style="left:-8px;top:-8px">9</span>
+              <div class="box row" style="padding:11px 13px;gap:9px;border-color:#e0a0a0;background:#fdf6f6">
+                <span style="font-size:14px">⚠️</span>
+                <div style="text-align:left;font-size:10.5px;color:#a5504f">
+                  <b>예산 임계값 80% 초과</b><br>AWS 이번 달 $128.40 / 설정 예산 $150.00</div>
+              </div>
+            </div>
+            <div class="m grow"><span class="mk tl" style="left:-8px;top:-8px">10</span>
+              <div class="box col" style="padding:11px 13px;align-items:stretch;gap:6px;height:100%">
+                <b style="color:var(--ink);font-size:11px;text-align:left">리전 분포</b>
+                <div style="flex:1;min-height:78px;border:1px dashed var(--wf-line);display:flex;align-items:center;justify-content:center;font-size:10px;color:#a8a6a0">
+                  세계 지도 · 리전별 리소스 수 버블</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d"><span class="n">1</span><span class="t"><b>연동 안내</b> — 대시보드 제목 아래 고정 문구. <code>AWS · Azure · GCP는 실시간 연동입니다.</code></span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>콘솔 바로가기</b> — 각 CSP 관리 화면을 <b>새 창</b>으로 연다. 우측 상단 고정.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>요약 3종</b><ul><li>전체 리소스 수 — 연동된 전체 클라우드 합계</li><li>전체 리전 수 — 리소스가 배포된 리전 개수</li><li>예상 총 비용 — 정가 및 Cost Explorer 기반 이번 달 추정치($/mo)</li></ul>추정치에는 <code>Estimated</code> 배지와 산출 근거 문구를 함께 붙인다.</span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>주요 리소스 요약 카드</b> — Compute · Database · Object Storage · CDN의 수량과 상태를 묶어 보여준다.</span></div>
+      <div class="d"><span class="n">5</span><span class="t"><b>클라우드별 비용 내역</b> — 연동 리소스 수 / 실제 누적 비용 / 예상 월 비용을 카드로 표시한다.<br><b>중요:</b> 조회 실패와 실제 0원을 구분한다. <code>리소스 0개 → $0.00</code>은 <b>조회에 성공했고 결과가 0건일 때만</b> 쓴다. 나머지 상태는 <span class="go">COST-01</span>의 5상태 정의를 따른다.</span></div>
+      <div class="d"><span class="n">6</span><span class="t"><b>월별 비용 추이</b> — 3사를 한 그래프에 올리고 y축은 하나만 둔다. 데이터가 없는 계열은 <b>0으로 그리지 않고</b> 제외한 뒤 범례에 사유를 쓴다.</span></div>
+      <div class="d"><span class="n">7</span><span class="t"><b>서비스별 비용 비중</b> — 도넛. 세그먼트는 6개 이하로 제한하고 초과분은 기타로 묶는다.</span></div>
+      <div class="d"><span class="n">8</span><span class="t"><b>최근 프로비저닝 활동</b> — 비용이 갑자기 오른 원인을 여기서 찾게 한다. 행 클릭 시 <span class="go">INV-02 리소스 상세</span>로 연결.</span></div>
+      <div class="d"><span class="n">9</span><span class="t"><b>예산 임계값 경고</b> — 경고 아이콘과 함께 어떤 계정이 어느 임계값을 넘었는지 숫자로 밝힌다. 임계값 설정은 <span class="go">COST-01</span>에서 한다.</span></div>
+      <div class="d"><span class="n">10</span><span class="t"><b>리전 분포</b> — 지도 위에 리전별 리소스 수를 표시한다. 지도를 못 읽는 환경을 위해 표 보기를 함께 제공한다.</span></div>
+    </div>
+  </div>
+</article>
+<!-- ── INV-01 ── -->
+<article class="screen" id="INV-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">인벤토리 (리소스 통합 조회)</span>
+    <span class="k">화면 경로</span><span class="v">Main &gt; 인벤토리</span>
+    <span class="k">페이지 코드</span><span class="v code">INV-01</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap">등록·검증 완료된 AWS · Azure · GCP 계정의 리소스를 하나의 목록으로 본다</p>
+      <div class="wf" style="padding:16px 18px">
+        <div class="row" style="align-items:flex-start">
+          <div class="m"><span class="mk tl" style="left:-10px;top:-6px">1</span>
+            <div style="font-size:13px;font-weight:700;color:var(--ink)">전체 리소스 27</div>
+            <div style="font-size:10px;color:#a8a6a0">마지막 동기화 2026-09-08 14:40 (2시간 전)</div>
+          </div>
+          <div class="grow"></div>
+          <div class="m row" style="gap:8px;align-items:center">
+            <span class="mk tr">2</span>
+            <div style="text-align:right">
+              <div style="font-size:10px">예상 총 비용 (추정)</div>
+              <div style="font-size:13px;font-weight:700;color:var(--ink);text-decoration:underline">$721.88 /mo</div>
+            </div>
+            <div class="btn-w sm">⟳ 새로고침</div>
+          </div>
+        </div>
+        <div class="m" style="margin-top:9px"><span class="mk tl" style="left:-10px;top:-7px">3</span>
+          <div style="border:1px dashed var(--wf-line);background:#fafaf8;padding:7px 10px;font-size:10.5px">
+            수집 중 · AWS 완료 &nbsp;/&nbsp; Azure 수집중 &nbsp;/&nbsp; GCP 대기 &nbsp;— 새로고침 버튼 비활성</div>
+        </div>
+
+        <div class="m" style="margin-top:14px"><span class="mk tl" style="left:-8px;top:-8px">4</span>
+          <div class="box row" style="padding:10px 12px;gap:8px;flex-wrap:wrap;justify-content:flex-start">
+            <span style="font-size:10px;color:#a8a6a0">필터</span>
+            <div class="inp" style="width:118px">클라우드 ▾</div>
+            <div class="inp" style="width:132px">서비스 종류 ▾</div>
+            <div class="inp" style="width:126px">연결 계정 ▾</div>
+            <div class="inp" style="width:104px">상태 ▾</div>
+            <div class="inp" style="width:104px">리전 ▾</div>
+            <div class="inp" style="width:96px">태그 ▾</div>
+            <div class="btn-w sm">초기화</div>
+          </div>
+        </div>
+        <div class="m row" style="margin-top:9px;gap:8px"><span class="mk tl" style="left:-8px;top:-8px">5</span>
+          <div class="inp" style="width:126px">리소스명 ▾</div>
+          <div class="inp grow">검색어를 입력하세요</div>
+          <div class="btn-w sm">검색</div>
+        </div>
+
+        <div class="row" style="margin-top:14px;gap:7px"><span class="mk inl">6</span>
+          <span style="font-size:10.5px">3개 선택됨</span>
+          <div class="btn-w sm">start</div><div class="btn-w sm">stop</div>
+          <div class="btn-w sm" style="border-color:#c98b8b;color:#a5504f">delete</div>
+          <div class="grow"></div>
+          <div class="inp" style="width:130px;font-size:10px">정렬: 비용 높은 순 ▾</div>
+        </div>
+
+        <div class="m" style="margin-top:9px"><span class="mk tl" style="left:-26px;top:-2px">7</span>
+          <table class="wtab">
+            <thead><tr>
+              <th style="width:22px">☐</th><th style="width:52px">CSP</th><th>CSP 원본 리소스 유형</th><th>리소스명</th>
+              <th>Region</th><th>연결 계정</th><th style="width:72px">비용</th><th>태그</th><th style="width:62px">상태</th><th style="width:56px"></th>
+            </tr></thead>
+            <tbody>
+              <tr><td>☑</td><td>◆ AWS</td><td>EC2 Instance</td><td>mcp-a1b2-vm</td><td>ap-northeast-2</td><td>prod-aws-01</td><td>$61.20</td><td>env:prod</td><td>RUNNING</td><td><span class="btn-w sm" style="padding:2px 6px">상세</span></td></tr>
+              <tr><td>☑</td><td>◆ Azure</td><td>Virtual Machine</td><td>mcp-c3d4-vm</td><td>koreacentral</td><td>prod-az-01</td><td>$38.40</td><td>—</td><td>STOPPED</td><td><span class="btn-w sm" style="padding:2px 6px">상세</span></td></tr>
+              <tr><td>☐</td><td>◆ GCP</td><td>Compute Engine</td><td>mcp-g7h8-vm</td><td>asia-northeast3</td><td>dev-gcp-01</td><td>추정 $18.00</td><td>env:dev</td><td>RUNNING</td><td><span class="btn-w sm" style="padding:2px 6px">상세</span></td></tr>
+              <tr><td>☑</td><td>◆ AWS</td><td>EBS Volume</td><td>mcp-a1b2-disk</td><td>ap-northeast-2</td><td>prod-aws-01</td><td>$12.10</td><td>—</td><td>미연결</td><td><span class="btn-w sm" style="padding:2px 6px">상세</span></td></tr>
+              <tr><td>☐</td><td>◆ Azure</td><td>SQL Database</td><td>mcp-e5f6-sql</td><td>koreacentral</td><td>prod-az-01</td><td>$21.20</td><td>env:prod</td><td>RUNNING</td><td><span class="btn-w sm" style="padding:2px 6px">상세</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="row" style="justify-content:center;gap:6px;margin-top:12px;font-size:10.5px;color:#a8a6a0">
+          ‹ 1 2 3 › &nbsp;·&nbsp; 페이지당 50건
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d hd">조회 기준</div>
+      <div class="d"><span class="n g">·</span><span class="t">DB에 저장된 <b>최근 조회 결과를 먼저</b> 보여준다. 화면 진입 때마다 재수집하지 않는다.</span></div>
+      <div class="d"><span class="n">1</span><span class="t"><b>전체 리소스 수 · 마지막 동기화 시각</b> — 좌측 상단. 지금 보고 있는 값이 언제 것인지 항상 밝힌다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>예상 총 비용(추정)</b> — 클릭 시 <span class="go">COST-01 비용 상세</span>로 이동. 옆에 <b>새로고침(동기화)</b> 버튼을 둔다.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>동기화 진행 상태</b> — 등록된 계정 전체를 재수집한다. 수집 중에는 버튼을 비활성하고 CSP별 진행 상태(완료 / 수집중 / 대기)를 보여준다.</span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>필터</b> — 클라우드 · 서비스 종류 · 연결 계정 · 상태 · 리전 · 태그.<ul><li>클라우드, 연결 계정은 <b>중복 선택</b> 가능</li><li>서비스 종류는 <b>대분류 아래 CSP 원본 유형</b>으로 편다. AWS 선택 시 EC2, Azure는 Virtual Machine, GCP는 Compute Engine만 노출</li><li>Compute와 Network는 <b>하나로 병합</b>한다</li><li>초기화 버튼으로 전체 해제</li></ul></span></div>
+      <div class="d"><span class="n">5</span><span class="t"><b>검색</b> — 입력폼은 하나. 조건(리소스명·ID / 서비스 / 리전 / 계정)을 드롭다운으로 고르고 키워드를 넣는다. 필터와는 <b>교집합</b>으로 동작한다.</span></div>
+      <div class="d"><span class="n">6</span><span class="t"><b>일괄 제어</b> — 체크박스로 여러 건 선택 후 start / stop / delete.<ul><li>선택 건수를 항상 표시</li><li>delete는 리소스명을 다시 입력받는 확인 모달을 거친다</li><li>권한이 없는 리소스가 섞이면 실행 전에 목록으로 알린다</li></ul></span></div>
+      <div class="d"><span class="n">7</span><span class="t"><b>목록 열</b> — CSP(아이콘) / CSP 원본 리소스 유형 / 리소스명 / Region / 연결 계정명 / 예상·수집 비용 / 태그 / 상태 / 상세.<br>기존 <s>서비스 종류</s> 열은 삭제하고 원본 유형으로 대체한다(09/06 확정). 상세는 <span class="go">INV-02 모달</span>로 연다.</span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ── INV-02 ── -->
+<article class="screen" id="INV-02">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">리소스 상세 (모달)</span>
+    <span class="k">화면 경로</span><span class="v">Main &gt; 인벤토리 &gt; 상세</span>
+    <span class="k">페이지 코드</span><span class="v code">INV-02</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap">목록 맥락을 잃지 않도록 <b>페이지 이동이 아닌 모달</b>로 확정 (09/06)</p>
+      <div class="wf" style="padding:20px;background:#eeedea">
+        <div class="m" style="max-width:560px;margin:0 auto;background:#fff;border:1px solid var(--wf-line)">
+          <div class="row" style="padding:12px 16px;border-bottom:1px solid var(--wf-line)">
+            <span class="mk tl" style="left:6px;top:6px">1</span>
+            <div>
+              <div style="font-size:12.5px;font-weight:700;color:var(--ink)">mcp-a1b2-vm</div>
+              <div style="font-size:10px;color:#a8a6a0">AWS · EC2 Instance · ap-northeast-2</div>
+            </div>
+            <div class="grow"></div><span style="color:#a8a6a0">✕</span>
+          </div>
+          <div class="m" style="padding:14px 16px">
+            <span class="mk tl" style="left:6px;top:2px">2</span>
+            <table class="wtab"><tbody>
+              <tr><th style="width:112px">리소스 ID</th><td>i-0abc123def456</td></tr>
+              <tr><th>연결 계정</th><td>prod-aws-01</td></tr>
+              <tr><th>상태</th><td>RUNNING · 2026-08-14 생성</td></tr>
+              <tr><th>사양</th><td>t3.medium · vCPU 2 · RAM 4GB</td></tr>
+              <tr><th>비용</th><td>이번 달 $61.20 (실측) · 예상 월 $229.50</td></tr>
+              <tr><th>태그</th><td>env:prod · owner:infra</td></tr>
+            </tbody></table>
+          </div>
+          <div class="m" style="padding:0 16px 14px"><span class="mk tl" style="left:6px;top:-6px">3</span>
+            <div style="border:1px dashed #e0a0a0;background:#fdf6f6;padding:8px 10px;font-size:10.5px;color:#a5504f">
+              보안 점검 1건 — 0.0.0.0/0 → SSH(22) 허용</div>
+          </div>
+          <div class="m row" style="padding:12px 16px;border-top:1px solid var(--wf-line);gap:7px">
+            <span class="mk tl" style="left:6px;top:2px">4</span>
+            <div class="btn-w sm">start</div><div class="btn-w sm">stop</div>
+            <div class="btn-w sm" style="border-color:#c98b8b;color:#a5504f">delete</div>
+            <div class="grow"></div>
+            <div class="btn-w sm">AWS 콘솔에서 열기 ↗</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d"><span class="n">1</span><span class="t"><b>헤더</b> — 리소스명과 CSP · 원본 유형 · 리전. ESC 또는 배경 클릭으로 닫는다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>상세 정보</b> — 목록에 없는 값만 추가로 보여준다. 값이 없으면 <code>—</code>로 두고 칸을 지우지 않는다.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>보안 점검 결과</b> — 해당 리소스의 위반 건이 있으면 요약을 띄우고 <span class="go">SEC-01</span>로 연결한다. <b>확장 기능 적용 후 노출.</b></span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>단건 제어</b> — 목록과 같은 동작을 이 리소스에만 적용한다. 실행 후 모달을 닫지 않고 상태만 갱신한다.</span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ── PROV-01 ── -->
+<article class="screen" id="PROV-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">프로비저닝</span>
+    <span class="k">화면 경로</span><span class="v">Main &gt; 프로비저닝</span>
+    <span class="k">페이지 코드</span><span class="v code">PROV-01</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap">설정 입력 폼은 <b>위에서 아래로 1열 정렬</b> · 실제 리소스가 생성되는 화면</p>
+      <div class="wf" style="padding:16px 18px">
+        <div class="m"><span class="mk tl" style="left:-8px;top:-8px">1</span>
+          <div style="border:1px solid #e0a0a0;background:#fdf6f6;padding:9px 12px;font-size:11px;color:#a5504f">
+            ⚠️ 실제 리소스를 생성하는 작업이며 <b>과금이 발생할 수 있습니다.</b></div>
+        </div>
+
+        <div class="col" style="margin-top:16px;max-width:560px">
+          <div class="m"><span class="mk tl" style="left:-8px">2</span>
+            <div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:5px">1. 클라우드 플랫폼 <span style="font-weight:400;color:#a8a6a0">· 중복 선택 가능</span></div>
+            <div class="row" style="gap:7px"><div class="btn-w sm">☑ AWS</div><div class="btn-w sm">☑ Azure</div><div class="btn-w sm">☐ GCP</div></div>
+          </div>
+          <div class="m"><span class="mk tl" style="left:-8px">3</span>
+            <div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:5px">2. 계정 선택</div>
+            <div class="inp">prod-aws-01, prod-az-01 (2개 선택) ▾</div>
+          </div>
+          <div class="m"><span class="mk tl" style="left:-8px">4</span>
+            <div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:5px">3. 리소스 종류 <span style="font-weight:400;color:#a8a6a0">· 단일 선택</span></div>
+            <div class="row" style="gap:7px;flex-wrap:wrap">
+              <div class="btn-w sm pri">◉ Compute</div>
+              <div class="btn-w sm" style="color:#b7b6b0;border-color:#ddd">◯ Database</div>
+              <div class="btn-w sm" style="color:#b7b6b0;border-color:#ddd">◯ Object Storage</div>
+              <div class="btn-w sm" style="color:#b7b6b0;border-color:#ddd">◯ CDN</div>
+            </div>
+            <div style="font-size:9.5px;color:#a8a6a0;margin-top:5px">prod-az-01 계정에 Compute 외 생성 권한이 없어 나머지는 선택할 수 없습니다.</div>
+          </div>
+          <div class="m"><span class="mk tl" style="left:-8px">5</span>
+            <div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:5px">4. 공통 설정</div>
+            <div class="col">
+              <div class="inp">리소스명 프리픽스 — mcp-</div>
+              <div class="inp">리전 ▾</div>
+              <div class="inp">사양 (vCPU / RAM) ▾</div>
+              <div class="inp">태그 (key:value) — env:dev</div>
+            </div>
+          </div>
+          <div class="m"><span class="mk tl" style="left:-8px">6</span>
+            <div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:5px">5. 플랫폼별 추가 설정</div>
+            <div class="stack g2">
+              <div class="box col" style="padding:10px 12px;align-items:stretch;gap:6px">
+                <b style="font-size:10.5px;color:var(--ink);text-align:left">AWS</b>
+                <div class="inp">AMI ▾</div><div class="inp">키페어 ▾</div><div class="inp">보안 그룹 ▾</div>
+              </div>
+              <div class="box col" style="padding:10px 12px;align-items:stretch;gap:6px">
+                <b style="font-size:10.5px;color:var(--ink);text-align:left">Azure</b>
+                <div class="inp">이미지 ▾</div><div class="inp">리소스 그룹 ▾</div><div class="inp">NSG ▾</div>
+              </div>
+            </div>
+          </div>
+          <div class="row" style="gap:8px;margin-top:6px;align-items:center"><span class="mk inl">7</span>
+            <div class="btn-w">비교하기</div>
+            <div class="btn-w pri">생성하기</div>
+          </div>
+        </div>
+
+        <hr class="sp">
+        <div class="m" style="max-width:560px"><span class="mk tl" style="left:-8px;top:-8px">8</span>
+          <div style="border:1px solid var(--wf-line);background:#fff;padding:14px 16px">
+            <div style="font-size:12px;font-weight:700;color:var(--ink);margin-bottom:9px">가격 비교 (모달)</div>
+            <table class="wtab">
+              <thead><tr><th>플랫폼</th><th>동급 사양</th><th>시간당</th><th>월 예상</th></tr></thead>
+              <tbody>
+                <tr><td>AWS</td><td>t3.medium · 2vCPU/4GB</td><td>$0.052</td><td>$37.96</td></tr>
+                <tr><td>Azure</td><td>B2s · 2vCPU/4GB</td><td>$0.050</td><td>$36.50</td></tr>
+                <tr><td>GCP</td><td>e2-medium · 2vCPU/4GB</td><td>$0.045</td><td>$32.85</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d"><span class="n">1</span><span class="t"><b>과금 경고</b> — 페이지 상단에 상시 노출한다. 스크롤해도 사라지지 않게 한다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>플랫폼 선택</b> — AWS / Azure / GCP <b>중복 선택 가능</b>.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>계정 선택</b> — 사용자가 등록한 전체 계정 중에서 고른다. 회사별로 드롭다운을 나눈다.<br><b>[확인 필요]</b> 계정도 중복 선택을 허용할지 결정되지 않았다. 허용 시 같은 설정으로 계정 수만큼 생성된다는 점을 화면에 명시해야 한다.</span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>리소스 종류</b> — 앞서 고른 계정 권한으로 만들 수 있는 종류만 활성화한다. 권한이 없는 항목도 <b>보이되 비활성</b>으로 두고 사유를 아래에 쓴다. 최소권한 기준(계정 A는 전체, 계정 B는 Compute만 → 교집합인 Compute만 가능). <b>중복 선택 불가.</b></span></div>
+      <div class="d"><span class="n">5</span><span class="t"><b>공통 설정</b> — 서비스 매핑 표 기준으로 3사 공통 항목만 여기에 둔다. 텍스트 입력과 드롭다운을 섞어 쓴다.</span></div>
+      <div class="d"><span class="n">6</span><span class="t"><b>플랫폼별 추가 설정</b> — 선택한 플랫폼만 AWS → Azure → GCP 순서로 칸을 나눠 렌더링한다.</span></div>
+      <div class="d"><span class="n">7</span><span class="t"><b>비교하기 / 생성하기</b><ul><li>비교하기 → 지금 설정과 동급 사양의 타 플랫폼 가격을 모달로 보여준다</li><li>생성하기 → 과금 발생 확인 → 확인 시 생성과 <span class="go">PROV-02 진행률</span>을 동시에 시작, 취소 시 폼을 그대로 유지</li></ul></span></div>
+      <div class="d"><span class="n">8</span><span class="t"><b>가격 비교 모달</b> — 비교 기준(사양·리전·시점)을 표 위에 밝힌다. 여기서 바로 플랫폼을 바꿔 생성할 수 있게 할지는 <b>추후 결정</b>.</span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ── PROV-02 ── -->
+<article class="screen" id="PROV-02">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">생성 진행률 (모달)</span>
+    <span class="k">화면 경로</span><span class="v">Main &gt; 프로비저닝 &gt; 진행</span>
+    <span class="k">페이지 코드</span><span class="v code">PROV-02</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <div class="stack g2" style="grid-template-columns:1.4fr .6fr">
+        <div>
+          <p class="cap"><b>기본</b> — 프로비저닝 화면에 머무를 때</p>
+          <div class="wf" style="padding:20px;background:#eeedea">
+            <div class="m" style="background:#fff;border:1px solid var(--wf-line);padding:16px 18px">
+              <span class="mk tl" style="left:6px;top:6px">1</span>
+              <div style="font-size:12.5px;font-weight:700;color:var(--ink)">리소스를 생성하고 있습니다</div>
+              <div style="font-size:10.5px;margin:4px 0 14px">생성에는 몇 분이 걸릴 수 있습니다. 이 창을 닫아도 작업은 계속됩니다.</div>
+              <div class="m col" style="gap:12px">
+                <span class="mk tl" style="left:-8px;top:-6px">2</span>
+                <div>
+                  <div class="row" style="font-size:10.5px"><span class="grow">AWS · mcp-a1b2-vm</span><span>100%</span></div>
+                  <div style="height:7px;background:var(--wf-fill);margin-top:4px"><div style="height:7px;width:100%;background:#8f8e88"></div></div>
+                  <div style="font-size:9.5px;color:#a8a6a0;margin-top:3px">생성 완료</div>
+                </div>
+                <div>
+                  <div class="row" style="font-size:10.5px"><span class="grow">Azure · mcp-c3d4-vm</span><span>72%</span></div>
+                  <div style="height:7px;background:var(--wf-fill);margin-top:4px"><div style="height:7px;width:72%;background:#b3b2ac"></div></div>
+                </div>
+                <div class="m">
+                  <span class="mk tl" style="left:-8px;top:-4px">3</span>
+                  <div class="row" style="font-size:10.5px"><span class="grow">GCP · mcp-g7h8-vm</span><span style="color:#a5504f">실패</span></div>
+                  <div style="height:7px;background:var(--wf-fill);margin-top:4px"><div style="height:7px;width:38%;background:#d09a9a"></div></div>
+                  <div style="font-size:9.5px;color:#a5504f;margin-top:3px">할당량 초과 — 해당 리전의 vCPU 한도를 넘었습니다.</div>
+                </div>
+              </div>
+              <div class="m row" style="margin-top:16px;gap:7px;justify-content:flex-end">
+                <span class="mk tl" style="left:-8px;top:-4px">4</span>
+                <div class="btn-w sm">인벤토리로 이동하기</div>
+                <div class="btn-w sm pri">닫기</div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div>
+          <p class="cap"><b>축소</b> — 다른 페이지로 이동했을 때</p>
+          <div class="wf" style="padding:14px;background:#eeedea;min-height:180px;position:relative">
+            <div style="font-size:10px;color:#a8a6a0">다른 페이지 본문</div>
+            <div class="m" style="position:absolute;right:12px;bottom:12px;width:200px;background:#fff;border:1px solid var(--wf-line);padding:10px 12px">
+              <span class="mk tl">5</span>
+              <div class="row" style="font-size:10.5px"><span class="grow" style="font-weight:700;color:var(--ink)">생성 중 2 / 3</span><span>▴</span></div>
+              <div style="height:6px;background:var(--wf-fill);margin-top:6px"><div style="height:6px;width:64%;background:#b3b2ac"></div></div>
+              <div style="font-size:9.5px;color:#a8a6a0;margin-top:5px">완료 1 · 진행 1 · 실패 1</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d"><span class="n">1</span><span class="t"><b>안내</b> — 생성에 시간이 걸릴 수 있다는 사실을 먼저 알린다. 창을 닫아도 작업이 계속된다는 점을 함께 밝힌다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>프로그레스바</b> — 요청한 모든 리소스를 각각 그린다. 실제 진행률을 알 수 없으므로 <b>90%까지 천천히 올리고 완료 응답을 받으면 100%</b>로 채운다. 리소스마다 속도를 다르게 둔다.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>실패 처리</b> — 해당 프로그레스바 아래에 사유를 문구와 색으로 함께 표시한다. 실패해도 나머지 생성은 계속 진행한다.</span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>인벤토리로 이동하기</b> → <span class="go">INV-01</span>. 이동해도 진행은 끊기지 않는다.</span></div>
+      <div class="d"><span class="n">5</span><span class="t"><b>축소 모달</b> — 다른 페이지에 있는 동안 우측 하단에 작게 띄운다. 모든 생성이 끝나면 결과를 리소스별로 알림 아이콘에 남긴다.</span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ── MY-01 ── -->
+<article class="screen" id="MY-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">마이페이지</span>
+    <span class="k">화면 경로</span><span class="v">Main &gt; 마이페이지</span>
+    <span class="k">페이지 코드</span><span class="v code">MY-01</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <div class="wf" style="padding:16px 18px">
+        <div class="m"><span class="mk tl" style="left:-8px;top:-8px">1</span>
+          <div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:7px">계정 정보</div>
+          <div class="box col" style="padding:12px 14px;align-items:stretch;gap:7px;max-width:520px">
+            <table class="wtab"><tbody>
+              <tr><th style="width:96px">이메일</th><td>name@company.com</td></tr>
+              <tr><th>이름</th><td>홍길동</td></tr>
+              <tr><th>소속</th><td>회사 · 멀티클라우드랩</td></tr>
+            </tbody></table>
+            <div class="row" style="gap:7px;margin-top:2px">
+              <div class="btn-w sm">수정하기</div>
+              <div class="grow"></div>
+              <div class="btn-w sm">로그아웃</div>
+              <div class="btn-w sm" style="border-color:#c98b8b;color:#a5504f">회원탈퇴</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="m" style="margin-top:18px"><span class="mk tl" style="left:-8px;top:-8px">2</span>
+          <div style="font-size:11px;font-weight:700;color:var(--ink);margin-bottom:7px">키 &amp; 플랫폼 IAM 계정 관리</div>
+          <div class="box col" style="padding:12px 14px;align-items:stretch;gap:8px;max-width:520px">
+            <div><div style="font-size:10.5px;margin-bottom:4px">클라우드 플랫폼</div><div class="inp">AWS ▾</div></div>
+            <div><div style="font-size:10.5px;margin-bottom:4px">이름 (별칭)</div><div class="inp">prod-aws-01</div></div>
+            <div>
+              <div style="font-size:10.5px;margin-bottom:4px"><span class="mk inl">3</span>Access Key ID</div><div class="inp">AKIA••••••••XYZ7</div>
+              <div style="font-size:10.5px;margin:7px 0 4px">Secret Access Key</div><div class="inp">••••••••••••••••</div>
+            </div>
+            <div class="btn-w pri" style="margin-top:2px">저장 및 검증</div>
+            <div style="font-size:9.5px;color:#a8a6a0">플랫폼을 바꾸면 필요한 입력 항목이 달라집니다. (Azure: 구독 ID · 테넌트 ID · 클라이언트 ID/Secret / GCP: 서비스 계정 JSON)</div>
+          </div>
+        </div>
+
+        <div class="m" style="margin-top:18px"><span class="mk tl" style="left:-26px;top:0">4</span>
+          <div class="row" style="margin-bottom:7px">
+            <div style="font-size:11px;font-weight:700;color:var(--ink)">연결된 클라우드 계정</div>
+            <div class="grow"></div>
+            <div class="row" style="gap:6px">
+              <div class="inp" style="width:104px;font-size:10px">플랫폼 ▾</div>
+              <div class="inp" style="width:96px;font-size:10px">태그 ▾</div>
+              <div class="inp" style="width:104px;font-size:10px">이름 검색</div>
+            </div>
+          </div>
+          <table class="wtab">
+            <thead><tr><th style="width:22px">⣿</th><th>플랫폼</th><th>이름</th><th>계정 / 구독</th><th>키 요약</th><th>검증 상태</th><th style="width:82px">연결 리소스</th><th style="width:56px"></th></tr></thead>
+            <tbody>
+              <tr><td>⣿</td><td>AWS</td><td>prod-aws-01</td><td>1234-5678-9012</td><td>AKIA****XYZ7</td><td>✓ 2시간 전</td><td>12건</td><td><span class="btn-w sm" style="padding:2px 6px">삭제</span></td></tr>
+              <tr><td>⣿</td><td>Azure</td><td>prod-az-01</td><td>sub-9f2a…</td><td>sp-****a91f</td><td>✓ 3시간 전</td><td>8건</td><td><span class="btn-w sm" style="padding:2px 6px">삭제</span></td></tr>
+              <tr><td>⣿</td><td>GCP</td><td>dev-gcp-01</td><td>proj-mcp-dev</td><td>sa-****@proj</td><td>✗ 검증 실패</td><td>7건</td><td><span class="btn-w sm" style="padding:2px 6px">삭제</span></td></tr>
+            </tbody>
+          </table>
+          <div class="m" style="margin-top:8px"><span class="mk tl" style="left:-8px;top:-6px">5</span>
+            <div style="border:1px dashed var(--wf-line);background:#fafaf8;padding:8px 10px;font-size:10.5px">
+              행을 드래그해 순서를 바꿀 수 있습니다. 순서는 인벤토리·프로비저닝의 계정 목록에도 그대로 적용됩니다.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d"><span class="n">1</span><span class="t"><b>계정 정보</b> — 수정하기로 <b>소속과 소속단체명만</b> 바꿀 수 있다. 로그아웃과 회원탈퇴는 실행 전 반드시 확인 단계를 거친다. 탈퇴 확인창에는 <b>등록한 키가 함께 삭제된다</b>는 점을 명시한다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>키 등록</b> — 플랫폼(드롭다운) · 이름(텍스트) · 키값(텍스트). 플랫폼마다 필요한 값이 다르므로 <b>선택에 따라 아래 입력폼이 바뀐다.</b></span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>비밀키</b> — 입력 중에도 마스킹한다. 저장 후에는 <b>어떤 경로로도 다시 표시하지 않는다.</b> 저장 및 검증 버튼은 저장과 권한 확인을 한 번에 수행하고 결과를 즉시 알린다.</span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>연결된 클라우드 계정</b> — 플랫폼 / 이름 / 계정 / 키 요약(공개키 앞 4자리 + 마스킹) / 검증 상태 / 삭제. 플랫폼·태그·이름으로 필터링한다.<br><b>연결 리소스</b> 열은 이 키를 지웠을 때 무엇이 끊기는지 알려주기 위한 것으로, 삭제 확인창에도 같은 숫자를 보여준다.</span></div>
+      <div class="d"><span class="n">5</span><span class="t"><b>순서 변경</b> — 드래그로 사용자가 직접 정렬한다. 이 순서를 다른 화면의 계정 목록에도 적용한다.</span></div>
+      <div class="d hd">예외</div>
+      <div class="d"><span class="n g">·</span><span class="t">검증 실패 계정은 목록에 남기되 인벤토리 수집 대상에서 제외하고, 대시보드 합계에도 넣지 않는다.</span></div>
+    </div>
+  </div>
+</article>
+<!-- ── COST-01 ── -->
+<article class="screen" id="COST-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">비용 관리 (상세)</span>
+    <span class="k">화면 경로</span><span class="v">Main &gt; 비용</span>
+    <span class="k">페이지 코드</span><span class="v code">COST-01</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap">확장 기능 · 개발 후순위 &nbsp;|&nbsp; 완성 시안은 문서 하단 <b>비용 · 보안 시안</b>에서 동작까지 확인할 수 있다</p>
+      <div class="wf" style="padding:16px 18px">
+        <div class="m box row" style="padding:9px 12px;gap:8px;justify-content:flex-start">
+          <span class="mk tl" style="left:-8px;top:-8px">1</span>
+          <span style="font-size:10px;color:#a8a6a0">기간</span><div class="inp" style="width:132px">이번 달 ▾</div>
+          <span style="font-size:10px;color:#a8a6a0">CSP</span><div class="inp" style="width:96px">전체 ▾</div>
+          <span style="font-size:10px;color:#a8a6a0">통화</span><div class="inp" style="width:80px">USD ▾</div>
+          <div class="grow"></div>
+          <span style="font-size:9.5px;color:#a8a6a0">필터는 화면 전체에 동일 적용 · 차트별 개별 필터 없음</span>
+        </div>
+        <div class="m" style="margin-top:10px"><span class="mk tl" style="left:-8px;top:-6px">2</span>
+          <div style="border:1px solid #e6c98a;background:#fdf9ef;padding:8px 11px;font-size:10.5px;color:#8a6a1f">
+            ⚠️ GCP: BigQuery billing export가 설정되지 않아 금액을 표시할 수 없습니다.</div>
+        </div>
+        <div class="m stack g4" style="margin-top:12px"><span class="mk tl" style="left:-8px;top:-8px">3</span>
+          <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:3px"><span style="font-size:10px">AWS · 실측</span><b style="font-size:15px;color:var(--ink)">$128.40</b><span style="font-size:9px;color:#a8a6a0">2시간 전 수집</span></div>
+          <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:3px"><span style="font-size:10px">Azure · 실측</span><b style="font-size:15px;color:var(--ink)">$64.10</b><span style="font-size:9px;color:#a8a6a0">3시간 전 수집</span></div>
+          <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:3px;border-style:dashed"><span style="font-size:10px">GCP · 데이터 없음</span><b style="font-size:12px;color:#a5504f">export 미설정</b><span style="font-size:9px;color:#a8a6a0">조회는 정상</span></div>
+          <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:3px"><span style="font-size:10px">합계 · 기준 분리</span><b style="font-size:15px;color:var(--ink)">$192.50</b><span style="font-size:9px;color:#a8a6a0">GCP 제외</span></div>
+        </div>
+        <div class="m" style="margin-top:14px"><span class="mk tl" style="left:-8px;top:-8px">4</span>
+          <div class="row" style="gap:7px">
+            <div class="box col" style="flex:1;padding:8px;gap:2px"><span style="font-size:9px">CONNECTED_EMPTY</span><b style="color:var(--ink)">$0.00</b></div>
+            <div class="box col" style="flex:1;padding:8px;gap:2px"><span style="font-size:9px">CONNECTED_PARTIAL</span><b style="color:var(--ink)">$41.20 ⚠</b></div>
+            <div class="box col" style="flex:1;padding:8px;gap:2px"><span style="font-size:9px">NOT_CONNECTED</span><span style="font-size:10px">계정 미연결</span></div>
+            <div class="box col" style="flex:1;padding:8px;gap:2px"><span style="font-size:9px">PERMISSION_DENIED</span><span style="font-size:10px">비용 권한 없음</span></div>
+            <div class="box col" style="flex:1;padding:8px;gap:2px"><span style="font-size:9px">COLLECT_FAILED</span><span style="font-size:10px">조회 실패 · 6h 전</span></div>
+          </div>
+        </div>
+        <div class="stack g2" style="margin-top:14px">
+          <div class="m"><span class="mk tl" style="left:-8px;top:-8px">5</span>
+            <div class="box" style="height:130px">월별 비용 추이 (누적 막대 · y축 1개)</div></div>
+          <div class="m"><span class="mk tl" style="left:-8px;top:-8px">6</span>
+            <div class="box" style="height:130px">서비스별 비중 — 도넛 / 가로 막대 병기</div></div>
+        </div>
+        <div class="m" style="margin-top:14px"><span class="mk tl" style="left:-8px;top:-8px">7</span>
+          <div class="box" style="height:86px">비용 상위 리소스 표 · 배분 불가 금액 별도 표기</div></div>
+        <div class="m" style="margin-top:14px"><span class="mk tl" style="left:-8px;top:-8px">8</span>
+          <div class="box" style="height:86px">절감 검토 후보 — 비용 × 보안 교차 (읽기 전용)</div></div>
+        <div class="m row" style="margin-top:14px;gap:10px;align-items:stretch">
+          <div class="box grow" style="height:78px">최근 프로비저닝 활동 — 비용 급증 원인 후보</div>
+          <div class="m" style="width:170px"><span class="mk tr">9</span>
+            <div class="box col" style="height:78px;padding:10px;gap:5px"><span style="font-size:11px">🤖 AI에게 추천받기</span><span style="font-size:9px;color:#a8a6a0">단발 질의 · 대화 아님</span></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d hd">전제</div>
+      <div class="d"><span class="n g">·</span><span class="t">3사 비용 API는 모두 실시간 조회를 지원하지 않는다. 화면은 <b>항상 캐시를 읽는다</b>고 전제하고, 신선도를 숨기지 않는다.</span></div>
+      <div class="d"><span class="n">1</span><span class="t"><b>공통 필터</b> — 기간 · CSP · 통화. 화면 전체에 같은 값이 적용되며 차트별 개별 필터는 두지 않는다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>수집 불가 배너</b> — 왜 값이 없는지와 설정 후 언제부터 보이는지를 함께 쓴다.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>CSP 카드</b> — 모든 금액에 <b>실측/추정 배지</b>와 <b>수집 시각</b>을 붙인다. <b>기준이 다른 값은 합산하지 않는다.</b></span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>카드 5상태</b> — <code>리소스 0개 → $0.00</code> 하나로는 조회 실패와 실제 0원을 구분할 수 없다. 다섯 상태로 나눈다.<ul><li>CONNECTED_EMPTY — 여기서만 $0.00</li><li>CONNECTED_PARTIAL — 값 표시 + 불완전 명시</li><li>NOT_CONNECTED — 금액 칸을 비운다</li><li>PERMISSION_DENIED — 금액 없음</li><li>COLLECT_FAILED — 마지막 성공 시각을 함께</li></ul></span></div>
+      <div class="d"><span class="n">5</span><span class="t"><b>월별 추이</b> — 3사 한 그래프, y축 하나. 이중축은 없는 상관관계를 만들므로 쓰지 않는다. 데이터 없는 계열은 <b>0으로 그리지 않고</b> 제외 후 범례에 사유를 적는다.</span></div>
+      <div class="d"><span class="n">6</span><span class="t"><b>서비스별 비중</b> — 도넛과 가로 막대를 함께 두고 담당자가 고른다. 비교가 목적이면 막대가 정확하다.</span></div>
+      <div class="d"><span class="n">7</span><span class="t"><b>상위 리소스</b> — 리소스 단위로 배분할 수 없는 금액은 목록에서 빼고 별도로 표기한다.</span></div>
+      <div class="d"><span class="n">8</span><span class="t"><b>절감 후보</b> — 읽기 전용. <b>자동 조치는 하지 않는다.</b> 잘못된 삭제·중지의 위험이 절감액보다 크다. 보안 위반을 금액으로 환산해 보여주는 것이 이 표의 목적이다.</span></div>
+      <div class="d"><span class="n">9</span><span class="t"><b>AI 상담</b> — 모델에 <b>우리 DB 집계값만</b> 주입하고 그 외 금액 생성을 금지한다. 데이터가 없으면 답을 거절한다. 답변마다 근거 수치와 수집 시각을 함께 보여준다.</span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ── SEC-01 ── -->
+<article class="screen" id="SEC-01">
+  <div class="metabar">
+    <span class="k">화면명</span><span class="v">보안 점검</span>
+    <span class="k">화면 경로</span><span class="v">Main &gt; 보안</span>
+    <span class="k">페이지 코드</span><span class="v code">SEC-01</span>
+    <span class="dh">Description</span>
+  </div>
+  <div class="sbody">
+    <div class="canvas">
+      <p class="cap">확장 기능 · <b>신규 수집기와 신규 테이블이 선행되어야 하는 규칙이 많다</b></p>
+      <div class="wf" style="padding:16px 18px">
+        <div class="m" style="margin-bottom:12px"><span class="mk tl" style="left:-8px;top:-6px">1</span>
+          <div style="border:1px solid #d9a3a3;background:#fdf6f6;padding:8px 11px;font-size:10.5px;color:#a5504f">
+            🔴 기능정의서에 보안 요구사항이 없습니다(8건 중 0건). <code>resources</code> 테이블에도 방화벽 규칙 · 암호화 여부 · IAM 정보가 없습니다.</div>
+        </div>
+        <div class="m stack g4"><span class="mk tl" style="left:-8px;top:-8px">2</span>
+          <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:2px"><span style="font-size:10px">⚠ CRITICAL</span><b style="font-size:18px;color:var(--ink)">3</b><span style="font-size:9px;color:#a8a6a0">즉시 조치</span></div>
+          <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:2px"><span style="font-size:10px">● WARNING</span><b style="font-size:18px;color:var(--ink)">7</b><span style="font-size:9px;color:#a8a6a0">검토 필요</span></div>
+          <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:2px"><span style="font-size:10px">✓ 통과</span><b style="font-size:18px;color:var(--ink)">31</b><span style="font-size:9px;color:#a8a6a0">규칙 × 리소스</span></div>
+          <div class="box col" style="padding:10px 12px;align-items:flex-start;gap:2px;border-color:#dda98c;border-style:dashed"><span style="font-size:10px">— 검사 불가</span><b style="font-size:18px;color:var(--ink)">4</b><span style="font-size:9px;color:#a8a6a0">규칙 · 이유 보기</span></div>
+        </div>
+        <div class="m" style="margin-top:14px"><span class="mk tl" style="left:-26px;top:-2px">3</span>
+          <table class="wtab">
+            <thead><tr><th>규칙</th><th>심각도</th><th>AWS</th><th>Azure</th><th>GCP</th><th>필요 데이터</th></tr></thead>
+            <tbody>
+              <tr><td>SEC-04 공인 IP 보유</td><td>Warning</td><td>적용</td><td>적용</td><td>적용</td><td>현재 테이블 OK</td></tr>
+              <tr><td>SEC-07 디스크 미암호화</td><td>Warning</td><td>적용</td><td>항상 통과</td><td>미확인</td><td>암호화 필드 수집 필요</td></tr>
+              <tr><td>SEC-06 스토리지 공개 접근</td><td>Critical</td><td>버킷 단위</td><td>계정 단위</td><td>적용</td><td>스토리지 설정 수집 필요</td></tr>
+              <tr><td>SEC-01~03 0.0.0.0/0 개방</td><td>Critical</td><td>적용</td><td>적용</td><td>적용</td><td>firewall_rules 테이블 신설</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="m" style="margin-top:14px"><span class="mk tl" style="left:-8px;top:-8px">4</span>
+          <div class="box col" style="padding:11px 13px;align-items:stretch;gap:6px;text-align:left">
+            <div class="row" style="gap:8px;font-size:10.5px"><b style="color:#a5504f">⚠ CRITICAL</b><span>SEC-01</span><b style="color:var(--ink)">0.0.0.0/0 → SSH(22) 허용</b><span style="color:#a8a6a0">AWS</span></div>
+            <div style="font-family:ui-monospace,monospace;font-size:9.5px;background:#f4f3f0;padding:6px 8px">{"IpProtocol":"tcp","FromPort":22,"IpRanges":[{"CidrIp":"0.0.0.0/0"}]}</div>
+            <div style="font-size:10px">조치 — 소스 CIDR를 사내 IP 범위로 제한한다.</div>
+            <div class="row" style="gap:6px"><div class="btn-w sm">AWS 콘솔에서 열기 ↗</div><div class="btn-w sm">확인 처리</div><div class="btn-w sm">예외 승인 요청</div></div>
+          </div>
+        </div>
+        <div class="m" style="margin-top:14px"><span class="mk tl" style="left:-26px;top:-2px">5</span>
+          <table class="wtab">
+            <thead><tr><th>CSP</th><th>권한</th><th>식별자(마스킹)</th><th>검증</th><th>최종 사용</th><th>연결 자원</th></tr></thead>
+            <tbody>
+              <tr><td>AWS</td><td>READ</td><td>AKIA****XYZ7</td><td>✓ 2시간 전</td><td>2시간 전</td><td>12건</td></tr>
+              <tr><td>GCP</td><td>WRITE</td><td>미등록</td><td>✗ 없음</td><td>—</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="desc">
+      <div class="d"><span class="n">1</span><span class="t"><b>선행 조건 안내</b> — 현재 테이블만으로 판정 가능한 규칙은 4개뿐이다. 나머지는 수집기와 테이블 신설이 선행된다. 이 사실을 화면에 남겨 개발 순서를 흐리지 않는다.</span></div>
+      <div class="d"><span class="n">2</span><span class="t"><b>심각도 타일</b> — <b>「검사 불가」 칸이 이 화면에서 가장 중요하다.</b> 위반 0건과 검사하지 못한 것은 다르다. 숨기면 안전하다는 잘못된 결론이 나온다.<br>상태 색은 항상 <b>아이콘 + 라벨</b>과 함께 쓰고 색만으로 의미를 전달하지 않는다.</span></div>
+      <div class="d"><span class="n">3</span><span class="t"><b>규칙 적용 매트릭스</b> — 규칙마다 CSP별 상태를 <code>적용 / 항상 통과 / 미확인</code> 3값으로 둔다. 3사에 같은 규칙을 같은 가중치로 걸면 사실이 왜곡된다.<br>예: Azure 관리 디스크는 항상 암호화되므로 SEC-07을 같은 가중치로 채점하면 <b>Azure가 더 안전하다고 잘못 읽힌다.</b></span></div>
+      <div class="d"><span class="n">4</span><span class="t"><b>위반 항목</b> — Provider 원문 증거와 콘솔 딥링크를 함께 둔다.<br><b>자동 수정은 넣지 않는다.</b> 찾아주고, 고치는 것은 CSP 콘솔로 보낸다. 대신 조치 절차를 CSP별로 정확히 안내한다(예: 기존 EBS 볼륨은 설정 변경이 아니라 스냅샷 → 암호화 볼륨 교체가 필요하다).</span></div>
+      <div class="d"><span class="n">5</span><span class="t"><b>자격증명 위생</b> — 3사 × Read/Write = 6세트 충족도. <b>평문은 어떤 경로로도 표시하지 않는다.</b><br><code>연결 자원</code> 열이 핵심이다. 키가 유출됐을 때 "이 키를 지우면 무엇이 멈추는가"에 답할 수 있어야 회전을 미루지 않는다. 이를 위해 <code>resources.collected_by_credential_id</code>가 필요하며 <b>이 컬럼은 소급 적용이 불가능하다.</b></span></div>
+    </div>
+  </div>
+</article>
+
+<!-- ═════════ 비용·보안 시안 ═════════ -->
+<section class="sec" id="mockup">
+  <div class="sec-h"><h2>비용 · 보안 시안</h2><span class="en">Interactive Mockup — COST-01 / SEC-01</span></div>
+  <div class="sec-note">위 두 화면(COST-01 · SEC-01)의 <b>동작하는 시안</b>이다. 데이터는 모두 가상 예시이며 실제 조회 결과가 아니다.
+    탭으로 비용/보안을 오가고, 우측 상단에서 다크 모드와 표 뷰를 확인할 수 있다.
+    색과 차트 형태는 <b>CSP = 슬롯 1–3, 서비스 = 슬롯 4–7</b>로 분리해 색 의미 충돌을 없앤 값으로 고정했다.</div>
+<style>
+#mockroot{
+  --page:#f9f9f7; --surface:#fcfcfb;
+  --text-1:#0b0b0b; --text-2:#52514e; --muted:#898781;
+  --grid:#e1e0d9; --baseline:#c3c2b7; --border:rgba(11,11,11,.10);
+  --aws:#2a78d6; --azure:#eb6834; --gcp:#1baf7a;
+  --sv1:#e87ba4; --sv2:#008300; --sv3:#4a3aa7; --sv4:#898781;
+  --good:#0ca30c; --warning:#fab219; --serious:#ec835a; --critical:#d03b3b;
+  --good-ink:#006300;
+  --wash:rgba(11,11,11,.04);
+}#mockroot.dark{
+  --page:#0d0d0d; --surface:#1a1a19;
+  --text-1:#ffffff; --text-2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
+  --aws:#3987e5; --azure:#d95926; --gcp:#199e70;
+  --sv1:#d55181; --sv2:#008300; --sv3:#9085e9; --sv4:#898781;
+  --good-ink:#0ca30c;
+  --wash:rgba(255,255,255,.05);
+}#mockroot *{box-sizing:border-box}#mockroot{
+  margin:0; background:var(--page); color:var(--text-1);
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  font-size:14px; line-height:1.55;
+}#mockroot .wrap{max-width:1180px;margin:0 auto;padding:24px 20px 80px}/* ── 문서 안내 ── */#mockroot .doc-note{
+  background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--aws);
+  border-radius:8px;padding:16px 18px;margin-bottom:24px
+}#mockroot .doc-note h1{font-size:19px;margin:0 0 8px}#mockroot .doc-note p{margin:6px 0;color:var(--text-2);font-size:13px}#mockroot .doc-note code{background:var(--wash);padding:1px 5px;border-radius:4px;font-size:12px}/* ── 상단 바 ── */#mockroot .topbar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}#mockroot .tabs{display:flex;gap:4px;background:var(--surface);border:1px solid var(--border);border-radius:8px;padding:4px}#mockroot .tab{
+  padding:8px 18px;border:0;background:transparent;color:var(--text-2);
+  font:inherit;font-weight:600;border-radius:6px;cursor:pointer
+}#mockroot .tab[aria-selected="true"]{background:var(--text-1);color:var(--surface)}#mockroot .spacer{flex:1}#mockroot .btn{
+  padding:7px 13px;border:1px solid var(--border);background:var(--surface);
+  color:var(--text-2);font:inherit;font-size:13px;border-radius:6px;cursor:pointer
+}#mockroot .btn:hover{background:var(--wash)}/* ── 필터 행 (모든 차트 위 1행) ── */#mockroot .filters{
+  display:flex;gap:10px;align-items:center;flex-wrap:wrap;
+  background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:10px 14px;margin-bottom:14px
+}#mockroot .filters .lbl{font-size:12px;color:var(--muted);margin-right:2px}#mockroot select{
+  font:inherit;font-size:13px;padding:5px 8px;border:1px solid var(--border);
+  border-radius:6px;background:var(--surface);color:var(--text-1)
+}#mockroot .filter-note{font-size:12px;color:var(--muted);margin-left:auto}/* ── 배너 ── */#mockroot .banner{
+  display:flex;gap:10px;align-items:flex-start;
+  border:1px solid var(--border);border-left:3px solid var(--warning);
+  background:var(--surface);border-radius:8px;padding:11px 14px;margin-bottom:14px;font-size:13px
+}#mockroot .banner.crit{border-left-color:var(--critical)}#mockroot .banner b{color:var(--text-1)}#mockroot .banner span{color:var(--text-2)}/* ── 카드 ── */#mockroot .card{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:16px 18px;margin-bottom:14px
+}#mockroot .card > h2{font-size:14px;margin:0 0 2px;letter-spacing:-.1px}#mockroot .card > .sub{font-size:12px;color:var(--muted);margin:0 0 14px}#mockroot .card-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:14px}#mockroot .card-head h2{font-size:14px;margin:0 0 2px}#mockroot .card-head .sub{font-size:12px;color:var(--muted);margin:0}/* ── 스탯 타일 ── */#mockroot .tiles{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}#mockroot .tile{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:14px 16px;position:relative;overflow:hidden
+}#mockroot .tile::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--c,var(--muted))}#mockroot .tile .hdr{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:8px}#mockroot .tile .nm{font-size:12px;font-weight:700;color:var(--text-2);letter-spacing:.2px}#mockroot .tile .val{font-size:27px;font-weight:700;letter-spacing:-1px;line-height:1.1}#mockroot .tile .val.na{font-size:17px;color:var(--muted);font-weight:600;letter-spacing:0}#mockroot .tile .meta{font-size:11.5px;color:var(--muted);margin-top:6px;line-height:1.5}#mockroot .tile .est{font-size:12px;color:var(--text-2);margin-top:5px}#mockroot .tile .est b{font-weight:700;color:var(--text-1)}#mockroot .badge{
+  font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;
+  border:1px solid var(--border);color:var(--text-2);white-space:nowrap
+}#mockroot .badge.measured{border-color:var(--good);color:var(--good-ink)}#mockroot .badge.est{border-color:var(--warning);color:var(--text-2)}#mockroot .badge.none{border-color:var(--critical);color:var(--critical)}/* ── 5상태 쇼케이스 ── */#mockroot .states{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}#mockroot .st{border:1px solid var(--border);border-radius:8px;padding:11px 12px;background:var(--surface)}#mockroot .st .code{font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.4px}#mockroot .st .disp{font-size:19px;font-weight:700;margin:6px 0 3px;letter-spacing:-.5px}#mockroot .st .disp.dim{font-size:13px;color:var(--muted);font-weight:600;letter-spacing:0}#mockroot .st .why{font-size:11px;color:var(--text-2);line-height:1.45}#mockroot .st.ok{border-left:3px solid var(--good)}#mockroot .st.part{border-left:3px solid var(--warning)}#mockroot .st.nc{border-left:3px solid var(--muted)}#mockroot .st.pd{border-left:3px solid var(--serious)}#mockroot .st.cf{border-left:3px solid var(--critical)}/* ── 차트 ── */#mockroot .chart-wrap{position:relative}#mockroot svg{display:block;max-width:100%;height:auto;overflow:visible}#mockroot .legend{display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin:12px 0 0;font-size:12.5px}#mockroot .legend .item{display:flex;align-items:center;gap:6px;color:var(--text-2)}#mockroot .legend .sw{width:11px;height:11px;border-radius:2px;flex:none}#mockroot .legend .excl{color:var(--muted);font-style:normal}#mockroot .axis-lbl{font-size:11px;fill:var(--muted)}#mockroot .grid-line{stroke:var(--grid);stroke-width:1}#mockroot .base-line{stroke:var(--baseline);stroke-width:1}#mockroot .dlabel{font-size:11px;font-weight:700;fill:var(--text-2)}/* 툴팁 */#mockroot .tip{
+  position:absolute;pointer-events:none;opacity:0;transition:opacity .1s;
+  background:var(--text-1);color:var(--surface);font-size:12px;
+  padding:8px 10px;border-radius:6px;white-space:nowrap;z-index:20;
+  box-shadow:0 4px 12px rgba(0,0,0,.18)
+}#mockroot .tip.on{opacity:1}#mockroot .tip .r{display:flex;gap:8px;justify-content:space-between}#mockroot .tip .t{font-weight:700;margin-bottom:4px}#mockroot .tip .m{opacity:.7;margin-top:4px;font-size:11px}/* ── 표 ── */#mockroot table{width:100%;border-collapse:collapse;font-size:13px}#mockroot th, #mockroot td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--grid)}#mockroot th{font-size:11.5px;color:var(--muted);font-weight:700;letter-spacing:.2px}#mockroot td.num, #mockroot th.num{text-align:right;font-variant-numeric:tabular-nums}#mockroot tbody tr:hover{background:var(--wash)}#mockroot .tblview{display:none;margin-top:12px}#mockroot .tblview.on{display:block}#mockroot .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px}#mockroot .chip{font-size:10.5px;font-weight:700;padding:2px 6px;border-radius:4px;border:1px solid var(--border);color:var(--text-2)}#mockroot .chip.aws{border-color:var(--aws);color:var(--aws)}#mockroot .chip.azure{border-color:var(--azure);color:var(--azure)}#mockroot .chip.gcp{border-color:var(--gcp);color:var(--gcp)}/* ── 2열 ── */#mockroot .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}@media(max-width:900px){#mockroot .tiles, #mockroot .states{grid-template-columns:1fr 1fr}#mockroot .cols{grid-template-columns:1fr}
+}/* ── 보안 ── */#mockroot .sev{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}#mockroot .sev .s{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:14px 16px;border-left:3px solid var(--c)}#mockroot .sev .s .row{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;color:var(--text-2)}#mockroot .sev .s .ico{width:15px;height:15px;flex:none}#mockroot .sev .s .n{font-size:27px;font-weight:700;letter-spacing:-1px;margin-top:6px}#mockroot .sev .s .h{font-size:11px;color:var(--muted);margin-top:3px}#mockroot .finding{border:1px solid var(--border);border-radius:9px;padding:13px 15px;margin-bottom:10px;border-left:3px solid var(--c)}#mockroot .finding .top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:7px}#mockroot .finding .sevlbl{font-size:10.5px;font-weight:800;letter-spacing:.4px}#mockroot .finding .rid{font-size:11px;color:var(--muted);font-family:ui-monospace,monospace}#mockroot .finding .ttl{font-size:13.5px;font-weight:700}#mockroot .finding .res{font-size:12px;color:var(--text-2);margin-bottom:7px}#mockroot .ev{
+  background:var(--wash);border:1px solid var(--border);border-radius:6px;
+  padding:8px 10px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  font-size:11.5px;color:var(--text-2);overflow-x:auto;white-space:pre;margin-bottom:8px
+}#mockroot .act{font-size:12px;color:var(--text-2);margin-bottom:8px}#mockroot .act b{color:var(--text-1)}#mockroot .note{
+  font-size:12px;color:var(--text-2);background:var(--wash);
+  border-left:2px solid var(--aws);padding:7px 10px;border-radius:0 5px 5px 0;margin-bottom:8px
+}#mockroot .fbtns{display:flex;gap:7px;flex-wrap:wrap}#mockroot .mode{font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:4px;border:1px solid var(--border)}#mockroot .mode.ap{border-color:var(--good);color:var(--good-ink)}#mockroot .mode.pass{border-color:var(--muted);color:var(--muted)}#mockroot .mode.na{border-color:var(--serious);color:var(--serious)}/* ── 모달 ── */#mockroot .mask{
+  position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;
+  align-items:center;justify-content:center;padding:20px;z-index:50
+}#mockroot .mask.on{display:flex}#mockroot .modal{
+  background:var(--surface);border:1px solid var(--border);border-radius:12px;
+  max-width:560px;width:100%;padding:20px 22px;max-height:88vh;overflow:auto
+}#mockroot .modal h3{margin:0 0 4px;font-size:16px}#mockroot .modal .lim{font-size:12px;color:var(--muted);margin:0 0 14px}#mockroot .qbox{
+  width:100%;font:inherit;font-size:13px;padding:10px 12px;border-radius:8px;
+  border:1px solid var(--border);background:var(--page);color:var(--text-1);resize:vertical
+}#mockroot .ans{border-top:1px solid var(--grid);margin-top:16px;padding-top:14px}#mockroot .ans .h{font-size:11.5px;font-weight:700;color:var(--muted);margin-bottom:7px;letter-spacing:.3px}#mockroot .ans p{margin:0 0 10px;font-size:13px;line-height:1.65}#mockroot .grounds{background:var(--wash);border-radius:7px;padding:10px 12px;font-size:11.5px;color:var(--text-2);line-height:1.7}#mockroot .grounds .h{font-size:10.5px;margin-bottom:5px}#mockroot .hint{font-size:11.5px;color:var(--muted);margin-top:9px}#mockroot .hint b{color:var(--text-2)}#mockroot .tag{
+  display:inline-block;font-size:10px;font-weight:700;padding:1px 6px;border-radius:4px;
+  border:1px solid var(--aws);color:var(--aws);margin-left:6px;vertical-align:1px
+}#mockroot .tag.p1{border-color:var(--muted);color:var(--muted)}#mockroot .recommend{font-size:11px;font-weight:700;color:var(--good-ink);border:1px solid var(--good);border-radius:4px;padding:1px 6px}
+
+/* 문서 내 삽입용 보정 */
+#mockroot .wrap{padding:20px 20px 36px}
+#mockroot .tiles,#mockroot .sev{gap:10px}
+#mockroot .card{margin-bottom:12px}
+</style>
+  <div id="mockroot" style="border:1px solid var(--rule-2);overflow:hidden">
+    <div class="wrap">
+
+
+  <div class="topbar">
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" aria-selected="true" data-tab="cost">비용</button>
+      <button class="tab" role="tab" aria-selected="false" data-tab="sec">보안</button>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn" id="themeBtn">🌙 다크 모드</button>
+  </div>
+
+  <!-- ══════════════════ 필터 행 (모든 차트 위 1행) ══════════════════ -->
+  <div class="filters">
+    <span class="lbl">기간</span>
+    <select><option>이번 달 (9/1~9/8)</option><option>최근 30일</option><option>최근 90일</option><option>사용자 지정</option></select>
+    <span class="lbl">CSP</span>
+    <select><option>전체</option><option>AWS</option><option>Azure</option><option>GCP</option></select>
+    <span class="lbl">통화</span>
+    <select><option>USD</option><option>KRW</option></select>
+    <span class="filter-note">필터는 화면 전체에 동일하게 적용된다 (차트별 개별 필터 금지)</span>
+  </div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     비용 탭
+     ══════════════════════════════════════════════════════════════ -->
+<section id="panel-cost">
+
+  <div class="banner">
+    <span>⚠️</span>
+    <div><b>GCP: BigQuery billing export가 설정되지 않아 금액을 표시할 수 없습니다.</b>
+      <span>regional 데이터셋은 소급 적재가 없고 초기 백필에 최대 5일이 걸립니다 — 설정 후에도 즉시 표시되지 않습니다.</span></div>
+  </div>
+
+  <!-- ── 요약 타일 ── -->
+  <div class="tiles">
+    <div class="tile" style="--c:var(--aws)">
+      <div class="hdr"><span class="nm">AWS</span><span class="badge measured">실측</span></div>
+      <div class="val">$128.40</div>
+      <div class="est">예상 월 <b>$481.50</b></div>
+      <div class="meta">리소스 12개 · 수집 2시간 전<br>Cost Explorer · 갱신 최소 24h 주기</div>
+    </div>
+    <div class="tile" style="--c:var(--azure)">
+      <div class="hdr"><span class="nm">AZURE</span><span class="badge measured">실측</span></div>
+      <div class="val">$64.10</div>
+      <div class="est">예상 월 <b>$240.38</b></div>
+      <div class="meta">리소스 8개 · 수집 3시간 전<br>Cost Management Query API</div>
+    </div>
+    <div class="tile" style="--c:var(--gcp)">
+      <div class="hdr"><span class="nm">GCP</span><span class="badge none">데이터 없음</span></div>
+      <div class="val na">export 미설정</div>
+      <div class="est" style="color:var(--muted)">예상 월 산출 불가</div>
+      <div class="meta">리소스 7개 (조회는 정상)<br>BigQuery export 필요 → <b>설정 방법</b></div>
+    </div>
+    <div class="tile" style="--c:var(--muted)">
+      <div class="hdr"><span class="nm">합계</span><span class="badge">기준 분리</span></div>
+      <div class="val">$192.50</div>
+      <div class="est">실측분만 · 추정 <b>—</b></div>
+      <div class="meta">GCP 제외 (데이터 없음)<br><b>기준이 다른 값은 합산하지 않는다</b></div>
+    </div>
+  </div>
+
+  <div class="hint">
+    <b>설계 결정 1</b> — 모든 금액에 <b>실측/추정 배지</b>와 <b>수집 시각</b>을 붙인다.
+    3사 비용 API가 모두 실시간 조회를 지원하지 않으므로(AWS <b>페이지당</b> $0.01·데이터는 최소 24h 주기 갱신 / Azure 스코프당 분당 4회 / GCP export 필요)
+    화면은 항상 캐시를 읽는다. 신선도를 숨기면 사용자는 오래된 값을 현재 값으로 오판한다.
+  </div>
+
+  <!-- ── 카드 5상태 ── -->
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>설계 결정 2 — 카드 상태를 5개로 나눈다 <span class="tag">MVP</span></h2>
+        <p class="sub">초안의 <code>리소스 0개 → $0.00</code> 단일 표현은 <b>조회 실패</b>와 <b>실제 0원</b>을 구분하지 못한다.
+           강사가 지적한 비용 누수 문제(존재를 모르는 자원)가 화면에서 재현된다.</p>
+      </div>
+    </div>
+    <div class="states">
+      <div class="st ok">
+        <div class="code">CONNECTED_EMPTY</div>
+        <div class="disp">$0.00</div>
+        <div class="why"><b>여기서만</b> $0.00을 쓴다. 조회 성공 + 결과 0건.</div>
+      </div>
+      <div class="st part">
+        <div class="code">CONNECTED_PARTIAL</div>
+        <div class="disp">$41.20 ⚠️</div>
+        <div class="why">일부 구독·리전 조회 실패. 값은 보여주되 <b>불완전</b>을 명시.</div>
+      </div>
+      <div class="st nc">
+        <div class="code">NOT_CONNECTED</div>
+        <div class="disp dim">계정 미연결</div>
+        <div class="why">자격증명 없음. <b>금액 칸을 비운다.</b></div>
+      </div>
+      <div class="st pd">
+        <div class="code">PERMISSION_DENIED</div>
+        <div class="disp dim">비용 권한 없음</div>
+        <div class="why">연결됐으나 비용 API 권한 부족. 금액 없음.</div>
+      </div>
+      <div class="st cf">
+        <div class="code">COLLECT_FAILED</div>
+        <div class="disp dim">조회 실패 · 6h 전</div>
+        <div class="why">API 오류·429·백필 중. <b>마지막 성공 시각</b>을 함께.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── 월별 추이 ── -->
+  <div class="card">
+    <div class="card-head">
+      <div>
+        <h2>월별 비용 추이 <span class="tag">MVP</span></h2>
+        <p class="sub">단위 USD · 3사 한 그래프 · <b>y축 하나</b> (이중축은 없는 상관관계를 만들어 금지)</p>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn tbl-toggle" data-target="tbl-trend">표로 보기</button>
+    </div>
+    <div class="chart-wrap" id="wrap-trend">
+      <svg id="svg-trend" viewBox="0 0 740 262" role="img" aria-label="월별 비용 추이 누적 막대 차트"></svg>
+      <div class="tip" id="tip-trend"></div>
+    </div>
+    <div class="legend">
+      <span class="item"><span class="sw" style="background:var(--aws)"></span>AWS</span>
+      <span class="item"><span class="sw" style="background:var(--azure)"></span>Azure</span>
+      <span class="item excl">GCP — 데이터 없음(그래프에서 제외)</span>
+      <span class="spacer"></span>
+      <span class="item" style="color:var(--muted)">9월은 8일까지 · 수집 2시간 전</span>
+    </div>
+    <div class="hint">
+      <b>설계 결정 3</b> — GCP를 <b>0으로 그리지 않는다.</b> 0으로 그리면 "GCP는 돈을 안 쓴다"로 읽힌다.
+      데이터가 없는 계열은 그래프에서 빼고 <b>범례에 이유를 쓴다.</b>
+    </div>
+    <div class="tblview" id="tbl-trend"></div>
+  </div>
+
+  <!-- ── 서비스 비중 : 두 형태 비교 ── -->
+  <div class="cols">
+    <div class="card">
+      <div class="card-head">
+        <div><h2>서비스별 비용 비중 — 도넛 <span class="tag p1">초안 요구안</span></h2>
+          <p class="sub">전체 대비 비율을 한눈에 · 세그먼트 4개</p></div>
+      </div>
+      <div class="chart-wrap" id="wrap-donut">
+        <svg id="svg-donut" viewBox="0 0 340 220" role="img" aria-label="서비스별 비용 비중 도넛 차트"></svg>
+        <div class="tip" id="tip-donut"></div>
+      </div>
+      <div class="hint">도넛은 <b>비율 인지</b>에 강하지만 <b>값 비교</b>에는 약하다. 세그먼트는 6개 이하로 제한한다.</div>
+    </div>
+    <div class="card">
+      <div class="card-head">
+        <div><h2>서비스별 비용 — 가로 막대 <span class="recommend">권장</span></h2>
+          <p class="sub">같은 데이터 · 값 비교와 정렬이 정확함</p></div>
+        <div class="spacer"></div>
+        <button class="btn tbl-toggle" data-target="tbl-svc">표</button>
+      </div>
+      <div class="chart-wrap" id="wrap-bar">
+        <svg id="svg-bar" viewBox="0 0 360 200" role="img" aria-label="서비스별 비용 가로 막대 차트"></svg>
+        <div class="tip" id="tip-bar"></div>
+      </div>
+      <div class="hint"><b>설계 결정 4</b> — 두 형태를 같이 두었다. <b>고를 것은 담당자</b>이며,
+        비교가 목적이면 막대가 정확하다.</div>
+      <div class="tblview" id="tbl-svc"></div>
+    </div>
+  </div>
+
+  <!-- ── 상위 리소스 ── -->
+  <div class="card">
+    <div class="card-head">
+      <div><h2>비용 상위 리소스 <span class="tag">MVP</span></h2>
+        <p class="sub">리소스 단위 배분이 불가한 금액은 목록에서 제외하고 별도 표기한다</p></div>
+    </div>
+    <table>
+      <thead><tr><th>#</th><th>리소스</th><th>CSP</th><th>유형</th><th>리전</th><th class="num">비용</th><th>상태</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td class="mono">mcp-a1b2-vm</td><td><span class="chip aws">AWS</span></td><td>컴퓨트</td><td>ap-northeast-2</td><td class="num">$61.20</td><td>RUNNING</td></tr>
+        <tr><td>2</td><td class="mono">mcp-c3d4-vm</td><td><span class="chip azure">Azure</span></td><td>컴퓨트</td><td>koreacentral</td><td class="num">$38.40</td><td style="color:var(--critical);font-weight:700">STOPPED_BILLABLE</td></tr>
+        <tr><td>3</td><td class="mono">mcp-a1b2-disk</td><td><span class="chip aws">AWS</span></td><td>블록스토리지</td><td>ap-northeast-2</td><td class="num">$12.10</td><td>미연결</td></tr>
+        <tr><td>4</td><td class="mono">mcp-e5f6-sql</td><td><span class="chip azure">Azure</span></td><td>데이터베이스</td><td>koreacentral</td><td class="num">$21.20</td><td>RUNNING</td></tr>
+        <tr><td>5</td><td class="mono">mcp-a1b2-eip</td><td><span class="chip aws">AWS</span></td><td>공인 IP</td><td>ap-northeast-2</td><td class="num">$3.60</td><td>미사용</td></tr>
+      </tbody>
+    </table>
+    <div class="hint">배분 불가 금액 <b>$56.00</b> (서비스·계정 수준까지만 집계 가능) · 태그 없는 리소스 비용 <b>$41.20</b></div>
+  </div>
+
+  <!-- ── 절감 후보 (비용×보안 교차) ── -->
+  <div class="card">
+    <div class="card-head">
+      <div><h2>절감 검토 후보 — 비용 × 보안 교차 <span class="tag">MVP</span></h2>
+        <p class="sub">읽기 전용. <b>자동 조치는 하지 않는다</b> — 잘못된 삭제·중지 위험이 절감액보다 크다</p></div>
+    </div>
+    <table>
+      <thead><tr><th>후보</th><th>근거</th><th class="num">월 영향</th><th>비용</th><th>보안</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>중지됐지만 과금 중</b><br><span class="mono" style="color:var(--muted)">mcp-c3d4-vm</span></td>
+          <td>Azure <code>Stopped</code>는 과금 지속 · <code>Deallocated</code>가 과금 중단</td>
+          <td class="num">약 $38</td>
+          <td>낭비</td><td>미관리 자원</td>
+        </tr>
+        <tr>
+          <td><b>연결 안 된 디스크</b><br><span class="mono" style="color:var(--muted)">mcp-a1b2-disk</span></td>
+          <td>3사 모두 인스턴스 상태와 무관하게 스토리지 과금</td>
+          <td class="num">약 $12</td>
+          <td>낭비</td><td>데이터 잔존</td>
+        </tr>
+        <tr>
+          <td><b>미사용 고정 공인 IP</b><br><span class="mono" style="color:var(--muted)">mcp-a1b2-eip</span></td>
+          <td>3사 모두 상태 무관 과금</td>
+          <td class="num">약 $4</td>
+          <td>낭비</td><td>노출면</td>
+        </tr>
+        <tr>
+          <td><b>태그 없는 리소스 5건</b></td>
+          <td>비용 배분 불가 = 관리 사각지대. 실무에서 태그 누락은 분기당 재발한다</td>
+          <td class="num">$41.20</td>
+          <td>배분 불가</td><td>거버넌스 위반</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="hint"><b>설계 결정 5</b> — 비용·보안을 한 사람이 맡은 이점이 이 표다.
+      <b>보안 위반을 금액으로 환산</b>하면 경영진 보고에서 처음으로 설명이 된다. 두 팀이 나뉜 조직에서는 아무도 만들지 않는다.</div>
+  </div>
+
+  <!-- ── 최근 활동 + AI ── -->
+  <div class="card">
+    <div class="card-head">
+      <div><h2>최근 프로비저닝 활동 <span class="tag">MVP</span></h2>
+        <p class="sub">비용 급증의 <b>원인 후보</b>를 여기서 찾는다 — CSP 비용 도구가 만들 수 없는 연결</p></div>
+      <div class="spacer"></div>
+      <button class="btn" id="aiBtn" style="border-color:var(--aws);color:var(--aws);font-weight:700">🤖 AI에게 추천받기</button>
+    </div>
+    <table>
+      <thead><tr><th>시각</th><th>공통 Action</th><th>CSP</th><th>Provider Action</th><th>리소스</th><th>결과</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">09-08 14:22</td><td><b>CREATE</b></td><td><span class="chip azure">Azure</span></td><td class="mono">terraform apply</td><td class="mono">mcp-c3d4-vm</td><td style="color:var(--good-ink)">SUCCESS</td></tr>
+        <tr><td class="mono">09-08 11:05</td><td><b>STOP</b></td><td><span class="chip aws">AWS</span></td><td class="mono">StopInstances</td><td class="mono">mcp-a1b2-vm</td><td style="color:var(--good-ink)">SUCCESS</td></tr>
+        <tr><td class="mono">09-08 10:41</td><td><b>STOP</b></td><td><span class="chip azure">Azure</span></td><td class="mono">Deallocate</td><td class="mono">mcp-e5f6-vm</td><td style="color:var(--good-ink)">SUCCESS</td></tr>
+        <tr><td class="mono">09-07 18:12</td><td><b>CREATE</b></td><td><span class="chip gcp">GCP</span></td><td class="mono">terraform apply</td><td class="mono">mcp-g7h8-vm</td><td style="color:var(--critical)">FAILED</td></tr>
+      </tbody>
+    </table>
+    <div class="hint"><b>설계 결정 6</b> — 같은 <code>STOP</code>이 CSP별로 다른 API가 된 것을 그대로 보여준다.
+      "공통 인터페이스 · Provider별 실행"이라는 프로젝트 정체성을 <b>데이터로 증명</b>하는 화면이다.</div>
+  </div>
+</section>
+
+<!-- ══════════════════════════════════════════════════════════════
+     보안 탭
+     ══════════════════════════════════════════════════════════════ -->
+<section id="panel-sec" style="display:none">
+
+  <div class="banner crit">
+    <span>🔴</span>
+    <div><b>기능정의서에 보안 요구사항이 없습니다 (요구사항 8건 중 0건).</b>
+      <span><code>resources</code> 테이블에도 방화벽 규칙·암호화 여부·IAM 정보가 없어, Critical 규칙 대부분은 새 수집기와 새 테이블이 선행됩니다.
+        아래 <b>MVP</b> 표시 규칙 4개는 현재 테이블만으로 가능합니다.</span></div>
+  </div>
+
+  <!-- ── 심각도 타일 ── -->
+  <div class="sev">
+    <div class="s" style="--c:var(--critical)">
+      <div class="row">
+        <svg class="ico" viewBox="0 0 16 16" fill="var(--critical)"><path d="M8 1L1 14h14L8 1zm0 4.5v4.2M8 11.4v1.1"stroke="var(--surface)" stroke-width="1.4" stroke-linecap="round"/></svg>
+        CRITICAL
+      </div>
+      <div class="n">3</div><div class="h">즉시 조치 대상</div>
+    </div>
+    <div class="s" style="--c:var(--warning)">
+      <div class="row">
+        <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="var(--warning)"/><path d="M8 4.2v4.4M8 10.6v1" stroke="#0b0b0b" stroke-width="1.5" stroke-linecap="round"/></svg>
+        WARNING
+      </div>
+      <div class="n">7</div><div class="h">검토 필요</div>
+    </div>
+    <div class="s" style="--c:var(--good)">
+      <div class="row">
+        <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="var(--good)"/><path d="M4.6 8.3l2.2 2.2 4.4-4.6" stroke="#fff" stroke-width="1.6" fill="none" stroke-linecap="round"/></svg>
+        통과
+      </div>
+      <div class="n">31</div><div class="h">규칙 × 리소스</div>
+    </div>
+    <div class="s" style="--c:var(--serious)">
+      <div class="row">
+        <svg class="ico" viewBox="0 0 16 16"><circle cx="8" cy="8" r="7" fill="var(--serious)"/><path d="M5.4 8h5.2" stroke="#0b0b0b" stroke-width="1.6" stroke-linecap="round"/></svg>
+        검사 불가
+      </div>
+      <div class="n">4</div><div class="h">규칙 · 이유 보기</div>
+    </div>
+  </div>
+
+  <div class="hint">
+    <b>설계 결정 7</b> — <b>「검사 불가」 칸이 이 화면에서 가장 중요하다.</b>
+    위반 0건과 검사하지 못한 것은 다르다. 이걸 숨기면 "안전하다"는 잘못된 결론이 나온다.
+    상태 색은 <b>항상 아이콘 + 라벨</b>과 함께 쓰고 색만으로 의미를 전달하지 않는다.
+  </div>
+
+  <!-- ── 규칙 적용 매트릭스 ── -->
+  <div class="card">
+    <div class="card-head">
+      <div><h2>설계 결정 8 — 규칙마다 CSP별 적용 상태를 3값으로 둔다 <span class="tag">MVP</span></h2>
+        <p class="sub">3사에 같은 규칙을 같은 가중치로 걸면 사실이 왜곡된다. 공식 문서 확인 결과를 그대로 반영했다.</p></div>
+      <div class="spacer"></div>
+      <button class="btn tbl-toggle" data-target="tbl-rule">근거 보기</button>
+    </div>
+    <table>
+      <thead><tr><th>규칙</th><th>심각도</th><th>AWS</th><th>Azure</th><th>GCP</th><th>필요 데이터</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b>SEC-04</b> 공인 IP 보유</td><td>Warning</td>
+          <td><span class="mode ap">적용</span></td><td><span class="mode ap">적용</span></td><td><span class="mode ap">적용</span></td>
+          <td style="color:var(--good-ink)">현재 테이블 OK</td>
+        </tr>
+        <tr>
+          <td><b>SEC-11</b> 정책 외 리전 배포</td><td>Warning</td>
+          <td><span class="mode ap">적용</span></td><td><span class="mode ap">적용</span></td><td><span class="mode ap">적용</span></td>
+          <td style="color:var(--good-ink)">현재 테이블 OK</td>
+        </tr>
+        <tr>
+          <td><b>SEC-13</b> 필수 태그 누락</td><td>Warning</td>
+          <td><span class="mode ap">적용</span></td><td><span class="mode ap">적용</span></td><td><span class="mode ap">적용</span></td>
+          <td style="color:var(--good-ink)">현재 테이블 OK (GCP는 Label)</td>
+        </tr>
+        <tr>
+          <td><b>SEC-20</b> 중지·과금 리소스</td><td>Info</td>
+          <td><span class="mode pass">해당 없음</span></td><td><span class="mode ap">적용</span></td><td><span class="mode ap">적용</span></td>
+          <td style="color:var(--good-ink)">현재 테이블 OK</td>
+        </tr>
+        <tr style="background:var(--wash)">
+          <td><b>SEC-07</b> 디스크 미암호화</td><td>Warning</td>
+          <td><span class="mode ap">적용</span></td>
+          <td><span class="mode pass">항상 통과</span></td>
+          <td><span class="mode na">미확인</span></td>
+          <td style="color:var(--serious)">암호화 필드 수집 필요</td>
+        </tr>
+        <tr>
+          <td><b>SEC-06</b> 스토리지 공개 접근</td><td>Critical</td>
+          <td><span class="mode ap">버킷 단위</span></td>
+          <td><span class="mode na">계정 단위</span></td>
+          <td><span class="mode ap">적용</span></td>
+          <td style="color:var(--serious)">스토리지 설정 수집 필요</td>
+        </tr>
+        <tr>
+          <td><b>SEC-01~03</b> 0.0.0.0/0 개방</td><td>Critical</td>
+          <td><span class="mode ap">적용</span></td><td><span class="mode ap">적용</span></td><td><span class="mode ap">적용</span></td>
+          <td style="color:var(--critical)"><b>firewall_rules 테이블 신설 필요</b></td>
+        </tr>
+        <tr>
+          <td><b>SEC-15</b> 로그 수집 미설정</td><td>Warning</td>
+          <td><span class="mode ap">적용</span></td>
+          <td><span class="mode ap">적용</span></td>
+          <td><span class="mode pass">항상 통과</span></td>
+          <td style="color:var(--serious)">진단 설정·싱크 수집 필요</td>
+        </tr>
+      </tbody>
+    </table>
+    <div class="tblview" id="tbl-rule">
+      <table>
+        <thead><tr><th>규칙</th><th>왜 CSP별로 다른가 (공식 문서 확인 2026-09-08)</th></tr></thead>
+        <tbody>
+          <tr><td><b>SEC-07</b></td><td><b>AWS는 옵트인</b> — <i>"You encrypt EBS volumes by enabling encryption"</i>, 암·복호 볼륨 동시 연결 가능. <b>Azure는 항상 암호화</b> — <i>"All managed disks... are automatically encrypted-at-rest with platform-managed keys"</i>, 추가 비용 없음. 단 <b>임시 디스크는 SSE 대상이 아니다</b>(VM v5 이상은 자동). → 같은 가중치로 채점하면 <b>Azure가 더 안전하다고 잘못 읽힌다</b>.</td></tr>
+          <tr><td><b>SEC-06</b></td><td>Azure Blob 공개 접근은 <code>allowBlobPublicAccess</code>가 <b>스토리지 계정 수준</b>이라 계정 내 모든 컨테이너에 영향을 준다. AWS S3는 버킷 단위. → <b>"이 컨테이너만 공개"가 Azure에서는 성립하지 않는다.</b></td></tr>
+          <tr><td><b>SEC-15</b></td><td>Azure는 리소스 로그가 <b>기본 수집되지 않고</b> 리소스별 진단 설정이 필요하며 리소스당 최대 5개. GCP는 <code>_Required</code>·<code>_Default</code> 싱크가 <b>자동 생성</b>되어 추가 구성 없이 라우팅된다. → GCP는 이 규칙이 구조상 통과.</td></tr>
+          <tr><td><b>SEC-20</b></td><td>Azure <code>stop</code>은 <b>Stopped(과금 지속)</b>, <code>deallocate</code>가 과금 중단. GCP <code>suspend</code>는 <b>메모리 과금</b>. AWS <code>stop</code>은 미과금이라 이 규칙의 대상이 아니다.</td></tr>
+          <tr><td><b>SEC-01~03</b></td><td>AWS Security Group / Azure NSG / GCP Firewall의 구조가 다르다 — GCP 방화벽은 <b>Global</b>, Azure NSG는 <b>priority 필수</b>. 규칙 판정 자체는 3사 모두 가능하나 <b>규칙 데이터를 저장할 테이블이 현재 없다.</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── finding 목록 ── -->
+  <div class="card">
+    <div class="card-head">
+      <div><h2>위반 목록 <span class="tag">MVP</span></h2>
+        <p class="sub">심각도 순 · 상위 항목만 · 각 항목에 <b>Provider 원문 증거</b>와 <b>콘솔 딥링크</b></p></div>
+      <div class="spacer"></div>
+      <select><option>전체</option><option>Critical만</option><option>미확인만</option></select>
+    </div>
+
+    <div class="finding" style="--c:var(--critical)">
+      <div class="top">
+        <span class="sevlbl" style="color:var(--critical)">⚠ CRITICAL</span>
+        <span class="rid">SEC-01 · rule v1</span>
+        <span class="ttl">0.0.0.0/0 → SSH(22) 허용</span>
+        <span class="chip aws">AWS</span>
+      </div>
+      <div class="res">리소스 <span class="mono">mcp-a1b2-sg</span> · <span class="mono">sg-0abc123def456</span> · ap-northeast-2</div>
+      <div class="ev">{"IpProtocol":"tcp","FromPort":22,"ToPort":22,
+ "IpRanges":[{"CidrIp":"0.0.0.0/0"}]}</div>
+      <div class="act">조치 — <b>소스 CIDR를 사내 IP 범위로 제한</b>한다. 임시 접근이 필요하면 별도 규칙으로 분리하고 만료일을 태그에 남긴다.</div>
+      <div class="fbtns">
+        <button class="btn" style="border-color:var(--aws);color:var(--aws)">AWS 콘솔에서 열기 ↗</button>
+        <button class="btn">확인 처리</button>
+        <button class="btn">예외 승인 요청</button>
+      </div>
+    </div>
+
+    <div class="finding" style="--c:var(--warning)">
+      <div class="top">
+        <span class="sevlbl" style="color:var(--text-2)">● WARNING</span>
+        <span class="rid">SEC-07 · rule v1</span>
+        <span class="ttl">디스크 미암호화</span>
+        <span class="chip aws">AWS</span>
+      </div>
+      <div class="res">리소스 <span class="mono">mcp-a1b2-disk</span> · <span class="mono">vol-0def456abc</span></div>
+      <div class="ev">{"Encrypted":false,"KmsKeyId":null,"State":"available"}</div>
+      <div class="act">조치 — ⚠️ <b>기존 볼륨은 직접 암호화할 수 없다.</b>
+        스냅샷을 만들고 그 스냅샷으로 <b>암호화된 새 볼륨</b>을 만들어 교체해야 한다. 단순 설정 변경이 아니다.</div>
+      <div class="note"><b>Azure는 이 규칙이 적용되지 않는다 (항상 통과).</b>
+        관리 디스크가 플랫폼 관리 키로 항상 암호화되며 추가 비용이 없다. 그래서 이 항목은 <b>Azure 점수에 반영하지 않는다.</b></div>
+      <div class="fbtns">
+        <button class="btn" style="border-color:var(--aws);color:var(--aws)">AWS 콘솔에서 열기 ↗</button>
+        <button class="btn">확인 처리</button>
+      </div>
+    </div>
+
+    <div class="finding" style="--c:var(--serious)">
+      <div class="top">
+        <span class="sevlbl" style="color:var(--serious)">— 검사 불가</span>
+        <span class="rid">SEC-06</span>
+        <span class="ttl">스토리지 공개 접근 (버킷 단위 정책)</span>
+        <span class="chip azure">Azure</span>
+      </div>
+      <div class="res">대상 <span class="mono">mcp-a1b2-container</span> 외 3건</div>
+      <div class="note"><b>이 규칙은 Azure에 구조상 적용할 수 없다.</b>
+        <code>allowBlobPublicAccess</code>가 <b>스토리지 계정 수준</b>이라 컨테이너 단위 판정이 성립하지 않는다.
+        <b>위반 0건이 아니라 「검사 불가」로 표시한다.</b> 계정 단위 규칙을 따로 만들어야 한다.</div>
+      <div class="fbtns"><button class="btn">계정 단위 규칙 제안 보기</button></div>
+    </div>
+
+    <div class="hint"><b>설계 결정 9</b> — <b>자동 수정은 넣지 않는다.</b> 우리는 찾아주고, 고치는 것은 CSP 콘솔로 보낸다.
+      실무 도구가 실패하는 가장 흔한 이유가 "알림만 주고 조치는 못 하는" 상태인데,
+      우리 대안은 자동 조치가 아니라 <b>조치 절차를 CSP별로 정확히 안내하는 것</b>이다(위 SEC-07 사례).</div>
+  </div>
+
+  <!-- ── 자격증명 위생 ── -->
+  <div class="card">
+    <div class="card-head">
+      <div><h2>자격증명 위생 <span class="tag">MVP</span></h2>
+        <p class="sub">3사 × Read/Write = 6세트 충족도 · <b>평문은 어떤 경로로도 표시하지 않는다</b></p></div>
+    </div>
+    <table>
+      <thead><tr><th>CSP</th><th>권한</th><th>식별자(마스킹)</th><th>검증</th><th>최종 사용</th><th>연결 자원</th></tr></thead>
+      <tbody>
+        <tr><td><span class="chip aws">AWS</span></td><td>READ</td><td class="mono">AKIA****XYZ7</td><td style="color:var(--good-ink)">✓ 2시간 전</td><td>2시간 전</td><td>12건</td></tr>
+        <tr><td><span class="chip aws">AWS</span></td><td>WRITE</td><td class="mono">AKIA****QW21</td><td style="color:var(--good-ink)">✓ 1일 전</td><td>3시간 전</td><td>배포 4건</td></tr>
+        <tr><td><span class="chip azure">Azure</span></td><td>READ</td><td class="mono">sp-****-a91f</td><td style="color:var(--good-ink)">✓ 3시간 전</td><td>3시간 전</td><td>8건</td></tr>
+        <tr><td><span class="chip azure">Azure</span></td><td>WRITE</td><td class="mono">sp-****-77bc</td><td style="color:var(--good-ink)">✓ 1일 전</td><td>6시간 전</td><td>배포 2건</td></tr>
+        <tr><td><span class="chip gcp">GCP</span></td><td>READ</td><td class="mono">sa-****@proj</td><td style="color:var(--good-ink)">✓ 5시간 전</td><td>5시간 전</td><td>7건</td></tr>
+        <tr style="background:var(--wash)"><td><span class="chip gcp">GCP</span></td><td>WRITE</td><td style="color:var(--muted)">미등록</td><td style="color:var(--critical)">✗ 없음</td><td>—</td><td>—</td></tr>
+      </tbody>
+    </table>
+    <div class="hint"><b>설계 결정 10</b> — <code>연결 자원</code> 열이 핵심이다.
+      키가 유출됐을 때 <b>"이 키를 지우면 무엇이 멈추는가"</b>를 답할 수 있어야 회전을 미루지 않는다.
+      이걸 위해 <code>resources.collected_by_credential_id</code>가 필요하고, <b>이 컬럼은 소급 적용이 불가능하다</b>.
+      이 프로젝트는 이미 평문 AWS 키 노출이 확인된 상태라 가정이 아니다.</div>
+  </div>
+</section>
+
+<!-- ── AI 모달 ── -->
+<div class="mask" id="aiMask">
+  <div class="modal">
+    <h3>🤖 AI 비용 상담</h3>
+    <p class="lim">비용 및 비용 기준 추천 질문만 답변합니다 · 단발 질의 (대화 아님)</p>
+    <textarea class="qbox" rows="2">이번 달 비용을 줄일 방법이 있을까요?</textarea>
+    <div style="display:flex;justify-content:flex-end;margin-top:9px">
+      <button class="btn" style="border-color:var(--aws);color:var(--aws);font-weight:700">질문하기</button>
+    </div>
+    <div class="ans">
+      <div class="h">답변 (요약)</div>
+      <p>현재 실측 누적 <b>$192.50</b> 중 컴퓨트가 63%($121.30)입니다.
+         우선 검토할 것은 <b>중지 상태인데 과금되는 Azure VM 1건</b>입니다.
+         Azure는 <code>Stopped</code>와 <code>Deallocated</code>가 다르며 Deallocated로 바꾸면 컴퓨트 과금이 멈춥니다(월 약 $38).
+         그 다음은 연결되지 않은 디스크 1건($12)과 미사용 공인 IP 1건($4)입니다.
+         <b>GCP는 비용 데이터가 없어 이 답변에 포함하지 않았습니다.</b></p>
+      <div class="grounds">
+        <div class="h">근거로 사용한 수치</div>
+        AWS $128.40 (실측 · Cost Explorer · 수집 2시간 전)<br>
+        Azure $64.10 (실측 · Cost Management · 수집 3시간 전)<br>
+        GCP — BigQuery export 미설정 · 데이터 없음<br>
+        중지·과금 리소스 1건 / 미연결 디스크 1건 / 미사용 공인 IP 1건
+      </div>
+    </div>
+    <div class="hint"><b>설계 결정 11</b> — 모델에 <b>우리 DB 집계값만 주입</b>하고 그 외 금액 생성을 금지한다.
+      데이터가 없으면 답을 <b>거절</b>한다. 답변마다 <b>근거 수치와 수집 시각</b>을 함께 보여준다.
+      자연어 질의 자체는 CSP 네이티브에도 있으므로, 우리 차별점은 <b>3사를 한 번에 묶어 답한다는 것</b>이다.</div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px">
+      <button class="btn" id="aiClose">닫기</button>
+    </div>
+  </div>
+</div>
+
+    </div>
+  </div>
+</section>
+
+<footer class="sec" style="padding-top:34px">
+  <div style="border-top:1px solid var(--rule-2);padding-top:16px;display:flex;gap:34px;flex-wrap:wrap;font-size:11.5px;color:var(--ink-3)">
+    <span>멀티클라우드 통합운영 플랫폼 화면설계서 (WEB) V1.0</span>
+    <span>2026-09-08 · 이승현</span>
+    <span>선행 문서: 기능명세서 2026-09-03</span>
+    <span style="margin-left:auto">COPYRIGHT 2026 MULTICLOUD OPS. ALL RIGHTS RESERVED</span>
+  </div>
+</footer>
+
+</main>
+</div>
+
+<script>
+/* 좌측 레일 현재 위치 표시 */
+(function(){
+  var links = Array.prototype.slice.call(document.querySelectorAll('.rail a'));
+  var targets = links.map(function(a){ return document.querySelector(a.getAttribute('href')); });
+  function sync(){
+    var y = window.scrollY + 140, idx = 0;
+    targets.forEach(function(t,i){ if(t && t.offsetTop <= y) idx = i; });
+    links.forEach(function(a,i){ a.classList.toggle('on', i===idx); });
+  }
+  window.addEventListener('scroll', sync, {passive:true});
+  window.addEventListener('resize', sync);
+  sync();
+})();
+</script>
+<script>
+(function(){
+
+/* ═══════════ 데이터 (가상 예시) ═══════════ */
+const MONTHS = ['4월','5월','6월','7월','8월','9월*'];
+const TREND = [
+  {m:'4월',  aws:92,  azure:41},
+  {m:'5월',  aws:118, azure:55},
+  {m:'6월',  aws:141, azure:68},
+  {m:'7월',  aws:165, azure:79},
+  {m:'8월',  aws:183, azure:88},
+  {m:'9월*', aws:128, azure:64}
+];
+const SERVICES = [
+  {n:'컴퓨트',      v:121.30, c:'--sv1'},
+  {n:'스토리지',    v:40.40,  c:'--sv2'},
+  {n:'데이터베이스', v:21.20,  c:'--sv3'},
+  {n:'기타',        v:9.60,   c:'--sv4'}
+];
+const MKR = () => document.getElementById('mockroot');
+const cv = n => getComputedStyle(MKR()).getPropertyValue(n).trim();
+const fmt = v => '$' + v.toFixed(2);
+
+/* ═══════════ 툴팁 ═══════════ */
+function bindTip(wrapId, tipId){
+  const wrap = document.getElementById(wrapId), tip = document.getElementById(tipId);
+  return {
+    show(html, ev){
+      tip.innerHTML = html; tip.classList.add('on');
+      const r = wrap.getBoundingClientRect();
+      let x = ev.clientX - r.left + 12, y = ev.clientY - r.top - 8;
+      if (x + tip.offsetWidth > r.width) x = ev.clientX - r.left - tip.offsetWidth - 12;
+      tip.style.left = x+'px'; tip.style.top = y+'px';
+    },
+    hide(){ tip.classList.remove('on'); }
+  };
+}
+
+/* ═══════════ 누적 막대: 월별 추이 ═══════════ */
+function drawTrend(){
+  const svg = document.getElementById('svg-trend');
+  const W=740,H=262, L=52,R=16,T=18,B=34;
+  const pw=W-L-R, ph=H-T-B, base=T+ph, YMAX=300, sc=ph/YMAX;
+  const tip = bindTip('wrap-trend','tip-trend');
+  let s='';
+
+  /* 그리드 (실선 헤어라인 — 점선 금지) */
+  [0,100,200,300].forEach(v=>{
+    const y=base-v*sc;
+    s+=`<line class="grid-line" x1="${L}" y1="${y}" x2="${W-R}" y2="${y}"/>`;
+    s+=`<text class="axis-lbl" x="${L-9}" y="${y+4}" text-anchor="end">$${v}</text>`;
+  });
+  s+=`<line class="base-line" x1="${L}" y1="${base}" x2="${W-R}" y2="${base}"/>`;
+
+  const slot=pw/TREND.length, bw=46;
+  TREND.forEach((d,i)=>{
+    const cx=L+slot*i+slot/2, x=cx-bw/2;
+    const ha=d.aws*sc, hz=d.azure*sc, tot=d.aws+d.azure;
+    const yA=base-ha;                 // AWS: 베이스라인에 앵커
+    const yZ=base-ha-2-hz;            // 2px 서피스 갭
+    /* AWS 하단 세그먼트 (사각) */
+    s+=`<rect x="${x}" y="${yA}" width="${bw}" height="${ha}" fill="${cv('--aws')}"
+         data-m="${d.m}" data-k="AWS" data-v="${d.aws}" data-t="${tot}" class="seg"/>`;
+    /* Azure 최상단 세그먼트 (상단 4px 라운드 = 데이터 엔드) */
+    s+=`<path d="M${x},${yZ+hz} L${x},${yZ+4} Q${x},${yZ} ${x+4},${yZ}
+         L${x+bw-4},${yZ} Q${x+bw},${yZ} ${x+bw},${yZ+4} L${x+bw},${yZ+hz} Z"
+         fill="${cv('--azure')}" data-m="${d.m}" data-k="Azure" data-v="${d.azure}" data-t="${tot}" class="seg"/>`;
+    /* 선택적 직접 라벨: 최고점과 최신 값만 */
+    if(i===4||i===5){
+      s+=`<text class="dlabel" x="${cx}" y="${yZ-7}" text-anchor="middle">$${tot}</text>`;
+    }
+    s+=`<text class="axis-lbl" x="${cx}" y="${base+17}" text-anchor="middle">${d.m}</text>`;
+  });
+  svg.innerHTML=s;
+
+  svg.querySelectorAll('.seg').forEach(el=>{
+    el.style.cursor='crosshair';
+    el.addEventListener('mousemove',ev=>{
+      const d=el.dataset;
+      tip.show(`<div class="t">${d.m}</div>
+        <div class="r"><span>${d.k}</span><b>$${d.v}</b></div>
+        <div class="r"><span>합계(실측)</span><b>$${d.t}</b></div>
+        <div class="m">GCP 데이터 없음 — 합계 제외</div>`, ev);
+    });
+    el.addEventListener('mouseleave',()=>tip.hide());
+  });
+
+  /* 표 뷰 */
+  document.getElementById('tbl-trend').innerHTML = `<table>
+    <thead><tr><th>월</th><th class="num">AWS</th><th class="num">Azure</th><th class="num">GCP</th><th class="num">합계(실측)</th></tr></thead>
+    <tbody>${TREND.map(d=>`<tr><td>${d.m}</td><td class="num">$${d.aws}</td><td class="num">$${d.azure}</td>
+      <td class="num" style="color:var(--muted)">데이터 없음</td><td class="num"><b>$${d.aws+d.azure}</b></td></tr>`).join('')}</tbody></table>`;
+}
+
+/* ═══════════ 도넛: 서비스 비중 ═══════════ */
+function drawDonut(){
+  const svg=document.getElementById('svg-donut');
+  const CX=105,CY=108,RO=82,RI=52, GAP=2.2;
+  const total=SERVICES.reduce((a,b)=>a+b.v,0);
+  const tip=bindTip('wrap-donut','tip-donut');
+  let ang=-90, s='';
+
+  SERVICES.forEach(d=>{
+    const sweep=d.v/total*360;
+    const a0=ang+GAP/2, a1=ang+sweep-GAP/2;
+    const rad=a=>a*Math.PI/180;
+    const p=(r,a)=>[CX+r*Math.cos(rad(a)), CY+r*Math.sin(rad(a))];
+    const [x1,y1]=p(RO,a0),[x2,y2]=p(RO,a1),[x3,y3]=p(RI,a1),[x4,y4]=p(RI,a0);
+    const big=(a1-a0)>180?1:0;
+    s+=`<path d="M${x1},${y1} A${RO},${RO} 0 ${big} 1 ${x2},${y2} L${x3},${y3} A${RI},${RI} 0 ${big} 0 ${x4},${y4} Z"
+         fill="${cv(d.c)}" class="arc" data-n="${d.n}" data-v="${d.v}" data-p="${(d.v/total*100).toFixed(1)}"/>`;
+    ang+=sweep;
+  });
+  /* 중앙 합계 = 히어로 숫자 (비례 숫자, tabular 금지) */
+  s+=`<text x="${CX}" y="${CY-3}" text-anchor="middle" style="font-size:21px;font-weight:700;fill:${cv('--text-1')}">$192.50</text>`;
+  s+=`<text x="${CX}" y="${CY+15}" text-anchor="middle" style="font-size:10.5px;fill:${cv('--muted')}">실측 합계</text>`;
+  /* 직접 라벨 (대비 WARN 해소 = relief rule) */
+  let ly=32;
+  SERVICES.forEach(d=>{
+    s+=`<rect x="212" y="${ly-8}" width="10" height="10" rx="2" fill="${cv(d.c)}"/>`;
+    s+=`<text x="228" y="${ly+1}" style="font-size:11.5px;fill:${cv('--text-2')}">${d.n}</text>`;
+    s+=`<text x="332" y="${ly+1}" text-anchor="end" style="font-size:11.5px;font-weight:700;fill:${cv('--text-1')}">${(d.v/total*100).toFixed(0)}%</text>`;
+    ly+=25;
+  });
+  svg.innerHTML=s;
+
+  svg.querySelectorAll('.arc').forEach(el=>{
+    el.style.cursor='pointer';
+    el.addEventListener('mousemove',ev=>{
+      const d=el.dataset;
+      tip.show(`<div class="t">${d.n}</div>
+        <div class="r"><span>비용</span><b>$${(+d.v).toFixed(2)}</b></div>
+        <div class="r"><span>비중</span><b>${d.p}%</b></div>`,ev);
+    });
+    el.addEventListener('mouseleave',()=>tip.hide());
+  });
+}
+
+/* ═══════════ 가로 막대: 서비스 비용 (권장 형태) ═══════════ */
+function drawBar(){
+  const svg=document.getElementById('svg-bar');
+  const W=360,H=200,L=88,R=54,T=14,B=26;
+  const pw=W-L-R, rowH=(H-T-B)/SERVICES.length, bh=22;
+  const max=Math.max(...SERVICES.map(d=>d.v)), sc=pw/max;
+  const tip=bindTip('wrap-bar','tip-bar');
+  let s='';
+
+  /* x 그리드 */
+  [0,40,80,120].forEach(v=>{
+    const x=L+v*sc;
+    s+=`<line class="grid-line" x1="${x}" y1="${T}" x2="${x}" y2="${T+rowH*SERVICES.length}"/>`;
+    s+=`<text class="axis-lbl" x="${x}" y="${H-9}" text-anchor="middle">$${v}</text>`;
+  });
+  s+=`<line class="base-line" x1="${L}" y1="${T}" x2="${L}" y2="${T+rowH*SERVICES.length}"/>`;
+
+  SERVICES.forEach((d,i)=>{
+    const y=T+rowH*i+(rowH-bh)/2, w=d.v*sc;
+    /* 우측 4px 라운드 = 데이터 엔드, 좌측은 축에 앵커 */
+    s+=`<path d="M${L},${y} L${L+w-4},${y} Q${L+w},${y} ${L+w},${y+4}
+         L${L+w},${y+bh-4} Q${L+w},${y+bh} ${L+w-4},${y+bh} L${L},${y+bh} Z"
+         fill="${cv(d.c)}" class="hb" data-n="${d.n}" data-v="${d.v}"/>`;
+    s+=`<text class="axis-lbl" x="${L-9}" y="${y+bh/2+4}" text-anchor="end" style="fill:${cv('--text-2')}">${d.n}</text>`;
+    s+=`<text x="${L+w+7}" y="${y+bh/2+4}" style="font-size:11.5px;font-weight:700;fill:${cv('--text-1')}">$${d.v.toFixed(2)}</text>`;
+  });
+  svg.innerHTML=s;
+
+  svg.querySelectorAll('.hb').forEach(el=>{
+    el.style.cursor='pointer';
+    el.addEventListener('mousemove',ev=>{
+      const d=el.dataset;
+      tip.show(`<div class="t">${d.n}</div>
+        <div class="r"><span>비용</span><b>$${(+d.v).toFixed(2)}</b></div>
+        <div class="m">기간 9/1~9/8 · 실측 · 수집 2시간 전</div>`,ev);
+    });
+    el.addEventListener('mouseleave',()=>tip.hide());
+  });
+
+  const total=SERVICES.reduce((a,b)=>a+b.v,0);
+  document.getElementById('tbl-svc').innerHTML=`<table>
+    <thead><tr><th>서비스</th><th class="num">비용</th><th class="num">비중</th></tr></thead>
+    <tbody>${SERVICES.map(d=>`<tr><td>${d.n}</td><td class="num">$${d.v.toFixed(2)}</td>
+      <td class="num">${(d.v/total*100).toFixed(1)}%</td></tr>`).join('')}
+      <tr><td><b>합계</b></td><td class="num"><b>$${total.toFixed(2)}</b></td><td class="num"><b>100%</b></td></tr></tbody></table>`;
+}
+
+function drawAll(){ drawTrend(); drawDonut(); drawBar(); }
+drawAll();
+
+/* ═══════════ 상호작용 ═══════════ */
+MKR().querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  MKR().querySelectorAll('.tab').forEach(x=>x.setAttribute('aria-selected', x===t?'true':'false'));
+  document.getElementById('panel-cost').style.display = t.dataset.tab==='cost'?'':'none';
+  document.getElementById('panel-sec').style.display  = t.dataset.tab==='sec' ?'':'none';
+}));
+
+MKR().querySelectorAll('.tbl-toggle').forEach(b=>b.addEventListener('click',()=>{
+  const el=document.getElementById(b.dataset.target);
+  el.classList.toggle('on');
+  b.textContent = el.classList.contains('on') ? '차트로 보기' : (b.dataset.target==='tbl-rule'?'근거 보기':'표로 보기');
+}));
+
+document.getElementById('themeBtn').addEventListener('click',e=>{
+  const dark = MKR().classList.toggle('dark');
+  e.target.textContent = dark?'☀️ 라이트 모드':'🌙 다크 모드';
+  drawAll();
+});
+
+const mask=document.getElementById('aiMask');
+document.getElementById('aiBtn').addEventListener('click',()=>mask.classList.add('on'));
+document.getElementById('aiClose').addEventListener('click',()=>mask.classList.remove('on'));
+mask.addEventListener('click',e=>{ if(e.target===mask) mask.classList.remove('on'); });
+
+})();</script>
+</body>
+</html>
