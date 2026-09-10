@@ -57,6 +57,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 |---|---|---|---|
 | 페이지 UI 구현 — 확정 화면 12개 정적 UI | `solcho/fe-pages` | 조은솔 | in progress |
 | 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
+| 프로비저닝 — Azure VM 생성 (`POST /provisioning/azure/vm`) | `seunghyun/be-azure-vm-provisioning` | 이승현 | in progress (PR 대기) |
 
 > Keep this table updated as branches open, progress, and merge.
 

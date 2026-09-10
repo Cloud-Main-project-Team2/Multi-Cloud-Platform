@@ -96,14 +96,36 @@ docker compose run --rm api python -m app.seed
 - `downgrade()`는 `provisioning_requests`/`resource_types`/`cloud_resource_costs`/`audit_events`와 그 안의 데이터, 그리고 `provisioning_jobs`/`resources`에 채워진 backfill 결과를 되돌릴 수 없이 삭제한다. 실행 시 경고 메시지를 출력하며, 운영 데이터가 있는 환경에서는 백업 없이 실행하지 않는다.
 
 
+## 프로비저닝 — Azure VM 생성 (`POST /provisioning/azure/vm`)
+
+`docs/01_API_명세서_v1.1.md` 10절 계약대로 구현. 자세한 요청/응답 형식은 그 문서를 따르고,
+여기서는 구현 세부사항과 한계만 정리한다.
+
+- 코드: `app/routers/provisioning.py`(라우터) → `app/services/provisioning/azure_vm.py`(실행기)
+  → `terraform/azure/vm/`(Terraform 모듈). 다른 provider/service를 추가하려면 같은 모양의
+  실행기 모듈을 만들어 `app/services/provisioning/registry.py`에 한 줄만 등록하면 된다.
+- **credential의 `secret_payload` 스키마(azure)**: `{"tenant_id", "client_id", "client_secret",
+  "subscription_id"}` (Azure Service Principal). `POST /credentials/azure` 구현 시 이 필드명을
+  맞춰야 한다.
+- **인증은 자리표시자**다 — `app/security/auth.py`의 `get_current_user_id`는 실제 JWT 검증이
+  아니라 `Authorization: Bearer <user_id>`를 그대로 파싱한다. 회원가입/로그인이 구현되면 그
+  파일 하나만 실제 검증 로직으로 바꾸면 되고, 라우터는 그대로 둔다.
+- **`202` 이후 실행은 FastAPI `BackgroundTasks`**로 처리한다(worker 프로세스 없음). API 프로세스가
+  죽으면 `running`에서 멈춘 job이 남을 수 있다 — Celery/RQ 같은 워커 도입 전까지의 임시 구현.
+- **Terraform state는 로컬 backend**다. `provisioning_jobs.terraform_state_ref`에는 로컬 경로
+  참조만 저장한다(state 본문·output은 저장하지 않음 — 정책대로). 컨테이너 재시작·replica 증설 시
+  state가 유실될 수 있으므로 운영 배포 전 원격 backend(Azure Storage 등)로 교체해야 한다.
+  자세한 내용은 `terraform/README.md` 참고.
+- Docker 이미지에 `terraform` CLI를 설치한다(`Dockerfile`, HashiCorp 릴리스 zip). provider
+  plugin(azurerm)은 `TF_PLUGIN_CACHE_DIR`로 job 간에 재사용해 매 요청마다 재다운로드하지 않는다.
+
 ## 이번 단계에서 구현하지 않은 것
 
-- 회원가입·로그인·클라우드 리소스 조회 등 비즈니스 API 라우터
-- 실제 AWS/Azure/GCP SDK 호출, Terraform 실행
+- 회원가입·로그인·클라우드 리소스 조회 등 비즈니스 API 라우터(위 azure VM 프로비저닝 제외)
+- AWS/GCP 프로비저닝, 실제 AWS/Azure/GCP 인벤토리 SDK 호출
 - 파일 기반 로깅 미들웨어
 - 보고서, 예산, 보안 finding
 - 프론트엔드 화면(정적 파일은 `frontend/`에 이미 있고 `web` 서비스는 그것을 그대로 서빙만 함)
-- 다중 계정 프로비저닝의 조합 규칙(`provisioning_requests` 1개에 `provisioning_jobs`를 여러 개 연결할 수 있도록 DB만 설계했고, 실제로 몇 개를 어떤 규칙으로 생성할지는 아직 정책 미확정)
 
 ## 운영 환경 참고
 
