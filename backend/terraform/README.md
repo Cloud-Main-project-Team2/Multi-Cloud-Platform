@@ -19,6 +19,11 @@ CSP 자격 증명은 파일로 쓰지 않고, 실행 직전에 복호화해 prov
 subprocess에 주입한다(azurerm: `ARM_CLIENT_ID`/`ARM_CLIENT_SECRET`/`ARM_TENANT_ID`/
 `ARM_SUBSCRIPTION_ID`). 프로세스 종료 후 환경변수는 사라지며 디스크에 남지 않는다.
 
+VM의 OS 접속 비밀번호(`admin_password`)도 같은 원칙을 따른다 — CSP 계정 자격증명은
+아니지만 여전히 비밀값이라 tfvars 파일에 쓰지 않고 `TF_VAR_admin_password` 환경변수로만
+전달한다(`app/services/provisioning/azure_vm.py`). 배경은 CLAUDE.md
+"Azure VM `admin_password` 정책" 참고.
+
 ## 알려진 한계 (MVP)
 
 - **state backend가 로컬 파일**이다. `provisioning_jobs.terraform_state_ref`에는 이 로컬 경로만

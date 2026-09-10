@@ -24,9 +24,23 @@ variable "admin_username" {
   type        = string
 }
 
-variable "ssh_public_key" {
-  description = "관리자 계정에 등록할 SSH 공개키(OpenSSH 형식). 비밀키는 절대 이 변수로 전달하지 않는다."
+variable "admin_password" {
+  description = <<-EOT
+    OS 관리자 계정 비밀번호(화면설계서·provisioning.js 기준 — Azure VM은 SSH 키가 아니라
+    사용자명/비밀번호 인증을 입력받는다). 반드시 환경변수(TF_VAR_admin_password)로만
+    주입한다 — tfvars 파일에 평문으로 쓰지 않는다.
+  EOT
   type        = string
+  sensitive   = true
+}
+
+variable "inbound_rules" {
+  description = "NSG에 열어줄 인바운드 규칙 목록(공통 설정 — 프론트 기본값은 22/tcp 하나)."
+  type = list(object({
+    port = number
+    cidr = string
+  }))
+  default = []
 }
 
 variable "image_publisher" {

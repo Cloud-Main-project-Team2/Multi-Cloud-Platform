@@ -11,9 +11,17 @@ from __future__ import annotations
 SECRET_FIELD_SUBSTRINGS = ("password", "secret", "private_key", "access_key", "token", "credential")
 
 
-def find_secret_field(spec: dict) -> str | None:
-    """secret으로 의심되는 첫 번째 키 이름을 반환한다. 없으면 None."""
+def find_secret_field(spec: dict, allow: frozenset[str] = frozenset()) -> str | None:
+    """secret으로 의심되는 첫 번째 키 이름을 반환한다. 없으면 None.
+
+    `allow`에 담긴 키는 이름이 겹쳐도 통과시킨다 — CSP 계정 자격증명이 아니라 리소스
+    자체의 값(예: Azure VM의 `admin_password`)이라 실행기가 명시적으로 예외 처리한
+    필드다. 이런 필드는 여전히 DB(`spec_json`)에는 저장하지 않아야 한다 — 호출자
+    (라우터)가 저장 전에 별도로 제거한다.
+    """
     for key in spec:
+        if key in allow:
+            continue
         lowered = key.lower()
         if any(marker in lowered for marker in SECRET_FIELD_SUBSTRINGS):
             return key

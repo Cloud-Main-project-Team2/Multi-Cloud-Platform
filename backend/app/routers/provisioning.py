@@ -72,7 +72,11 @@ def create_provisioning_job(
     if executor is None:
         raise ApiError(422, "RESOURCE_NOT_PROVISIONABLE", "이 provider/service의 생성 실행기는 아직 구현되지 않았습니다.")
 
-    secret_field = find_secret_field(body.common_spec) or find_secret_field(body.provider_spec)
+    # provider_spec 중 일부(예: azure/vm의 admin_password)는 CSP 계정 자격증명이 아니라
+    # 리소스 자체의 값이라 실행기가 명시적으로 예외 처리한다. common_spec에는 이런 예외가
+    # 없다 — 거기엔 애초에 이런 값이 들어올 이유가 없다.
+    sensitive_allow: frozenset[str] = getattr(executor, "SENSITIVE_PROVIDER_SPEC_FIELDS", frozenset())
+    secret_field = find_secret_field(body.common_spec) or find_secret_field(body.provider_spec, allow=sensitive_allow)
     if secret_field is not None:
         raise ApiError(
             422,
@@ -112,7 +116,10 @@ def create_provisioning_job(
             details=[{"field": "credential_id", "reason": "provider_mismatch"}],
         )
 
-    spec_json = {"common_spec": body.common_spec, "provider_spec": body.provider_spec}
+    # sensitive_allow에 속한 필드(admin_password 등)는 DB에도, 이후 GET 응답에도 남기지
+    # 않는다 — 실행기에는 아래 background_tasks.add_task로 원본 그대로 넘긴다.
+    sanitized_provider_spec = {k: v for k, v in body.provider_spec.items() if k not in sensitive_allow}
+    spec_json = {"common_spec": body.common_spec, "provider_spec": sanitized_provider_spec}
 
     existing = db.execute(
         select(ProvisioningJob).where(
@@ -168,7 +175,9 @@ def create_provisioning_job(
     )
     db.commit()
 
-    background_tasks.add_task(executor.run, job.id)
+    # 실행기에는 sanitize 전의 원본 common_spec/provider_spec을 그대로 넘긴다(admin_password
+    # 포함) — job.spec_json(DB)에는 절대 안 남도록, 여기서 함수 인자로만 전달하고 저장하지 않는다.
+    background_tasks.add_task(executor.run, job.id, body.common_spec, body.provider_spec)
 
     return _job_created_response(job)
 

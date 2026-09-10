@@ -26,10 +26,10 @@ from app.services.provisioning import azure_vm
 VALID_KEY = base64.b64encode(os.urandom(32)).decode()
 
 VALID_PROVIDER_SPEC = {
-    "location": "koreacentral",
-    "vm_size": "Standard_B1s",
+    "region": "koreacentral",
+    "instance_type": "B1s",
     "admin_username": "azureuser",
-    "ssh_public_key": "ssh-rsa AAAAB3NzaC1yc2E test",
+    "admin_password": "S3curePassw0rd!",
 }
 
 
@@ -49,7 +49,7 @@ def _fake_executor(monkeypatch):
     다시 덮어쓰면 된다.
     """
 
-    def _fake_run(job_id):
+    def _fake_run(job_id, common_spec, provider_spec):
         pass  # 기본값: 아무 것도 안 함(= status가 "queued"로 남는지 확인하는 테스트용)
 
     monkeypatch.setattr(azure_vm, "run", _fake_run)
@@ -241,11 +241,36 @@ def test_missing_common_spec_name_returns_422(client, azure_fixture):
 def test_invalid_provider_spec_returns_422(client, azure_fixture):
     resp = client.post(
         "/api/v1/provisioning/azure/vm",
-        json=_body(azure_fixture["credential_id"], provider_spec={"location": "koreacentral"}),
+        json=_body(azure_fixture["credential_id"], provider_spec={"region": "koreacentral"}),
         headers={**_auth(azure_fixture["user_id"]), **_headers()},
     )
     assert resp.status_code == 422
     assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_short_admin_password_returns_422(client, azure_fixture):
+    resp = client.post(
+        "/api/v1/provisioning/azure/vm",
+        json=_body(azure_fixture["credential_id"], provider_spec={**VALID_PROVIDER_SPEC, "admin_password": "short"}),
+        headers={**_auth(azure_fixture["user_id"]), **_headers()},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_admin_password_allowed_and_never_persisted_or_returned(client, azure_fixture):
+    """admin_password는 이름에 "password"가 들어가지만 secret-필드 금지 예외 대상이다 —
+    요청은 통과하지만 DB에 저장되는 spec_json과 GET 응답에는 절대 남지 않아야 한다."""
+    resp = client.post(
+        "/api/v1/provisioning/azure/vm",
+        json=_body(azure_fixture["credential_id"]),
+        headers={**_auth(azure_fixture["user_id"]), **_headers("password-key-1")},
+    )
+    assert resp.status_code == 202  # SECRET_FIELD_NOT_ALLOWED로 거부되지 않는다
+
+    job_id = resp.json()["data"]["id"]
+    get_resp = client.get(f"/api/v1/provisioning/jobs/{job_id}", headers=_auth(azure_fixture["user_id"]))
+    assert "admin_password" not in get_resp.json()["data"]["provider_spec"]
 
 
 def test_create_job_returns_202_queued_then_get_reflects_background_result(
@@ -255,7 +280,7 @@ def test_create_job_returns_202_queued_then_get_reflects_background_result(
     # 보도록 azure_vm.SessionLocal을 session_factory로 바꿔치기한다.
     monkeypatch.setattr(azure_vm, "SessionLocal", session_factory)
 
-    def fake_run(job_id):
+    def fake_run(job_id, common_spec, provider_spec):
         session = session_factory()
         try:
             job = session.get(ProvisioningJob, job_id)

@@ -107,6 +107,19 @@ docker compose run --rm api python -m app.seed
 - **credential의 `secret_payload` 스키마(azure)**: `{"tenant_id", "client_id", "client_secret",
   "subscription_id"}` (Azure Service Principal). `POST /credentials/azure` 구현 시 이 필드명을
   맞춰야 한다.
+- **`provider_spec`/`common_spec` 필드는 실제 `frontend/assets/js/provisioning.js`에 맞춰
+  확정했다** (`docs/멀티클라우드 3사 기능 맵핑 — 설정값 입력 범위 (2026-09-10).md` 참고):
+  - `provider_spec`: `region`, `instance_type`(예: `B1s` — `Standard_` 접두사는 서버가 자동
+    보정), `admin_username`, `admin_password`, `image`(`"Ubuntu 22.04"` 또는
+    `"Windows Server 2022"` — publisher/offer/sku/version은 서버 내부 매핑)
+  - `common_spec`: `name`, `tags`(dict), `inbound_rules`(`[{"port": 22, "cidr": "0.0.0.0/0"}]`
+    형태 목록 — 비어 있으면 NSG에 인바운드 규칙을 아무것도 만들지 않는다)
+- **`admin_password`는 secret-필드 금지 검사의 예외다.** CSP 계정 자격증명이 아니라 생성될
+  VM 자체의 OS 접속 정보라서 요청은 통과시키되, `provisioning_jobs.spec_json`(DB, `GET
+  /provisioning/jobs/{id}` 응답)에는 저장하지 않고 `TF_VAR_admin_password` 환경변수로만
+  Terraform에 전달한다(`app/services/provisioning/azure_vm.py`
+  `SENSITIVE_PROVIDER_SPEC_FIELDS`). 자세한 배경은 CLAUDE.md "Key architectural decisions"
+  참고.
 - **인증은 자리표시자**다 — `app/security/auth.py`의 `get_current_user_id`는 실제 JWT 검증이
   아니라 `Authorization: Bearer <user_id>`를 그대로 파싱한다. 회원가입/로그인이 구현되면 그
   파일 하나만 실제 검증 로직으로 바꾸면 되고, 라우터는 그대로 둔다.

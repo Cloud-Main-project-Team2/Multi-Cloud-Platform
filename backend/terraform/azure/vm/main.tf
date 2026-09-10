@@ -52,16 +52,21 @@ resource "azurerm_network_security_group" "this" {
   resource_group_name = azurerm_resource_group.this.name
   tags                = var.tags
 
-  security_rule {
-    name                       = "allow-ssh"
-    priority                   = 100
-    direction                  = "Inbound"
-    access                     = "Allow"
-    protocol                   = "Tcp"
-    source_port_range          = "*"
-    destination_port_range     = "22"
-    source_address_prefix      = "*"
-    destination_address_prefix = "*"
+  # 인바운드 규칙은 공통 설정 항목이다 — var.inbound_rules가 비어 있으면 인바운드를
+  # 아무것도 열지 않는다(호출자가 명시적으로 넘긴 규칙만 신뢰한다).
+  dynamic "security_rule" {
+    for_each = var.inbound_rules
+    content {
+      name                       = "allow-${security_rule.value.port}"
+      priority                   = 100 + security_rule.key
+      direction                  = "Inbound"
+      access                     = "Allow"
+      protocol                   = "Tcp"
+      source_port_range          = "*"
+      destination_port_range     = tostring(security_rule.value.port)
+      source_address_prefix      = security_rule.value.cidr
+      destination_address_prefix = "*"
+    }
   }
 }
 
@@ -103,13 +108,10 @@ resource "azurerm_linux_virtual_machine" "this" {
   network_interface_ids = [azurerm_network_interface.this.id]
   tags                = var.tags
 
-  # 비밀번호 로그인은 허용하지 않는다 — SSH 공개키만 등록한다.
-  disable_password_authentication = true
-
-  admin_ssh_key {
-    username   = var.admin_username
-    public_key = var.ssh_public_key
-  }
+  # 화면설계서·provisioning.js 기준 — Azure VM은 사용자명/비밀번호로 인증한다(SSH 키 아님).
+  # admin_password는 TF_VAR_admin_password 환경변수로만 주입되고 이 파일에는 없다.
+  disable_password_authentication = false
+  admin_password                  = var.admin_password
 
   os_disk {
     caching              = "ReadWrite"
