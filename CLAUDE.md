@@ -157,7 +157,13 @@ PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫�
 ### Assumptions — 프로비저닝 페이지 완성 (`solcho/fe-provisioning-complete`)
 
 `fe-provisioning-form` 후속. CDN 실입력 + 선택 시각 피드백 + 마법사 전체 흐름을 붙여 프로비저닝
-페이지를 완성한다. 서버 통신은 여전히 없음(Network 요청 0건).
+페이지를 완성한다. 실제 API로 리소스가 생성되는 것 외의 모든 기능(버튼·모달·진행바 애니메이션
+포함)을 구현하는 것이 목표. 서버 통신은 여전히 없음(Network 요청 0건).
+
+- **리전 = 국가 단일 선택**: 공통 설정은 플랫폼 무관해야 하므로, 플랫폼별 리전 select를 없애고 국가
+  하나(한국/미국)만 고르면 `COUNTRY_REGION` 상수로 각 플랫폼 리전(AWS `ap-northeast-2`/`us-east-1`,
+  Azure `koreacentral`/`eastus`, GCP `asia-northeast3`/`us-central1`)이 `providerSpec[p].region`에
+  자동 매핑된다. 일본 등 추가 국가는 허용 리전 확정 후.
 
 - **CDN 실입력 폼**: 공통 설정 스텝 없이 ③에서 CDN 선택 시 곧바로 플랫폼별(⑤) 폼만 렌더
   (AWS→Azure→GCP 순). 필드 확정 근거는 `docs/멀티클라우드 3사 기능 맵핑 — 설정값 입력 범위

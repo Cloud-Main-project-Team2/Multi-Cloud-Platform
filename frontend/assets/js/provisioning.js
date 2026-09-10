@@ -19,6 +19,12 @@
     gcp: ["asia-northeast3", "us-central1"],
   };
 
+  // 국가 하나를 고르면 각 플랫폼의 실제 리전 코드로 매핑한다(공통 설정은 플랫폼 무관).
+  var COUNTRY_REGION = {
+    "한국": { aws: "ap-northeast-2", azure: "koreacentral", gcp: "asia-northeast3" },
+    "미국": { aws: "us-east-1", azure: "eastus", gcp: "us-central1" },
+  };
+
   // 추상 사양 등급 → 플랫폼별 실제 SKU 매핑(코드 상수). 표준 등급은 가격 비교 모달과 일치.
   var SPEC_TIERS = [
     { key: "light", label: "경량 (1 vCPU · 2GB)", sku: { aws: "t3.micro", azure: "B1s", gcp: "e2-micro" } },
@@ -143,14 +149,8 @@
       '<select data-cs="specTier" class="' + FIELD_INPUT + '">' + specOpts + "</select>";
     container.appendChild(specField);
 
-    // 2) 리전 — 선택된 플랫폼마다 별도 select
-    platforms.forEach(function (p) {
-      var regionField = el("div");
-      var opts = REGIONS[p].map(function (r) { return '<option value="' + r + '">' + r + "</option>"; }).join("");
-      regionField.innerHTML = labelHtml("리전 · " + PLATFORM_LABEL[p], true) +
-        '<select data-ps-platform="' + p + '" data-ps="region" class="' + FIELD_INPUT + '">' + opts + "</select>";
-      container.appendChild(regionField);
-    });
+    // 2) 리전 — 국가 단일 선택(플랫폼 무관, collect에서 각 플랫폼 리전으로 매핑)
+    container.appendChild(countryFieldEl());
 
     // 4) 네트워크 — 읽기 전용 안내 + 비활성 토글 자리
     var netField = el("div", { class: "sm:col-span-2" });
@@ -218,12 +218,13 @@
       '" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" /></div>';
     return f;
   }
-  function regionFieldEl(p, note) {
+  // 국가 단일 select(공통). 선택 국가는 collect()에서 각 플랫폼 리전으로 매핑된다.
+  function countryFieldEl() {
     var f = el("div");
-    var opts = REGIONS[p].map(function (r) { return '<option value="' + r + '">' + r + "</option>"; }).join("");
-    f.innerHTML = labelHtml("리전 · " + PLATFORM_LABEL[p], true) +
-      '<select data-ps-platform="' + p + '" data-ps="region" class="' + FIELD_INPUT + '">' + opts + "</select>" +
-      (note ? '<p class="mt-1 text-xs text-muted-foreground">' + note + "</p>" : "");
+    var opts = Object.keys(COUNTRY_REGION).map(function (c) { return "<option>" + c + "</option>"; }).join("");
+    f.innerHTML = labelHtml("리전(국가)", true) +
+      '<select data-cs="country" class="' + FIELD_INPUT + '">' + opts + "</select>" +
+      '<p class="mt-1 text-xs text-muted-foreground">국가를 고르면 각 플랫폼에 맞는 리전이 자동 설정됩니다.</p>';
     return f;
   }
   function appendTagField(container, warning) {
@@ -239,6 +240,7 @@
   function renderDbCommon(container, platforms) {
     container.innerHTML = "";
     container.appendChild(nameFieldEl("db-01"));
+    container.appendChild(countryFieldEl());
 
     platforms.forEach(function (p) {
       var box = el("div", { class: "sm:col-span-2 space-y-3 rounded-xl bg-muted p-3" });
@@ -251,10 +253,6 @@
         html += '<p class="mt-1 text-xs" ' + WARN_STYLE + ">MariaDB는 2025년 9월 19일 이후 Azure에서 지원 종료됩니다.</p>";
       }
       html += "</div>";
-      // 리전
-      var regionOpts = REGIONS[p].map(function (r) { return '<option value="' + r + '">' + r + "</option>"; }).join("");
-      html += "<div>" + labelHtml("리전", true) +
-        '<select data-ps-platform="' + p + '" data-ps="region" class="' + FIELD_INPUT + '">' + regionOpts + "</select></div>";
       // 인증
       if (p === "gcp") {
         html += "<div>" + labelHtml("루트 비밀번호", true) +
@@ -298,11 +296,8 @@
       '<p class="mt-1 text-xs text-muted-foreground">전역에서 고유한 이름이어야 합니다.</p>';
     container.appendChild(bucket);
 
-    // 리전 — 플랫폼별(Azure는 Central 고정 안내)
-    platforms.forEach(function (p) {
-      var note = p === "azure" ? "Azure는 'Central' 리전으로 고정됩니다." : null;
-      container.appendChild(regionFieldEl(p, note));
-    });
+    // 리전 — 국가 단일 선택(플랫폼 무관)
+    container.appendChild(countryFieldEl());
 
     // 태그 — Azure 선택 시 경고
     var azureWarn = platforms.indexOf("azure") >= 0
@@ -406,6 +401,8 @@
         });
       });
       if (tier) ps.instanceType = tier.sku[p];
+      // 국가 → 플랫폼 리전 매핑(공통 설정의 국가 하나로 각 플랫폼 리전 결정)
+      if (cs.country && COUNTRY_REGION[cs.country]) ps.region = COUNTRY_REGION[cs.country][p];
       // 제외 필드의 서버 기본값 병합(사용자 입력 없음)
       var defs = SERVER_DEFAULTS[kind];
       if (defs) Object.keys(defs).forEach(function (k) { if (ps[k] === undefined) ps[k] = defs[k]; });
