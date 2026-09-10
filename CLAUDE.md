@@ -63,7 +63,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 
 ## Key architectural decisions
 
-- **API 형태(2026-09-10)**: 신규 통합 API 명세(`docs/01_API_명세서.md`)가 아니라
+- **API 형태(2026-09-10)**: 신규 통합 API 명세(`docs/01_API_명세서_v1.1.md`)가 아니라
   기존에 구현돼 있던 **provider별 개별 엔드포인트**(`/credentials/{provider}`,
   `/provisioning/{provider}/{service}`, `/resources/action` 형태)를 유지하기로 결정.
   이에 따라 그 통합 API 전용으로만 추가됐던 `provisioning_requests`·`resource_types`
