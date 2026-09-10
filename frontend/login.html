@@ -108,6 +108,13 @@
       form.addEventListener("submit", function (e) {
         e.preventDefault();
         if (valid()) {
+          // 데모 세션 플래그 저장(실제 토큰 아님 — API 연동 단계에서 실제 인증으로 교체).
+          try {
+            localStorage.setItem("mcp_demo_session", JSON.stringify({
+              email: email.value.trim(),
+              loggedInAt: new Date().toISOString()
+            }));
+          } catch (e) {}
           // 데모 리다이렉트 (실제 인증 없음 — API 연동 단계에서 붙음)
           window.location.href = "dashboard.html";
         } else {
