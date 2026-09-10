@@ -119,6 +119,21 @@ docker compose run --rm api python -m app.seed
 - Docker 이미지에 `terraform` CLI를 설치한다(`Dockerfile`, HashiCorp 릴리스 zip). provider
   plugin(azurerm)은 `TF_PLUGIN_CACHE_DIR`로 job 간에 재사용해 매 요청마다 재다운로드하지 않는다.
 
+## credential 등록 — `POST /credentials/{provider}`
+
+`docs/01_API_명세서_v1.1.md` 6.2절. Azure VM 프로비저닝을 실제로 호출해보려면 credential이
+있어야 해서 최소 버전으로 구현했다. **실제 CSP 검증(계정 유효성 확인)은 하지 않는다** —
+스펙이 아직 "검증 실패 시 저장 vs rollback" 정책을 확정하지 않았으므로(19절), 항상 암호화해서
+저장하고 `verified=false`로 반환하는 쪽을 택했다. `docs/01_API_명세서_v1.1.md` 그대로:
+`(user, provider, external_account_id)`가 이미 있으면 재사용하고, 같은 계정 아래 같은 이름의
+credential이 있으면 `409 CREDENTIAL_ALREADY_EXISTS`.
+
+## 수동 테스트: `dev-tools/azure-vm-provisioning-test.html`
+
+Azure VM 프로비저닝이 실제로 동작하는지 브라우저에서 눈으로 확인할 수 있는 페이지.
+자세한 사용법은 `dev-tools/README.md` 참고. 회원가입이 없어 `POST /api/v1/dev/users`(dev
+전용, 정식 API 아님)로 테스트 사용자를 만든다 — 실제 회원가입이 구현되면 지워야 한다.
+
 ## 이번 단계에서 구현하지 않은 것
 
 - 회원가입·로그인·클라우드 리소스 조회 등 비즈니스 API 라우터(위 azure VM 프로비저닝 제외)

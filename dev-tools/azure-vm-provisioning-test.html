@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Azure VM 프로비저닝 테스트 (dev-tools)</title>
+<style>
+  :root {
+    --border: #d8dee6;
+    --bg-muted: #f6f8fa;
+    --accent: #2563eb;
+    --ok: #16a34a;
+    --fail: #dc2626;
+    --pending: #d97706;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    max-width: 880px;
+    margin: 32px auto;
+    padding: 0 20px 80px;
+    color: #1f2328;
+    line-height: 1.5;
+  }
+  h1 { font-size: 1.4rem; margin-bottom: 4px; }
+  .subtitle { color: #57606a; font-size: 0.9rem; margin-bottom: 24px; }
+  .warning {
+    background: #fff8e6; border: 1px solid #f2c94c; border-radius: 8px;
+    padding: 10px 14px; font-size: 0.85rem; margin-bottom: 24px;
+  }
+  section {
+    border: 1px solid var(--border); border-radius: 10px;
+    padding: 18px 20px; margin-bottom: 18px; background: #fff;
+  }
+  section.disabled { opacity: 0.5; pointer-events: none; }
+  h2 {
+    font-size: 1rem; margin: 0 0 4px;
+    display: flex; align-items: center; gap: 8px;
+  }
+  h2 .step-num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 22px; height: 22px; border-radius: 999px;
+    background: var(--accent); color: #fff; font-size: 0.75rem;
+  }
+  .step-desc { color: #57606a; font-size: 0.82rem; margin-bottom: 14px; }
+  label { display: block; font-size: 0.82rem; margin: 10px 0 4px; color: #333; }
+  input[type="text"], input[type="email"], select, textarea {
+    width: 100%; padding: 7px 9px; border: 1px solid var(--border);
+    border-radius: 6px; font-size: 0.88rem; font-family: inherit;
+  }
+  textarea { resize: vertical; min-height: 60px; font-family: ui-monospace, monospace; font-size: 0.78rem; }
+  .row { display: flex; gap: 12px; }
+  .row > div { flex: 1; }
+  button {
+    margin-top: 14px; padding: 8px 16px; border: none; border-radius: 6px;
+    background: var(--accent); color: #fff; font-size: 0.88rem; cursor: pointer;
+  }
+  button:hover { background: #1d4ed8; }
+  button:disabled { background: #93a3b8; cursor: not-allowed; }
+  .result-box {
+    margin-top: 12px; background: var(--bg-muted); border: 1px solid var(--border);
+    border-radius: 6px; padding: 10px 12px; font-size: 0.78rem;
+    font-family: ui-monospace, monospace; white-space: pre-wrap; word-break: break-all;
+    max-height: 260px; overflow: auto;
+  }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 0.75rem; font-weight: 600; color: #fff;
+  }
+  .badge.queued, .badge.running { background: var(--pending); }
+  .badge.success { background: var(--ok); }
+  .badge.failed { background: var(--fail); }
+  .hint { font-size: 0.76rem; color: #8a8f98; margin-top: 4px; }
+  footer { font-size: 0.76rem; color: #8a8f98; margin-top: 30px; }
+  code { background: var(--bg-muted); padding: 1px 5px; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<h1>Azure VM 프로비저닝 테스트</h1>
+<div class="subtitle">
+  <code>dev-tools/</code> — 팀 확정 화면(<code>frontend/</code>)과 별개인 QA/개발용 페이지입니다.
+  <code>docs/01_API_명세서_v1.1.md</code> 10절 API를 실제로 호출해 Azure VM 생성 흐름 전체를 확인합니다.
+</div>
+
+<div class="warning">
+  ⚠️ 실제 Azure 구독에 요청을 보냅니다. 3단계에서 "생성 요청 보내기"를 누르면 실제 과금이 발생할 수 있는
+  VM 생성이 시도됩니다. 인증에 쓰이는 <code>get_current_user_id</code>는 아직 회원가입/로그인이 없어
+  <code>Authorization: Bearer &lt;user_id&gt;</code>만 파싱하는 임시 구현입니다(정식 스펙 아님).
+</div>
+
+<label>API base URL</label>
+<input type="text" id="apiBase" value="http://localhost:8000" />
+
+<!-- 1단계: 테스트 사용자 -->
+<section id="step1">
+  <h2><span class="step-num">1</span> 테스트 사용자 준비</h2>
+  <div class="step-desc">
+    회원가입 API가 아직 없어서 <code>POST /api/v1/dev/users</code>(dev 전용, 정식 스펙 아님)로 대체합니다.
+    이미 user_id가 있으면 바로 입력하고 2단계로 넘어가도 됩니다.
+  </div>
+  <div class="row">
+    <div>
+      <label>이메일</label>
+      <input type="email" id="devEmail" value="azure-tester@example.com" />
+    </div>
+    <div>
+      <label>이름</label>
+      <input type="text" id="devName" value="Azure Tester" />
+    </div>
+  </div>
+  <button onclick="createDevUser()">테스트 사용자 생성</button>
+  <label style="margin-top:16px">또는 기존 user_id 직접 입력</label>
+  <input type="text" id="userId" placeholder="예: 1" />
+  <div id="step1Result" class="result-box" style="display:none"></div>
+</section>
+
+<!-- 2단계: credential 등록 -->
+<section id="step2" class="disabled">
+  <h2><span class="step-num">2</span> Azure credential 등록</h2>
+  <div class="step-desc">
+    <code>POST /api/v1/credentials/azure</code> — Service Principal(tenant_id/client_id/client_secret/
+    subscription_id)을 서버가 AES-256-GCM으로 암호화해 저장합니다. 이 페이지는 secret을 저장하지
+    않고 요청 한 번에만 씁니다.
+  </div>
+  <div class="row">
+    <div>
+      <label>Azure Subscription ID (= external_account_id)</label>
+      <input type="text" id="subscriptionId" placeholder="00000000-0000-0000-0000-000000000000" />
+    </div>
+    <div>
+      <label>계정 표시 이름 (account_label)</label>
+      <input type="text" id="accountLabel" value="Azure 테스트 계정" />
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>Tenant ID</label>
+      <input type="text" id="tenantId" />
+    </div>
+    <div>
+      <label>Client ID (앱 등록 ID)</label>
+      <input type="text" id="clientId" />
+    </div>
+  </div>
+  <label>Client Secret</label>
+  <input type="text" id="clientSecret" />
+  <label>credential 이름 (name)</label>
+  <input type="text" id="credentialName" value="provisioner" />
+  <button onclick="createCredential()">credential 등록</button>
+  <label style="margin-top:16px">또는 기존 credential_id 직접 입력</label>
+  <input type="text" id="credentialId" placeholder="예: 44" />
+  <div id="step2Result" class="result-box" style="display:none"></div>
+</section>
+
+<!-- 3단계: VM 생성 -->
+<section id="step3" class="disabled">
+  <h2><span class="step-num">3</span> Azure VM 생성 요청</h2>
+  <div class="step-desc">
+    <code>POST /api/v1/provisioning/azure/vm</code> — <code>Idempotency-Key</code>는 매 요청 새로
+    생성되고, <code>X-Action-Confirmed: true</code>는 "생성 요청 보내기" 클릭 자체를 사용자 확인으로
+    간주합니다.
+  </div>
+  <div class="row">
+    <div>
+      <label>VM 이름 (common_spec.name)</label>
+      <input type="text" id="vmName" value="mcp-test-vm" />
+    </div>
+    <div>
+      <label>Region (location)</label>
+      <input type="text" id="location" value="koreacentral" />
+    </div>
+  </div>
+  <div class="row">
+    <div>
+      <label>VM Size</label>
+      <input type="text" id="vmSize" value="Standard_B1s" />
+    </div>
+    <div>
+      <label>admin 계정명</label>
+      <input type="text" id="adminUsername" value="azureuser" />
+    </div>
+  </div>
+  <label>SSH 공개키 (ssh_public_key)</label>
+  <textarea id="sshPublicKey" placeholder="ssh-rsa AAAA... 또는 ssh-ed25519 AAAA..."></textarea>
+  <label>
+    <input type="checkbox" id="createPublicIp" checked style="width:auto; display:inline-block; margin-right:6px" />
+    공인 IP 생성 (create_public_ip)
+  </label>
+  <button onclick="createJob()">생성 요청 보내기</button>
+  <div id="step3Result" class="result-box" style="display:none"></div>
+</section>
+
+<!-- 4단계: 상태 -->
+<section id="step4" class="disabled">
+  <h2><span class="step-num">4</span> Job 상태 확인</h2>
+  <div class="step-desc">
+    <code>GET /api/v1/provisioning/jobs/{'{job_id}'}</code> 를 3초 간격으로 폴링합니다. 실제 Terraform
+    실행(백그라운드)이 끝나 <code>success</code>/<code>failed</code>로 종결되면 자동으로 멈춥니다.
+  </div>
+  현재 상태: <span id="statusBadge" class="badge queued">-</span>
+  <div id="step4Result" class="result-box" style="display:none"></div>
+</section>
+
+<footer>
+  이 페이지는 <code>backend/app/routers/provisioning.py</code>, <code>credentials.py</code>,
+  <code>dev_tools.py</code>가 실제로 응답하는지 눈으로 확인하기 위한 것입니다. 프로덕션 화면
+  (<code>frontend/</code>)과 무관하며 배포 대상이 아닙니다.
+</footer>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const apiBase = () => $('apiBase').value.replace(/\/$/, '');
+const authHeader = () => ({ 'Authorization': `Bearer ${$('userId').value.trim()}` });
+
+function show(boxId, obj) {
+  const el = $(boxId);
+  el.style.display = 'block';
+  el.textContent = typeof obj === 'string' ? obj : JSON.stringify(obj, null, 2);
+}
+
+function enable(sectionId) {
+  $(sectionId).classList.remove('disabled');
+}
+
+function uuid() {
+  return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+async function callApi(path, options = {}) {
+  const res = await fetch(`${apiBase()}${path}`, options);
+  let body;
+  try { body = await res.json(); } catch { body = null; }
+  return { status: res.status, body };
+}
+
+async function createDevUser() {
+  const { status, body } = await callApi('/api/v1/dev/users', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: $('devEmail').value, name: $('devName').value }),
+  });
+  show('step1Result', { status, body });
+  if (status === 201) {
+    $('userId').value = body.data.id;
+    enable('step2');
+  }
+}
+
+async function createCredential() {
+  if (!$('userId').value.trim()) {
+    alert('먼저 1단계에서 user_id를 확보하세요.');
+    return;
+  }
+  const { status, body } = await callApi('/api/v1/credentials/azure', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeader() },
+    body: JSON.stringify({
+      external_account_id: $('subscriptionId').value,
+      account_label: $('accountLabel').value,
+      name: $('credentialName').value,
+      public_identifier: $('clientId').value,
+      secret_payload: {
+        tenant_id: $('tenantId').value,
+        client_id: $('clientId').value,
+        client_secret: $('clientSecret').value,
+        subscription_id: $('subscriptionId').value,
+      },
+    }),
+  });
+  show('step2Result', { status, body });
+  if (status === 201) {
+    $('credentialId').value = body.data.id;
+    enable('step3');
+  }
+}
+
+let pollTimer = null;
+
+async function createJob() {
+  if (!$('credentialId').value.trim()) {
+    alert('먼저 2단계에서 credential_id를 확보하세요.');
+    return;
+  }
+  const { status, body } = await callApi('/api/v1/provisioning/azure/vm', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': uuid(),
+      'X-Action-Confirmed': 'true',
+      ...authHeader(),
+    },
+    body: JSON.stringify({
+      credential_id: Number($('credentialId').value),
+      common_spec: { name: $('vmName').value },
+      provider_spec: {
+        location: $('location').value,
+        vm_size: $('vmSize').value,
+        admin_username: $('adminUsername').value,
+        ssh_public_key: $('sshPublicKey').value,
+        create_public_ip: $('createPublicIp').checked,
+      },
+    }),
+  });
+  show('step3Result', { status, body });
+  if (status === 202) {
+    enable('step4');
+    startPolling(body.data.id);
+  }
+}
+
+function setBadge(status) {
+  const badge = $('statusBadge');
+  badge.textContent = status;
+  badge.className = `badge ${status}`;
+}
+
+async function pollOnce(jobId) {
+  const { status, body } = await callApi(`/api/v1/provisioning/jobs/${jobId}`, {
+    headers: authHeader(),
+  });
+  show('step4Result', { status, body });
+  if (status === 200) {
+    setBadge(body.data.status);
+    if (['success', 'failed', 'cancelled'].includes(body.data.status)) {
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  }
+}
+
+function startPolling(jobId) {
+  if (pollTimer) clearInterval(pollTimer);
+  pollOnce(jobId);
+  pollTimer = setInterval(() => pollOnce(jobId), 3000);
+}
+</script>
+</body>
+</html>
