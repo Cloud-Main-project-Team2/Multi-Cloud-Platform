@@ -253,6 +253,7 @@ class ProvisioningJob(CreatedAtMixin, Base):
     idempotency_key: Mapped[str] = mapped_column(String(255), nullable=False)
     spec_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
     status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="queued", default="queued")
+
     progress_percent: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
     # Terraform state 본문·output은 DB에 저장하지 않는다. 안전한 외부 저장소(S3/GCS backend 등)의
     # 참조(키·경로)만 저장한다.
@@ -311,6 +312,7 @@ class Resource(CreatedAtMixin, Base):
     service_catalog_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("service_catalog.id", ondelete="RESTRICT"), nullable=False, index=True
     )
+
     # 확실하게 매핑되는 기존 행만 backfill되어 있을 수 있다. 수집 코드가 항상 값을 채우게
     # 되기 전까지는 nullable로 유지한다(NOT NULL 전환은 별도 migration에서 검토).
     resource_type_id: Mapped[int | None] = mapped_column(
@@ -365,7 +367,6 @@ class Resource(CreatedAtMixin, Base):
         sa.Index("ix_resources_tags_gin", "tags", postgresql_using="gin"),
     )
 
-
 class CloudResourceCost(CreatedAtMixin, Base):
     """리소스 비용 이력. resources의 cost_* 컬럼(최신 요약)과는 별개다.
 
@@ -406,7 +407,6 @@ class CloudResourceCost(CreatedAtMixin, Base):
         sa.Index("ix_cloud_resource_costs_provider_kind_period", "provider", "cost_kind", "period_start"),
         sa.Index("ix_cloud_resource_costs_as_of", "as_of"),
     )
-
 
 class ResourceSyncJob(CreatedAtMixin, Base):
     __tablename__ = "resource_sync_jobs"
@@ -464,7 +464,6 @@ class ResourceSyncJobItem(CreatedAtMixin, Base):
         sa.CheckConstraint("resources_marked_stale >= 0", name="ck_rsji_marked_stale_non_negative"),
         sa.UniqueConstraint("sync_job_id", "cloud_account_id", name="uq_rsji_sync_job_cloud_account"),
     )
-
 
 class AuditEvent(CreatedAtMixin, Base):
     """감사 가능한 보안·파괴적 작업 이벤트. 일반 애플리케이션 로그와 별개다.

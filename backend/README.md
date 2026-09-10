@@ -60,8 +60,8 @@ docker compose run --rm api python -m app.seed
 - `password_reset_tokens.token_hash`: 원본 재설정 토큰은 저장하지 않는다. 발급 시 안전한 난수 토큰을 생성해 사용자에게만 전달하고, DB에는 SHA-256 이상의 단방향 해시만 저장한다. 검증 시 입력 토큰을 동일하게 해시해 `token_hash`와 비교한다(이번 범위에는 발급/검증 API가 없고 스키마만 구현됨).
 - 비밀번호는 `users.password_hash`에 해시만 저장한다(해시 알고리즘 선택은 인증 라우터 구현 시 결정, 이번 범위 밖).
 
-## DB 확장(2964dfe0a706) — 프로비저닝 요청/실행 분리, 리소스 유형, 비용 이력, 감사 이벤트
 
+## DB 확장(2964dfe0a706) — 프로비저닝 요청/실행 분리, 리소스 유형, 비용 이력, 감사 이벤트
 ### provisioning_requests vs provisioning_jobs
 
 - `provisioning_requests`: 사용자의 한 번의 프로비저닝 **의도**(부모). `common_spec_json`, `resource_type_id`, `request_key`(멱등 키)를 가진다.
@@ -94,6 +94,7 @@ docker compose run --rm api python -m app.seed
 
 - `2964dfe0a706`은 기존 데이터가 있다고 가정한다: `provisioning_jobs.provisioning_request_id`는 nullable로 추가 → 각 기존 job에 합성 `provisioning_requests` 부모를 backfill(`request_key = 'legacy-job-<job.id>'`) → NULL이 남아있으면 migration 자체가 실패하도록 검증 → 그제서야 NOT NULL로 전환한다. `resources.resource_type_id`는 위에서 설명한 대로 계속 nullable이다.
 - `downgrade()`는 `provisioning_requests`/`resource_types`/`cloud_resource_costs`/`audit_events`와 그 안의 데이터, 그리고 `provisioning_jobs`/`resources`에 채워진 backfill 결과를 되돌릴 수 없이 삭제한다. 실행 시 경고 메시지를 출력하며, 운영 데이터가 있는 환경에서는 백업 없이 실행하지 않는다.
+
 
 ## 이번 단계에서 구현하지 않은 것
 
