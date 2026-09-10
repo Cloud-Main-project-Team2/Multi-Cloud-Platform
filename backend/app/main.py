@@ -3,8 +3,12 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import engine
+from app.errors import register_error_handlers
+from app.routers.provisioning import router as provisioning_router
 
 app = FastAPI(title="Multi-Cloud Platform API")
+register_error_handlers(app)
+app.include_router(provisioning_router)
 
 
 @app.get("/health")

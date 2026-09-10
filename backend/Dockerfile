@@ -5,8 +5,18 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+ARG TERRAFORM_VERSION=1.7.5
+
+# libpq5: psycopg2-binary 런타임 의존. curl/unzip: terraform CLI 설치용(설치 후 제거하지 않음 —
+# terraform은 app/services/provisioning이 매 요청마다 subprocess로 호출한다).
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get install -y --no-install-recommends libpq5 curl unzip \
+    && arch="$(dpkg --print-architecture)" \
+    && curl -fsSL -o /tmp/terraform.zip \
+         "https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_${arch}.zip" \
+    && unzip -o /tmp/terraform.zip -d /usr/local/bin \
+    && rm /tmp/terraform.zip \
+    && apt-get purge -y --auto-remove unzip \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
