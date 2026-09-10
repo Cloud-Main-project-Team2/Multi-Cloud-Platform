@@ -60,6 +60,17 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 
 > Keep this table updated as branches open, progress, and merge.
 
+## Key architectural decisions
+
+- **API 형태(2026-09-10)**: 신규 통합 API 명세(`docs/01_API_명세서.md`)가 아니라
+  기존에 구현돼 있던 **provider별 개별 엔드포인트**(`/credentials/{provider}`,
+  `/provisioning/{provider}/{service}`, `/resources/action` 형태)를 유지하기로 결정.
+  이에 따라 그 통합 API 전용으로만 추가됐던 `provisioning_requests`·`resource_types`
+  테이블과 참조 컬럼(`provisioning_jobs.provisioning_request_id`,
+  `resources.resource_type_id`)을 제거(Alembic `0caab346f140`, 테이블 15→13).
+  credentials 암호화·Account/Credential 분리·인벤토리 캐시·비용/감사 구조 등 나머지
+  개선은 유지. 현재 스키마는 `docs/DB_ERD_v1.1.md` 참고.
+
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 
 이번 정적 UI 작업의 확정/가정 항목. **화면설계서에 "[확인 필요]"로 남았지만 프로토타입 개발 프롬프트에서 이미 확정된 것**이라 다시 묻지 않음:

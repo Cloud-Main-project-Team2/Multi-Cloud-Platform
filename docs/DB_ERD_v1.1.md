@@ -1,4 +1,4 @@
-# DB ERD — Multi-Cloud Platform (v1.0)
+# DB ERD — Multi-Cloud Platform (v1.1)
 
 현재 구축된 데이터베이스(PostgreSQL)의 ERD 및 스키마 문서.
 **이 버전은 실제 기동한 DB에 접속해 스키마를 introspection으로 대조·검증한 결과다.**
@@ -7,16 +7,23 @@
 
 | 항목 | 값 |
 |---|---|
-| 문서 버전 | **v1.0** |
+| 문서 버전 | **v1.1** |
 | 검증 방식 | `docker compose up`으로 실제 Postgres 기동 → `alembic upgrade head` 적용 → `information_schema` / `pg_catalog` introspection |
 | DB 이미지 | `postgres:16` |
-| Alembic head | `2964dfe0a706` (phase 2 db enhancements) ← `7bf7892874c3` (initial schema) |
-| 검증 시점 스키마 규모 | 테이블 15개(+`alembic_version`), FK 23, UNIQUE 14, CHECK 26 |
-| 소스 | `backend/app/models.py` + `backend/alembic/versions/*` (실 DB와 일치 확인됨) |
+| Alembic head | `0caab346f140` (revert unified provisioning/resource-type api support) ← `2964dfe0a706` (phase 2 db enhancements) ← `7bf7892874c3` (initial schema) |
+| 검증 시점 스키마 규모 | 테이블 13개(+`alembic_version`), FK 18, UNIQUE 12, CHECK 24 |
+| 소스 | `backend/app/models.py` + `backend/alembic/versions/*` (실 DB와 일치 확인됨, `alembic check` diff 없음) |
 | 검증 기준일 | 2026-09-10 |
 
-> 이전 `docs/DB_ERD.md`(모델 정의만 보고 작성한 미검증본)를 이 문서가 대체한다.
-> 스키마 변경 시 마이그레이션과 함께 이 문서의 버전을 올린다(v1.1, v2.0 …).
+> 이전 `docs/DB_ERD.md`(모델 정의만 보고 작성한 미검증본)를 `v1.0`이 대체했고, 이 문서(`v1.1`)가 다시 `v1.0`을 대체한다.
+> 스키마 변경 시 마이그레이션과 함께 이 문서의 버전을 올린다(v1.2, v2.0 …).
+
+### 변경 이력
+
+| 버전 | 기준일 | 변경 |
+|---|---|---|
+| v1.0 | 2026-09-10 | 실 DB introspection 기반 최초 검증본(테이블 15, head `2964dfe0a706`). |
+| **v1.1** | 2026-09-10 | 이전 API 명세(provider별 개별 엔드포인트) 유지 결정에 따라, 신규 통합 API 전용으로만 추가됐던 `provisioning_requests`·`resource_types` 두 테이블과 그 참조 컬럼(`provisioning_jobs.provisioning_request_id`, `resources.resource_type_id`)을 제거(head `0caab346f140`, 테이블 15→13). credentials 암호화·Account/Credential 분리·인벤토리 캐시·비용/감사 구조 등 나머지 개선은 유지. |
 
 ---
 
@@ -26,18 +33,24 @@
 |---|---|
 | 계정·인증 | `users`, `social_accounts`, `password_reset_tokens` |
 | 클라우드 연결·자격증명 | `cloud_accounts`, `credentials` |
-| 서비스/리소스 분류 | `service_catalog`, `resource_types` |
-| 프로비저닝 | `provisioning_requests`, `provisioning_jobs` |
+| 서비스 분류 | `service_catalog` |
+| 프로비저닝 | `provisioning_jobs` |
 | 인벤토리(리소스 수집) | `resources`, `resource_sync_jobs`, `resource_sync_job_items` |
 | 비용 | `cloud_resource_costs` (+ `resources`의 cost_* 요약 컬럼) |
 | 알림·감사 | `notifications`, `audit_events` |
 
-도메인 테이블 **15개** (그 외 Alembic 관리용 `alembic_version` 1개).
+도메인 테이블 **13개** (그 외 Alembic 관리용 `alembic_version` 1개).
+
+> **v1.0 대비 제거**: `resource_types`, `provisioning_requests`. 이전 API 명세(provider별 개별
+> 엔드포인트)에서는 통합 요청 부모(`provisioning_requests`)나 정규화 리소스 유형 테이블
+> (`resource_types`)이 필요 없어, 이들을 위해 추가됐던 스키마 조각을 되돌렸다. `provisioning_jobs`는
+> `provisioning_request_id` 없이 독립 실행 단위로 관리하고, `resources`는 수집 원문 컬럼
+> `original_resource_type`만 유지한다.
 
 ### 설계 원칙 (모델 docstring 기준)
-- **비밀/민감정보 저장 금지**: 자격증명 값은 `credentials.encrypted_payload`(암호화)로만 저장. `common_spec_json`/`spec_json`/`metadata_json` 등 JSONB에는 access/secret key, SA JSON, 복호화된 payload, 원본 토큰을 넣지 않는다.
+- **비밀/민감정보 저장 금지**: 자격증명 값은 `credentials.encrypted_payload`(암호화)로만 저장. `spec_json`/`metadata_json` 등 JSONB에는 access/secret key, SA JSON, 복호화된 payload, 원본 토큰을 넣지 않는다.
 - **Terraform state 미저장**: state 본문·output은 DB에 두지 않고 외부 백엔드(S3/GCS 등) 참조(`terraform_state_ref`)만 저장.
-- **부모-자식 상태 집계는 앱 계층 책임**: `provisioning_requests.status`는 자식 `provisioning_jobs`를 앱이 트랜잭션 내에서 집계해 갱신(DB 트리거 없음).
+- **작업 상태는 앱 계층 책임**: `provisioning_jobs.status`는 앱이 실행 결과를 반영해 갱신(DB 트리거 없음).
 - **감사 로그 불변**: `audit_events`는 수정/삭제 API를 만들지 않는다.
 
 ### 검증 시점 실제 데이터(seed)
@@ -51,6 +64,8 @@
 
 12행 모두 `provisionable = true`. 카테고리: `compute`, `db_rdbms`, `storage_object`, `cdn`.
 
+> v1.0에서는 `resource_types`도 마이그레이션이 12행 시드했으나, v1.1에서 해당 테이블이 제거되며 시드도 함께 사라졌다.
+
 ---
 
 ## 2. ERD (Mermaid)
@@ -60,7 +75,6 @@ erDiagram
     users ||--o{ social_accounts : "has"
     users ||--o{ password_reset_tokens : "has"
     users ||--o{ cloud_accounts : "owns"
-    users ||--o{ provisioning_requests : "requests"
     users ||--o{ provisioning_jobs : "owns"
     users ||--o{ notifications : "receives"
     users ||--o{ resource_sync_jobs : "triggers"
@@ -74,14 +88,8 @@ erDiagram
     credentials ||--o{ provisioning_jobs : "used by"
     credentials |o--o{ resource_sync_job_items : "used by"
 
-    service_catalog ||--o{ resource_types : "defines"
     service_catalog ||--o{ resources : "classifies"
     service_catalog ||--o{ provisioning_jobs : "targets"
-
-    resource_types ||--o{ provisioning_requests : "requested type"
-    resource_types |o--o{ resources : "normalized type (nullable)"
-
-    provisioning_requests ||--o{ provisioning_jobs : "spawns"
 
     resources ||--o{ cloud_resource_costs : "cost history"
 
@@ -136,29 +144,9 @@ erDiagram
         string display_name
         bool provisionable
     }
-    resource_types {
-        bigint id PK
-        bigint service_catalog_id FK
-        string type_code
-        string display_name
-        string category
-        bool provisionable
-        bool supports_start
-        bool supports_stop
-        bool supports_delete
-    }
-    provisioning_requests {
-        bigint id PK
-        bigint user_id FK
-        bigint resource_type_id FK
-        string request_key
-        jsonb common_spec_json
-        string status "queued|running|success|partial_success|failed|cancelled"
-    }
     provisioning_jobs {
         bigint id PK
         bigint user_id FK
-        bigint provisioning_request_id FK
         bigint credential_id FK
         bigint service_catalog_id FK
         string workspace_name
@@ -180,7 +168,6 @@ erDiagram
         bigint id PK
         bigint cloud_account_id FK
         bigint service_catalog_id FK
-        bigint resource_type_id FK "nullable"
         bigint first_collected_by_credential_id FK "nullable"
         bigint last_collected_by_credential_id FK "nullable"
         string provider_resource_key
@@ -234,7 +221,7 @@ erDiagram
 
 ## 3. 관계(외래키) 요약 — 실 DB introspection 결과
 
-아래 23개 FK와 `ON DELETE` 규칙은 실제 DB `pg_constraint`에서 그대로 확인한 값이다.
+아래 18개 FK와 `ON DELETE` 규칙은 실제 DB `pg_constraint`에서 그대로 확인한 값이다.
 
 | 자식 테이블 | 컬럼 | 부모 테이블 | ON DELETE |
 |---|---|---|---|
@@ -242,17 +229,12 @@ erDiagram
 | password_reset_tokens | user_id | users | CASCADE |
 | cloud_accounts | user_id | users | RESTRICT |
 | credentials | cloud_account_id | cloud_accounts | CASCADE |
-| resource_types | service_catalog_id | service_catalog | RESTRICT |
-| provisioning_requests | user_id | users | RESTRICT |
-| provisioning_requests | resource_type_id | resource_types | RESTRICT |
 | provisioning_jobs | user_id | users | RESTRICT |
-| provisioning_jobs | provisioning_request_id | provisioning_requests | CASCADE |
 | provisioning_jobs | credential_id | credentials | RESTRICT |
 | provisioning_jobs | service_catalog_id | service_catalog | RESTRICT |
 | notifications | user_id | users | CASCADE |
 | resources | cloud_account_id | cloud_accounts | CASCADE |
 | resources | service_catalog_id | service_catalog | RESTRICT |
-| resources | resource_type_id | resource_types | RESTRICT |
 | resources | first_collected_by_credential_id | credentials | SET NULL |
 | resources | last_collected_by_credential_id | credentials | SET NULL |
 | cloud_resource_costs | resource_id | resources | CASCADE |
@@ -261,6 +243,10 @@ erDiagram
 | resource_sync_job_items | cloud_account_id | cloud_accounts | RESTRICT |
 | resource_sync_job_items | credential_id | credentials | SET NULL |
 | audit_events | actor_user_id | users | SET NULL |
+
+> v1.0 대비 제거된 FK 5개: `resource_types.service_catalog_id`, `provisioning_requests.user_id`,
+> `provisioning_requests.resource_type_id`, `provisioning_jobs.provisioning_request_id`,
+> `resources.resource_type_id`.
 
 **인덱스 참고**: 모든 FK 컬럼에는 단일 컬럼 B-tree 인덱스가 자동 생성되어 있고(`ix_<table>_<col>`), 아래 복합/특수 인덱스가 추가로 존재한다.
 - `resources`: `(cloud_account_id, service_catalog_id)`, `(cloud_account_id, status)`, `(region)`, `(last_synced_at)`, `(tags)` **GIN**
@@ -347,47 +333,12 @@ UNIQUE: `(cloud_account_id, name)`.
 
 UNIQUE: `(provider, service_code)`. (검증 시점 12행 seed됨 — §1 참고)
 
-### 4.7 resource_types — CSP 원본 리소스 유형
-`service_catalog`(서비스 단위)과 별개로, 서비스가 실제 다루는 리소스 종류를 정규화한 코드.
-`resources.original_resource_type`(수집 원문)을 정규화한 안정적 코드가 `type_code`.
-
-| 컬럼 | 타입 | Null | 제약 |
-|---|---|---|---|
-| service_catalog_id | bigint | N | FK→service_catalog (RESTRICT), index |
-| type_code | varchar(150) | N | 예: EC2 Instance |
-| display_name | varchar(200) | N | |
-| category | varchar(100) | N | |
-| provisionable | bool | N | default false |
-| supports_start | bool | N | default false |
-| supports_stop | bool | N | default false |
-| supports_delete | bool | N | default false |
-| updated_at | timestamptz | N | onupdate now() |
-
-UNIQUE: `(service_catalog_id, type_code)`.
-
-### 4.8 provisioning_requests — 프로비저닝 요청(부모)
-사용자의 한 번의 프로비저닝 의도. 실제 실행 단위는 자식 `provisioning_jobs`.
-다중 계정 선택 시 요청 1 : job N 을 표현할 수 있게만 설계(조합 규칙은 앱 미구현).
+### 4.7 provisioning_jobs — 프로비저닝 실행
+한 credential · 한 provider · 한 Terraform workspace 단위 실행. (v1.0의 부모 `provisioning_requests`는 제거되어, 이 테이블이 독립 실행 단위다.)
 
 | 컬럼 | 타입 | Null | 제약 |
 |---|---|---|---|
 | user_id | bigint | N | FK→users (RESTRICT), index |
-| request_key | varchar(255) | N | 멱등 요청 키 |
-| resource_type_id | bigint | N | FK→resource_types (RESTRICT), index |
-| common_spec_json | jsonb | N | **secret 저장 금지** |
-| status | varchar(30) | N | default `queued`, CHECK `IN ('queued','running','success','partial_success','failed','cancelled')` |
-| started_at | timestamptz | Y | |
-| finished_at | timestamptz | Y | CHECK `finished_at >= started_at`(둘 중 NULL 허용) |
-
-UNIQUE: `(user_id, request_key)`.
-
-### 4.9 provisioning_jobs — 프로비저닝 실행(자식)
-한 credential · 한 provider · 한 Terraform workspace 단위 실행.
-
-| 컬럼 | 타입 | Null | 제약 |
-|---|---|---|---|
-| user_id | bigint | N | FK→users (RESTRICT), index |
-| provisioning_request_id | bigint | N | FK→provisioning_requests (CASCADE), index |
 | credential_id | bigint | N | FK→credentials (RESTRICT), index |
 | service_catalog_id | bigint | N | FK→service_catalog (RESTRICT), index |
 | workspace_name | varchar(255) | N | |
@@ -404,7 +355,10 @@ UNIQUE: `(user_id, request_key)`.
 
 UNIQUE: `(user_id, workspace_name)`, `(user_id, idempotency_key)`.
 
-### 4.10 notifications — 알림
+> `progress_percent` / `created_resource_count` / `terraform_state_ref`는 이전 API에서 필수는
+> 아니지만 무해하고, 서버측 진행률 추적을 붙일 때 바로 쓸 수 있어 v1.1에서도 유지한다.
+
+### 4.8 notifications — 알림
 | 컬럼 | 타입 | Null | 제약 |
 |---|---|---|---|
 | user_id | bigint | N | FK→users (CASCADE), index |
@@ -416,12 +370,11 @@ UNIQUE: `(user_id, workspace_name)`, `(user_id, idempotency_key)`.
 | is_read | bool | N | default false |
 | read_at | timestamptz | Y | |
 
-### 4.11 resources — 수집된 클라우드 리소스(인벤토리)
+### 4.9 resources — 수집된 클라우드 리소스(인벤토리)
 | 컬럼 | 타입 | Null | 제약 |
 |---|---|---|---|
 | cloud_account_id | bigint | N | FK→cloud_accounts (CASCADE), index |
 | service_catalog_id | bigint | N | FK→service_catalog (RESTRICT), index |
-| resource_type_id | bigint | Y | FK→resource_types (RESTRICT), index (backfill 중 nullable) |
 | first_collected_by_credential_id | bigint | Y | FK→credentials (SET NULL), index |
 | last_collected_by_credential_id | bigint | Y | FK→credentials (SET NULL), index |
 | provider_resource_key | varchar(1024) | N | |
@@ -447,7 +400,10 @@ UNIQUE: `(user_id, workspace_name)`, `(user_id, idempotency_key)`.
 UNIQUE: `(cloud_account_id, provider_resource_key)`.
 INDEX: `(cloud_account_id, service_catalog_id)`, `(cloud_account_id, status)`, `region`, `last_synced_at`, `tags` (GIN), + 각 FK 단일 인덱스.
 
-### 4.12 cloud_resource_costs — 비용 이력
+> v1.0의 `resource_type_id`(→`resource_types`) 컬럼은 제거됐다. CSP 원본 유형은 수집 원문
+> 컬럼 `original_resource_type`으로만 보존한다.
+
+### 4.10 cloud_resource_costs — 비용 이력
 `resources`의 cost_* 요약 컬럼과 별개인 **기간별 전체 이력**. `cost_kind`가 다른 값은 합산하지 않는다.
 
 | 컬럼 | 타입 | Null | 제약 |
@@ -466,7 +422,7 @@ INDEX: `(cloud_account_id, service_catalog_id)`, `(cloud_account_id, status)`, `
 UNIQUE: `(provider, source_record_key)`.
 INDEX: `(resource_id, period_start, period_end)`, `(provider, cost_kind, period_start)`, `as_of`.
 
-### 4.13 resource_sync_jobs — 리소스 동기화 작업(부모)
+### 4.11 resource_sync_jobs — 리소스 동기화 작업(부모)
 | 컬럼 | 타입 | Null | 제약 |
 |---|---|---|---|
 | user_id | bigint | N | FK→users (RESTRICT), index |
@@ -474,7 +430,7 @@ INDEX: `(resource_id, period_start, period_end)`, `(provider, cost_kind, period_
 | requested_at | timestamptz | N | |
 | started_at / finished_at | timestamptz | Y | |
 
-### 4.14 resource_sync_job_items — 동기화 작업 항목(계정별)
+### 4.12 resource_sync_job_items — 동기화 작업 항목(계정별)
 | 컬럼 | 타입 | Null | 제약 |
 |---|---|---|---|
 | sync_job_id | bigint | N | FK→resource_sync_jobs (CASCADE), index |
@@ -489,7 +445,7 @@ INDEX: `(resource_id, period_start, period_end)`, `(provider, cost_kind, period_
 
 UNIQUE: `(sync_job_id, cloud_account_id)`.
 
-### 4.15 audit_events — 감사 이벤트(불변)
+### 4.13 audit_events — 감사 이벤트(불변)
 보안·파괴적 작업 감사용. **수정/삭제 API 없음**, `metadata_json`에 민감정보 저장 금지.
 
 | 컬럼 | 타입 | Null | 제약 |
@@ -515,7 +471,6 @@ INDEX: `(actor_user_id, created_at)`, `(target_type, target_id, created_at)`, `(
 | users.status | active, withdrawn |
 | provider (cloud_accounts / service_catalog / cloud_resource_costs / resource_sync_job_items) | aws, azure, gcp |
 | audit_events.provider | (NULL) 또는 aws, azure, gcp |
-| provisioning_requests.status | queued, running, success, partial_success, failed, cancelled |
 | provisioning_jobs.status | queued, running, success, failed, cancelled |
 | resource_sync_jobs.status | pending, running, success, partial_success, failed, cancelled |
 | resource_sync_job_items.status | pending, running, success, failed, cancelled |
@@ -532,11 +487,15 @@ docker compose up -d --build api
 
 # 2) 마이그레이션 head 확인
 docker compose exec db psql -U mcp_user -d mcp_db -c "SELECT version_num FROM alembic_version;"
-#  -> 2964dfe0a706
+#  -> 0caab346f140
 
 # 3) 스키마 introspection (테이블/FK/제약/인덱스)
+docker compose exec db psql -U mcp_user -d mcp_db -c "\dt"      # 13개 도메인 테이블
 docker compose exec db psql -U mcp_user -d mcp_db -c "\d+ <table>"
 
-# 4) 정리
+# 4) 모델 ↔ 스키마 일치 확인
+docker compose exec api alembic check   # -> No new upgrade operations detected.
+
+# 5) 정리
 docker compose down -v   # -v 는 db 볼륨까지 삭제
 ```
