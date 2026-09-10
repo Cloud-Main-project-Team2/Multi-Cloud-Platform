@@ -60,14 +60,50 @@ docker compose run --rm api python -m app.seed
 - `password_reset_tokens.token_hash`: 원본 재설정 토큰은 저장하지 않는다. 발급 시 안전한 난수 토큰을 생성해 사용자에게만 전달하고, DB에는 SHA-256 이상의 단방향 해시만 저장한다. 검증 시 입력 토큰을 동일하게 해시해 `token_hash`와 비교한다(이번 범위에는 발급/검증 API가 없고 스키마만 구현됨).
 - 비밀번호는 `users.password_hash`에 해시만 저장한다(해시 알고리즘 선택은 인증 라우터 구현 시 결정, 이번 범위 밖).
 
+
+## DB 확장(2964dfe0a706) — 프로비저닝 요청/실행 분리, 리소스 유형, 비용 이력, 감사 이벤트
+### provisioning_requests vs provisioning_jobs
+
+- `provisioning_requests`: 사용자의 한 번의 프로비저닝 **의도**(부모). `common_spec_json`, `resource_type_id`, `request_key`(멱등 키)를 가진다.
+- `provisioning_jobs`: 한 credential·한 provider·한 Terraform workspace에 대한 실제 **실행 단위**(자식). `provisioning_request_id`로 부모를 참조한다.
+- 한 요청에 여러 실행(job)을 연결할 수 있도록만 설계했다. **여러 계정을 선택했을 때 실제로 몇 개의 job이 어떤 조합 규칙으로 생성되는지는 아직 정책이 확정되지 않았다** — 이 migration은 그 조합 규칙을 구현하지 않는다.
+- 요청(`provisioning_requests.status`)은 자식 job들의 상태를 집계한 값이다. DB trigger로 자동 계산하지 않으며, 서비스 계층이 하나의 transaction 안에서 자식 job 상태를 읽고 부모 상태를 갱신해야 한다.
+- `provisioning_jobs.terraform_state_ref`에는 Terraform state 본문이나 민감 output을 직접 저장하지 않는다. **안전한 외부 저장소(S3/GCS backend 등)의 참조(키·경로)만** 저장한다.
+
+### service_catalog vs resource_types
+
+- `service_catalog`: provider의 서비스 단위(예: "EC2")에 대한 공통 분류.
+- `resource_types`: 그 서비스가 실제로 다루는 **CSP 원본 리소스 종류**(예: "EC2 Instance")를 정규화한 테이블. `type_code`는 안정적인 코드이고, `resources.original_resource_type`은 수집 원문 문자열 보존용으로 그대로 유지된다.
+- 이번 migration은 12개 provisionable 서비스 각각에 최소 1개 타입만 시드했다(전부 `provisionable=true`, `supports_start/stop/delete`는 안전하게 기본값 `false`). `gcp/cloud_cdn`만 자체 CDN 리소스 개념이 없어 형제 CDN 서비스(CloudFront distribution, Azure CDN endpoint)와 일관되게 "distribution"으로 이름 붙였다 — 실제 CSP 용어 확인 후 조정될 수 있다.
+- `resources.resource_type_id`는 **nullable로 유지**한다. 기존 행은 `service_catalog_id`로 확실하게(1서비스-1타입) 매핑 가능한 경우에만 migration에서 backfill했고, 애매한 매핑은 만들지 않았다. 리소스 수집 코드가 항상 이 값을 채우게 된 뒤에야 별도 migration에서 NOT NULL 전환을 검토할 수 있다.
+
+### 리소스 최신 비용 요약 vs 비용 이력
+
+- `resources.estimated_monthly_cost`/`collected_cost_amount`/`cost_currency`/... : 화면 빠른 조회용 **최신 스냅샷 하나**.
+- `cloud_resource_costs`: 기간별 비용 레코드의 **전체 이력**. `(provider, source_record_key)`로 재수집 시 멱등 처리한다(같은 레코드를 다시 수집해도 중복 삽입되지 않음).
+- `cost_kind`는 `actual | estimated | list_price_estimate` 중 하나이며, 서로 다른 종류·통화를 같은 의미로 합산하지 않는다. 각 레코드는 `period_start`/`period_end`(기간), `as_of`(기준 시각), `source`(수집 출처)를 함께 가진다.
+- GCP의 실제(actual) 비용 수집 방식과 필요한 권한은 **아직 미확정**이다. `provider` 값 자체는 지원하되, 구체적인 API·권한은 이번 범위에서 구현하거나 확정하지 않는다.
+
+### audit_events
+
+- 일반 애플리케이션 로그와 별개로, 감사 가능한 보안·파괴적 작업(credential 생성/검증/삭제, 리소스 시작/중지/삭제, 프로비저닝 요청/완료, 회원 탈퇴)을 구조화해 저장한다.
+- `metadata_json`에는 **다음을 절대 넣지 않는다**: 비밀번호·JWT, 클라우드 access/secret key나 service account JSON, 복호화된 credential payload, Terraform secret variable·민감 output, 비밀번호 재설정 원본 토큰.
+- 이 테이블에 대한 수정·삭제 API는 만들지 않는다. 보존 기간은 미확정이므로 자동 삭제 정책도 만들지 않았다.
+
+### migration 안전성 메모
+
+- `2964dfe0a706`은 기존 데이터가 있다고 가정한다: `provisioning_jobs.provisioning_request_id`는 nullable로 추가 → 각 기존 job에 합성 `provisioning_requests` 부모를 backfill(`request_key = 'legacy-job-<job.id>'`) → NULL이 남아있으면 migration 자체가 실패하도록 검증 → 그제서야 NOT NULL로 전환한다. `resources.resource_type_id`는 위에서 설명한 대로 계속 nullable이다.
+- `downgrade()`는 `provisioning_requests`/`resource_types`/`cloud_resource_costs`/`audit_events`와 그 안의 데이터, 그리고 `provisioning_jobs`/`resources`에 채워진 backfill 결과를 되돌릴 수 없이 삭제한다. 실행 시 경고 메시지를 출력하며, 운영 데이터가 있는 환경에서는 백업 없이 실행하지 않는다.
+
+
 ## 이번 단계에서 구현하지 않은 것
 
 - 회원가입·로그인·클라우드 리소스 조회 등 비즈니스 API 라우터
 - 실제 AWS/Azure/GCP SDK 호출, Terraform 실행
 - 파일 기반 로깅 미들웨어
-- 비용 이력, 보고서, 예산, 보안 finding
+- 보고서, 예산, 보안 finding
 - 프론트엔드 화면(정적 파일은 `frontend/`에 이미 있고 `web` 서비스는 그것을 그대로 서빙만 함)
-- 다중 계정 프로비저닝의 조합 규칙(`provisioning_jobs`는 현재 "credential 1개 × 서비스 1개 = 실행 1건" 단위로만 설계됨)
+- 다중 계정 프로비저닝의 조합 규칙(`provisioning_requests` 1개에 `provisioning_jobs`를 여러 개 연결할 수 있도록 DB만 설계했고, 실제로 몇 개를 어떤 규칙으로 생성할지는 아직 정책 미확정)
 
 ## 운영 환경 참고
 
