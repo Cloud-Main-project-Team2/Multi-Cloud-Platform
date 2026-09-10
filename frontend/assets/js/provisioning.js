@@ -161,43 +161,9 @@
       "</div>";
     container.appendChild(netField);
 
-    // 5) 인바운드 규칙 — 프리셋 체크박스 + 커스텀 행 추가/삭제
-    var inboundField = el("div", { class: "sm:col-span-2" });
-    var presetHtml = INBOUND_PRESETS.map(function (r) {
-      var checked = r.port === 22 ? " checked" : "";
-      return '<label class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-sm">' +
-        '<input type="checkbox" data-inbound-preset="' + r.port + '"' + checked + " /> " + r.label + "</label>";
-    }).join("");
-    inboundField.innerHTML = labelHtml("인바운드 규칙", true) +
-      '<div class="flex flex-wrap gap-2">' + presetHtml + "</div>" +
-      '<div data-inbound-custom class="mt-2 space-y-2"></div>' +
-      '<button type="button" data-inbound-add class="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">+ 규칙 추가</button>' +
-      '<p data-inbound-msg class="mt-1 text-xs text-muted-foreground">최소 1개 이상의 규칙이 필요합니다.</p>';
-    container.appendChild(inboundField);
+    // 인바운드 규칙·인증은 플랫폼별로 내용이 달라 ⑤ 추가 설정으로 이동(공통은 플랫폼 무관 유지).
 
-    // 6) 인증 — 플랫폼별 위젯
-    platforms.forEach(function (p) {
-      var authField = el("div", { class: "sm:col-span-2 rounded-xl bg-muted p-3" });
-      var inner = '<p class="mb-2 text-sm font-medium">인증 · ' + PLATFORM_LABEL[p] + "</p>";
-      if (p === "aws") {
-        inner += labelHtml("키 페어 이름", true) +
-          '<input type="text" data-ps-platform="aws" data-ps="keyPairName" placeholder="mcp-keypair" class="' + FIELD_INPUT + '" />';
-      } else if (p === "azure") {
-        inner += '<div class="grid gap-2 sm:grid-cols-2">' +
-          "<div>" + labelHtml("관리자 계정명", true) +
-          '<input type="text" data-ps-platform="azure" data-ps="adminUsername" class="' + FIELD_INPUT + '" /></div>' +
-          "<div>" + labelHtml("비밀번호", true) +
-          '<input type="password" data-ps-platform="azure" data-ps="adminPassword" class="' + FIELD_INPUT + '" /></div>' +
-          "</div>";
-      } else if (p === "gcp") {
-        inner += labelHtml("SSH 공개키", true) +
-          '<textarea data-ps-platform="gcp" data-ps="sshPublicKey" rows="2" placeholder="ssh-rsa AAAA..." class="' + FIELD_INPUT + '"></textarea>';
-      }
-      authField.innerHTML = inner;
-      container.appendChild(authField);
-    });
-
-    // 7) 태그 — key-value 반복 입력 (선택)
+    // 태그 — key-value 반복 입력 (선택)
     var tagField = el("div", { class: "sm:col-span-2" });
     tagField.innerHTML = labelHtml("태그") +
       '<div data-tag-rows class="space-y-2"></div>' +
@@ -236,37 +202,75 @@
     container.appendChild(f);
   }
 
+  // Compute 인바운드 규칙(⑤로 이동) — 프리셋 체크박스 + 커스텀 행 추가/삭제.
+  function inboundFieldEl() {
+    var f = el("div", { class: "sm:col-span-2" });
+    var presetHtml = INBOUND_PRESETS.map(function (r) {
+      var checked = r.port === 22 ? " checked" : "";
+      return '<label class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-sm">' +
+        '<input type="checkbox" data-inbound-preset="' + r.port + '"' + checked + " /> " + r.label + "</label>";
+    }).join("");
+    f.innerHTML = labelHtml("인바운드 규칙", true) +
+      '<div class="flex flex-wrap gap-2">' + presetHtml + "</div>" +
+      '<div data-inbound-custom class="mt-2 space-y-2"></div>' +
+      '<button type="button" data-inbound-add class="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">+ 규칙 추가</button>' +
+      '<p data-inbound-msg class="mt-1 text-xs text-muted-foreground">최소 1개 이상의 규칙이 필요합니다.</p>';
+    return f;
+  }
+
+  // Compute 인증(⑤로 이동) — 플랫폼별 위젯.
+  function computeAuthEl(p) {
+    var f = el("div", { class: "sm:col-span-2 rounded-xl bg-muted p-3" });
+    var inner = '<p class="mb-2 text-sm font-medium">인증 · ' + PLATFORM_LABEL[p] + "</p>";
+    if (p === "aws") {
+      inner += labelHtml("키 페어 이름", true) +
+        '<input type="text" data-ps-platform="aws" data-ps="keyPairName" placeholder="mcp-keypair" class="' + FIELD_INPUT + '" />';
+    } else if (p === "azure") {
+      inner += '<div class="grid gap-2 sm:grid-cols-2">' +
+        "<div>" + labelHtml("관리자 계정명", true) +
+        '<input type="text" data-ps-platform="azure" data-ps="adminUsername" class="' + FIELD_INPUT + '" /></div>' +
+        "<div>" + labelHtml("비밀번호", true) +
+        '<input type="password" data-ps-platform="azure" data-ps="adminPassword" class="' + FIELD_INPUT + '" /></div></div>';
+    } else if (p === "gcp") {
+      inner += labelHtml("SSH 공개키", true) +
+        '<textarea data-ps-platform="gcp" data-ps="sshPublicKey" rows="2" placeholder="ssh-rsa AAAA..." class="' + FIELD_INPUT + '"></textarea>';
+    }
+    f.innerHTML = inner;
+    return f;
+  }
+
+  // DB 엔진+인증(⑤로 이동) — 플랫폼별 박스.
+  function dbBoxEl(p) {
+    var box = el("div", { class: "sm:col-span-2 space-y-3 rounded-xl bg-muted p-3" });
+    var engineOpts = DB_ENGINES[p].map(function (e) { return "<option>" + e + "</option>"; }).join("");
+    var html = '<p class="text-sm font-medium">' + PLATFORM_LABEL[p] + "</p>";
+    html += "<div>" + labelHtml("엔진", true) +
+      '<select data-ps-platform="' + p + '" data-ps="engine" class="' + FIELD_INPUT + '">' + engineOpts + "</select>";
+    if (p === "azure") {
+      html += '<p class="mt-1 text-xs" ' + WARN_STYLE + ">MariaDB는 2025년 9월 19일 이후 Azure에서 지원 종료됩니다.</p>";
+    }
+    html += "</div>";
+    if (p === "gcp") {
+      html += "<div>" + labelHtml("루트 비밀번호", true) +
+        '<input type="password" data-ps-platform="gcp" data-ps="masterPassword" class="' + FIELD_INPUT + '" />' +
+        '<p class="mt-1 text-xs text-muted-foreground">GCP는 비밀번호만 입력합니다.</p></div>';
+    } else {
+      html += '<div class="grid gap-2 sm:grid-cols-2"><div>' + labelHtml("마스터 사용자명", true) +
+        '<input type="text" data-ps-platform="' + p + '" data-ps="masterUsername" class="' + FIELD_INPUT + '" /></div>' +
+        "<div>" + labelHtml("비밀번호", true) +
+        '<input type="password" data-ps-platform="' + p + '" data-ps="masterPassword" class="' + FIELD_INPUT + '" /></div></div>';
+    }
+    box.innerHTML = html;
+    return box;
+  }
+
   // ── DB 공통 설정 렌더링 ───────────────────────────────────────────────────
   function renderDbCommon(container, platforms) {
     container.innerHTML = "";
     container.appendChild(nameFieldEl("db-01"));
     container.appendChild(countryFieldEl());
 
-    platforms.forEach(function (p) {
-      var box = el("div", { class: "sm:col-span-2 space-y-3 rounded-xl bg-muted p-3" });
-      var engineOpts = DB_ENGINES[p].map(function (e) { return "<option>" + e + "</option>"; }).join("");
-      var html = '<p class="text-sm font-medium">' + PLATFORM_LABEL[p] + "</p>";
-      // 엔진
-      html += "<div>" + labelHtml("엔진", true) +
-        '<select data-ps-platform="' + p + '" data-ps="engine" class="' + FIELD_INPUT + '">' + engineOpts + "</select>";
-      if (p === "azure") {
-        html += '<p class="mt-1 text-xs" ' + WARN_STYLE + ">MariaDB는 2025년 9월 19일 이후 Azure에서 지원 종료됩니다.</p>";
-      }
-      html += "</div>";
-      // 인증
-      if (p === "gcp") {
-        html += "<div>" + labelHtml("루트 비밀번호", true) +
-          '<input type="password" data-ps-platform="gcp" data-ps="masterPassword" class="' + FIELD_INPUT + '" />' +
-          '<p class="mt-1 text-xs text-muted-foreground">GCP는 비밀번호만 입력합니다.</p></div>';
-      } else {
-        html += '<div class="grid gap-2 sm:grid-cols-2"><div>' + labelHtml("마스터 사용자명", true) +
-          '<input type="text" data-ps-platform="' + p + '" data-ps="masterUsername" class="' + FIELD_INPUT + '" /></div>' +
-          "<div>" + labelHtml("비밀번호", true) +
-          '<input type="password" data-ps-platform="' + p + '" data-ps="masterPassword" class="' + FIELD_INPUT + '" /></div></div>';
-      }
-      box.innerHTML = html;
-      container.appendChild(box);
-    });
+    // 엔진·인증은 플랫폼별로 달라 ⑤ 추가 설정으로 이동(공통은 플랫폼 무관 유지).
 
     // 백업 — 읽기 전용 안내(입력 아님)
     var backup = el("div", { class: "sm:col-span-2" });
@@ -368,13 +372,14 @@
       });
       cs.tags = tags;
 
-      // Compute 전용: 인바운드 규칙 + 네트워크 고정
+      // Compute 전용: 인바운드 규칙(⑤로 이동) + 네트워크 고정
       if (kind === "compute") {
         var rules = [];
-        container.querySelectorAll("[data-inbound-preset]").forEach(function (cb) {
+        var inboundScope = document.getElementById("prov-provider-fields") || container;
+        inboundScope.querySelectorAll("[data-inbound-preset]").forEach(function (cb) {
           if (cb.checked) rules.push({ port: Number(cb.getAttribute("data-inbound-preset")), cidr: DEFAULT_CIDR });
         });
-        container.querySelectorAll("[data-inbound-custom] > div").forEach(function (row) {
+        inboundScope.querySelectorAll("[data-inbound-custom] > div").forEach(function (row) {
           var portEl = row.querySelector("[data-inbound-port]");
           var cidrEl = row.querySelector("[data-inbound-cidr]");
           var port = portEl && portEl.value ? Number(portEl.value) : null;
@@ -522,6 +527,10 @@
         container.appendChild(el("div", { class: "text-xs text-muted-foreground" },
           "GCP는 이미지 설정이 별도 입력 없이 기본값으로 처리됩니다."));
       }
+      // 인바운드 규칙(공통에서 이동) + 인증(플랫폼별)
+      container.appendChild(inboundFieldEl());
+      platforms.forEach(function (p) { container.appendChild(computeAuthEl(p)); });
+      wireDynamicRows(container); // 인바운드 "규칙 추가" 버튼 배선
       return;
     }
 
@@ -540,8 +549,8 @@
     }
 
     if (kind === "db") {
-      container.appendChild(el("div", { class: "text-xs text-muted-foreground" },
-        "추가 입력 없이 서버 기본값으로 생성됩니다."));
+      // 엔진·인증(공통에서 이동) — 플랫폼별 박스
+      platforms.forEach(function (p) { container.appendChild(dbBoxEl(p)); });
     }
   }
 
@@ -672,7 +681,7 @@
       if (del) { del.parentElement.remove(); onFieldChange(); }
     });
 
-    // ⑤ 추가 필드: 입력 변화 + AWS 이미지 토글
+    // ⑤ 추가 필드: 입력 변화 + AWS 이미지 토글 + 인바운드 커스텀 행 삭제
     if (providerC) {
       providerC.addEventListener("input", onFieldChange);
       providerC.addEventListener("change", function (e) {
@@ -681,6 +690,10 @@
         var btSel = e.target.closest("[data-gcp-backend-type]");
         if (btSel) toggleGcpHealth(btSel);
         onFieldChange();
+      });
+      providerC.addEventListener("click", function (e) {
+        var del = e.target.closest("[data-row-del]");
+        if (del) { del.parentElement.remove(); onFieldChange(); }
       });
     }
 
