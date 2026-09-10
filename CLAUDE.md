@@ -60,7 +60,8 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 | 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | in progress |
 | 키 관리(마이페이지) API — cloud-accounts/credentials 10개 엔드포인트 + 최소 로그인(JWT)·회원가입 | `solcho/be-credentials-api` 외 | 조은솔 | merged |
 | 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | merged |
-| 리소스 동기화 API — 실제 CSP 리소스 탐색 + `/sync-jobs` 4개 엔드포인트 | `solcho/be-sync-api` | 조은솔 | in progress |
+| 리소스 동기화 API — 실제 CSP 리소스 탐색 + `/sync-jobs` 4개 엔드포인트 | `solcho/be-sync-api` | 조은솔 | merged |
+| 인벤토리(INV-01/INV-02) 실API 연동 — 조회·동기화·시작/중지/삭제 | `solcho/fe-inventory-integration` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -77,7 +78,10 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 - **목업/데모 데이터(2026-09-10)**: 화면 하드코딩 예시값(MY-01/INV-01/DASH-01)을
   `backend/app/seed_mock_data.py`로 시딩 — 데모 유저 1, 클라우드 계정 3, 자격증명 3
   (dev-gcp만 `verified=false` 검증실패 예시), 리소스 5, 프로비저닝 잡 2(성공/실패),
-  동기화 상태 AWS·Azure·GCP 각각 상이, 비용 카드용 최소 행. **재실행 idempotent**.
+  동기화 상태 AWS·Azure·GCP 각각 상이(성공/실패/취소 — **항상 종결 상태로 시딩한다**: "running"으로
+  두면 실제 `/sync-jobs` API의 "이미 진행 중인 job 있으면 거부" 로직과 충돌해 데모 계정에서
+  새로고침이 영원히 막힌다, 2026-09-10 `solcho/fe-inventory-integration`에서 발견해 수정),
+  비용 카드용 최소 행. **재실행 idempotent**.
   credentials는 `app/security/credential_crypto.py`(AES-256-GCM)로 실제 암호화 저장하며,
   이후 BE API(키 관리/리소스 조회/대시보드)는 이 데이터 위에서 개발·테스트한다.
 - **최소 인증(JWT) 구현(2026-09-10, `solcho/be-credentials-api`)**: `01_API_명세서_v1.1.md`
