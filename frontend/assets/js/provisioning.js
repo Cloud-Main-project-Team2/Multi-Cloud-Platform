@@ -690,8 +690,7 @@
     updateSubmitState();
   }
 
-  // ── 마법사(스텝) 흐름 ─────────────────────────────────────────────────────
-  var wiz = { current: 1 };
+  // ── 스텝(점진적 노출) 흐름 ────────────────────────────────────────────────
   var KIND_LABEL = { compute: "Compute", db: "Database", storage_object: "Storage", cdn: "CDN" };
 
   // 현재 리소스 종류에서 실제로 노출되는 스텝 순서(CDN은 ④ 공통을 건너뜀).
@@ -728,61 +727,39 @@
       (cs.country ? "<div>리전(국가): <b>" + cs.country + "</b></div>" : "");
   }
 
-  function updateWizardNav() {
+  // 점진적 노출: 한 단계를 만족하면 바로 아래에 다음 단계가 자동으로 나타난다.
+  // 완료된 단계는 위에 그대로 쌓여 보이고, 별도의 다음/이전 버튼은 없다.
+  var DOT_BASE = "rounded-full border px-2.5 py-1";
+  function revealSteps() {
     var order = visibleSteps();
-    var idx = order.indexOf(wiz.current);
-    var prevBtn = document.getElementById("prov-prev");
-    var nextBtn = document.getElementById("prov-next");
-    if (prevBtn) prevBtn.hidden = idx <= 0;
-    if (nextBtn) {
-      var isLast = idx >= order.length - 1; // ⑥ 검토·생성 스텝
-      nextBtn.hidden = isLast;
-      var ok = stepValid(wiz.current);
-      nextBtn.disabled = !ok;
-      nextBtn.classList.toggle("opacity-50", !ok);
-      nextBtn.classList.toggle("cursor-not-allowed", !ok);
-    }
-  }
 
-  function showStep(n) {
-    wiz.current = n;
+    // 노출 목록에 없는 스텝(CDN의 ④)은 숨기고 인디케이터도 흐리게
     document.querySelectorAll("[data-step]").forEach(function (sec) {
-      sec.hidden = Number(sec.getAttribute("data-step")) !== n;
+      if (order.indexOf(Number(sec.getAttribute("data-step"))) < 0) sec.hidden = true;
     });
-    var order = visibleSteps();
     document.querySelectorAll("[data-step-dot]").forEach(function (dot) {
-      var s = Number(dot.getAttribute("data-step-dot"));
-      var pos = order.indexOf(s);
-      var base = "rounded-full border px-2.5 py-1";
-      if (s === n) dot.className = base + " border-primary text-primary";
-      else if (pos >= 0 && pos < order.indexOf(n)) dot.className = base + " border-sky bg-sky text-white";
-      else if (pos < 0) dot.className = base + " border-border opacity-40"; // 건너뛴 스텝(CDN의 ④)
-      else dot.className = base + " border-border text-muted-foreground";
+      if (order.indexOf(Number(dot.getAttribute("data-step-dot"))) < 0) {
+        dot.className = DOT_BASE + " border-border opacity-40";
+      }
     });
-    if (n === 6) renderReview();
-    updateWizardNav();
-  }
 
-  function nextStep() {
-    if (!stepValid(wiz.current)) return;
-    var order = visibleSteps();
-    var idx = order.indexOf(wiz.current);
-    if (idx < order.length - 1) showStep(order[idx + 1]);
-  }
-  function prevStep() {
-    var order = visibleSteps();
-    var idx = order.indexOf(wiz.current);
-    if (idx > 0) showStep(order[idx - 1]);
-  }
+    var reveal = true;      // 첫 스텝은 항상 노출
+    var currentMarked = false;
+    order.forEach(function (s) {
+      var sec = document.querySelector('[data-step="' + s + '"]');
+      if (sec) sec.hidden = !reveal;
 
-  // 현재 스텝이 (종류 변경 등으로) 노출 목록에서 사라졌으면 가까운 스텝으로 보정.
-  function clampWizard() {
-    var order = visibleSteps();
-    if (order.indexOf(wiz.current) < 0) {
-      showStep(order.filter(function (s) { return s < wiz.current; }).pop() || order[0]);
-    } else {
-      updateWizardNav();
-    }
+      var valid = stepValid(s);
+      var dot = document.querySelector('[data-step-dot="' + s + '"]');
+      if (dot) {
+        if (reveal && valid) dot.className = DOT_BASE + " border-sky bg-sky text-white";       // 완료
+        else if (reveal && !currentMarked) { dot.className = DOT_BASE + " border-primary text-primary"; currentMarked = true; } // 현재
+        else dot.className = DOT_BASE + " border-border text-muted-foreground";                 // 대기
+      }
+      if (s === 6 && reveal) renderReview();
+
+      reveal = reveal && valid; // 이 스텝을 만족해야 다음 스텝이 노출된다
+    });
   }
 
   // ── 진행률 시뮬레이션 (실제 API 없이 진행바를 애니메이션) ──────────────────
@@ -873,8 +850,8 @@
     if (!container) return; // provisioning 화면이 아니면 무시
     var providerC = document.getElementById("prov-provider-fields");
 
-    // ④ 공통 필드: 입력 변화 → 상태 수집 + 제출 상태 + 위저드 다음버튼 갱신
-    function onFieldChange() { collect(); updateSubmitState(); updateWizardNav(); }
+    // ④ 공통 필드: 입력 변화 → 상태 수집 + 제출 상태 + 다음 단계 노출 갱신
+    function onFieldChange() { collect(); updateSubmitState(); revealSteps(); }
     container.addEventListener("input", onFieldChange);
     container.addEventListener("change", onFieldChange);
     // 동적 행 삭제(위임) — 컨테이너에 1회만 배선(재렌더 시 누적 방지)
@@ -899,22 +876,16 @@
       });
     }
 
-    // 플랫폼/리소스 종류 변경 → 재렌더 + 선택 시각 피드백 + 위저드 보정
+    // 플랫폼/리소스 종류 변경 → 재렌더 + 선택 시각 피드백 + 다음 단계 노출
     document.querySelectorAll("[data-prov-platform]").forEach(function (cb) {
-      cb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); clampWizard(); });
+      cb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); revealSteps(); });
     });
     document.querySelectorAll("[data-prov-kind]").forEach(function (rb) {
-      rb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); clampWizard(); });
+      rb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); revealSteps(); });
     });
     document.querySelectorAll("[data-prov-account]").forEach(function (cb) {
       cb.addEventListener("change", function () { onFieldChange(); syncSelectionUI(); });
     });
-
-    // 다음/이전 버튼
-    var nextBtn = document.getElementById("prov-next");
-    var prevBtn = document.getElementById("prov-prev");
-    if (nextBtn) nextBtn.addEventListener("click", nextStep);
-    if (prevBtn) prevBtn.addEventListener("click", prevStep);
 
     // 생성 확인 모달의 "생성 확인" → 확인 모달 닫고 진행률 모달 열기(+시뮬레이션은 단위 6)
     var confirmBtn = document.getElementById("prov-confirm-create");
@@ -930,7 +901,7 @@
 
     renderSteps();
     syncSelectionUI();
-    showStep(1);
+    revealSteps();
   }
 
   // 후속 단위에서 재사용할 수 있도록 최소 API 노출
