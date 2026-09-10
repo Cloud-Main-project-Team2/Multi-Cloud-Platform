@@ -63,9 +63,9 @@
           <section class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">①</span> 플랫폼 선택 <span class="font-normal text-muted-foreground">(중복 선택 가능)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" checked /> AWS</label>
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" checked /> Azure</label>
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" /> GCP</label>
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="aws" checked /> AWS</label>
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="azure" checked /> Azure</label>
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="gcp" /> GCP</label>
             </div>
           </section>
 
@@ -73,8 +73,8 @@
           <section class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">②</span> 계정 선택 <span class="font-normal text-muted-foreground">(다중 선택 가능)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" checked /> prod-aws-01</label>
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" checked /> prod-az-01</label>
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" data-prov-account="aws" value="prod-aws-01" checked /> prod-aws-01</label>
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" data-prov-account="azure" value="prod-az-01" checked /> prod-az-01</label>
               <span class="self-center text-sm text-muted-foreground">(2개 선택)</span>
             </div>
             <p class="mt-2 text-xs text-muted-foreground">같은 설정으로 선택한 계정 수만큼 생성됩니다.</p>
@@ -84,35 +84,18 @@
           <section class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">③</span> 리소스 종류 <span class="font-normal text-muted-foreground">(단일 선택)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="radio" name="restype" checked /> Compute</label>
-              <span class="flex cursor-not-allowed items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground"><input type="radio" name="restype" disabled /> Database</span>
-              <span class="flex cursor-not-allowed items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground"><input type="radio" name="restype" disabled /> Storage</span>
-              <span class="flex cursor-not-allowed items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground"><input type="radio" name="restype" disabled /> CDN</span>
+              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="compute" checked /> Compute</label>
+              <span class="flex cursor-not-allowed items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground"><input type="radio" name="restype" data-prov-kind="db" disabled /> Database</span>
+              <span class="flex cursor-not-allowed items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground"><input type="radio" name="restype" data-prov-kind="storage_object" disabled /> Storage</span>
+              <span class="flex cursor-not-allowed items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm text-muted-foreground"><input type="radio" name="restype" data-prov-kind="cdn" disabled /> CDN</span>
             </div>
             <p class="mt-2 text-xs text-muted-foreground">prod-az-01 계정에 Compute 외 생성 권한이 없어 나머지는 선택할 수 없습니다.</p>
           </section>
 
-          <!-- ④ 공통 설정 -->
-          <section class="rounded-2xl border border-border bg-surface p-5">
+          <!-- ④ 공통 설정 (리소스 종류에 따라 assets/js/provisioning.js가 동적 렌더링) -->
+          <section id="prov-step-common" class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">④</span> 공통 설정</p>
-            <div class="mt-3 grid gap-3 sm:grid-cols-2">
-              <div>
-                <label class="mb-1 block text-sm font-medium">리소스명 프리픽스</label>
-                <input type="text" value="mcp-" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-              </div>
-              <div>
-                <label class="mb-1 block text-sm font-medium">리전</label>
-                <select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>ap-northeast-2 / koreacentral</option><option>us-east-1 / eastus</option></select>
-              </div>
-              <div>
-                <label class="mb-1 block text-sm font-medium">사양</label>
-                <select class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option>중간 (2 vCPU · 4GB)</option><option>소형 (1 vCPU · 2GB)</option><option>대형 (4 vCPU · 8GB)</option></select>
-              </div>
-              <div>
-                <label class="mb-1 block text-sm font-medium">태그</label>
-                <input type="text" placeholder="env:prod, owner:infra" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-              </div>
-            </div>
+            <div id="prov-common-fields" class="mt-3 grid gap-3 sm:grid-cols-2"></div>
           </section>
 
           <!-- ⑤ 플랫폼별 추가 설정 -->
@@ -217,6 +200,7 @@
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/modal.js"></script>
   <script src="assets/js/dropdown.js"></script>
+  <script src="assets/js/provisioning.js"></script>
   <script>
     (function () {
       var mini = document.getElementById("prov-progress-mini");

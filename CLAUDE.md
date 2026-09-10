@@ -111,6 +111,35 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 - **PROV-02 진행률**: 기본형↔축소형은 실제 진행 상태 반영이 아니라 정적 두 형태의 UI 토글일 뿐(실 폴링은 백엔드 연동 이후).
 - 기존 `MCUI.open/close`(ui.js)로 열리던 모달들도 이 브랜치에서 `MCPModal`/data 속성으로 통일.
 
+### Assumptions — 프로비저닝 설정 폼 (`solcho/fe-provisioning-form`)
+
+PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫폼에 따라 동적 렌더링하고 입력값을
+전역 상태(`window.provisioningSpec`)에 반영하는 작업. 서버 통신은 없음(Network 탭 요청 0건).
+필드명은 이후 BE 연동을 위해 `01_API_명세서_v1.1.md` §10.3의 `common_spec`/`provider_spec`
+구조에 맞춰 잡음(`assets/js/provisioning.js`).
+
+- **사양 등급 → 실제 SKU 매핑**(추상 3등급, `provisioning.js`의 `SPEC_TIERS` 상수):
+
+  | 등급 | AWS | Azure | GCP |
+  |---|---|---|---|
+  | 경량 (1 vCPU · 2GB) | `t3.micro` | `B1s` | `e2-micro` |
+  | 표준 (2 vCPU · 4GB) | `t3.medium` | `B2s` | `e2-medium` |
+  | 고성능 (4 vCPU · 8GB) | `t3.large` | `B4ms` | `e2-standard-4` |
+
+  표준 등급은 가격 비교 모달 예시값과 일치. 사용자는 등급만 고르고 실제 SKU는 코드에서 변환한다.
+- **리전 제한**(서비스 컨텍스트 9절): AWS `ap-northeast-2`/`us-east-1`, Azure
+  `koreacentral`/`eastus`/`koreasouth`/`canadacentral`, GCP `asia-northeast3`/`us-central1`.
+  선택한 플랫폼마다 별도 리전 select.
+- **네트워크**: 오늘은 "새 VPC/Subnet 자동 생성" 고정, "기존 리소스 사용" 토글은 자리만 두고 비활성
+  (실제 VPC/Subnet lookup은 BE 연동 이후).
+- **맵핑 문서 "제외" 필드**(Compute 스토리지·권한, DB 사양·스토리지·네트워크·접근제어·가용성,
+  Storage 접근제어·중복성·버전관리)는 폼에 렌더링하지 않고 `providerSpec`에 서버 기본값 상수로만
+  채운다(사용자 입력 없음).
+- **CDN**: 3사 공통 입력 스펙 미확정 → ⑤ 스텝에 "준비 중" 안내만 표시하고 "생성하기" 비활성 유지
+  (단위 3에서 구현 예정 — 이번 커밋 범위 밖).
+- **진행 단위**: 이 브랜치는 (1)Compute 공통 폼 → (2)DB/Storage 공통 폼 → (3)⑤추가 설정+CDN
+  → (4)생성하기 활성화 검증 순으로 커밋을 쪼갠다.
+
 ## Pointer — where the planning docs live
 
 The functional spec (기능명세서), screen design (화면설계서), WBS, and the
