@@ -36,6 +36,14 @@
 
   var PLATFORM_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
 
+  // DB 엔진 옵션(플랫폼별로 다름).
+  var DB_ENGINES = {
+    aws: ["MySQL", "PostgreSQL", "MariaDB", "SQL Server", "Oracle", "DB2", "Aurora"],
+    azure: ["MySQL", "PostgreSQL", "SQL Server"],
+    gcp: ["MySQL", "PostgreSQL", "SQL Server"],
+  };
+  var WARN_STYLE = 'style="color:#b45309"'; // amber-700, 경고 문구용
+
   // ── 전역 상태 ────────────────────────────────────────────────────────────
   var state = {
     resourceKind: null, // 'compute' | 'db' | 'storage_object' | 'cdn'
@@ -89,7 +97,7 @@
     nameField.innerHTML = labelHtml("이름", true) +
       '<div class="flex items-stretch rounded-lg border border-border bg-background focus-within:border-primary">' +
       '<span class="flex items-center px-3 text-sm text-muted-foreground">mcp-</span>' +
-      '<input type="text" data-cs="name" placeholder="web-01" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" />' +
+      '<input type="text" data-cs="name" data-prefix="mcp-" placeholder="web-01" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" />' +
       "</div>";
     container.appendChild(nameField);
 
@@ -167,6 +175,111 @@
     collect();
   }
 
+  // ── 공용 필드 빌더 ────────────────────────────────────────────────────────
+  function nameFieldEl(placeholder) {
+    var f = el("div", { class: "sm:col-span-2" });
+    f.innerHTML = labelHtml("이름", true) +
+      '<div class="flex items-stretch rounded-lg border border-border bg-background focus-within:border-primary">' +
+      '<span class="flex items-center px-3 text-sm text-muted-foreground">mcp-</span>' +
+      '<input type="text" data-cs="name" data-prefix="mcp-" placeholder="' + (placeholder || "") +
+      '" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" /></div>';
+    return f;
+  }
+  function regionFieldEl(p, note) {
+    var f = el("div");
+    var opts = REGIONS[p].map(function (r) { return '<option value="' + r + '">' + r + "</option>"; }).join("");
+    f.innerHTML = labelHtml("리전 · " + PLATFORM_LABEL[p], true) +
+      '<select data-ps-platform="' + p + '" data-ps="region" class="' + FIELD_INPUT + '">' + opts + "</select>" +
+      (note ? '<p class="mt-1 text-xs text-muted-foreground">' + note + "</p>" : "");
+    return f;
+  }
+  function appendTagField(container, warning) {
+    var f = el("div", { class: "sm:col-span-2" });
+    f.innerHTML = labelHtml("태그") +
+      (warning ? '<p class="mb-1 text-xs" ' + WARN_STYLE + ">" + warning + "</p>" : "") +
+      '<div data-tag-rows class="space-y-2"></div>' +
+      '<button type="button" data-tag-add class="mt-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">+ 태그 추가</button>';
+    container.appendChild(f);
+  }
+
+  // ── DB 공통 설정 렌더링 ───────────────────────────────────────────────────
+  function renderDbCommon(container, platforms) {
+    container.innerHTML = "";
+    container.appendChild(nameFieldEl("db-01"));
+
+    platforms.forEach(function (p) {
+      var box = el("div", { class: "sm:col-span-2 space-y-3 rounded-xl bg-muted p-3" });
+      var engineOpts = DB_ENGINES[p].map(function (e) { return "<option>" + e + "</option>"; }).join("");
+      var html = '<p class="text-sm font-medium">' + PLATFORM_LABEL[p] + "</p>";
+      // 엔진
+      html += "<div>" + labelHtml("엔진", true) +
+        '<select data-ps-platform="' + p + '" data-ps="engine" class="' + FIELD_INPUT + '">' + engineOpts + "</select>";
+      if (p === "azure") {
+        html += '<p class="mt-1 text-xs" ' + WARN_STYLE + ">MariaDB는 2025년 9월 19일 이후 Azure에서 지원 종료됩니다.</p>";
+      }
+      html += "</div>";
+      // 리전
+      var regionOpts = REGIONS[p].map(function (r) { return '<option value="' + r + '">' + r + "</option>"; }).join("");
+      html += "<div>" + labelHtml("리전", true) +
+        '<select data-ps-platform="' + p + '" data-ps="region" class="' + FIELD_INPUT + '">' + regionOpts + "</select></div>";
+      // 인증
+      if (p === "gcp") {
+        html += "<div>" + labelHtml("루트 비밀번호", true) +
+          '<input type="password" data-ps-platform="gcp" data-ps="masterPassword" class="' + FIELD_INPUT + '" />' +
+          '<p class="mt-1 text-xs text-muted-foreground">GCP는 비밀번호만 입력합니다.</p></div>';
+      } else {
+        html += '<div class="grid gap-2 sm:grid-cols-2"><div>' + labelHtml("마스터 사용자명", true) +
+          '<input type="text" data-ps-platform="' + p + '" data-ps="masterUsername" class="' + FIELD_INPUT + '" /></div>' +
+          "<div>" + labelHtml("비밀번호", true) +
+          '<input type="password" data-ps-platform="' + p + '" data-ps="masterPassword" class="' + FIELD_INPUT + '" /></div></div>';
+      }
+      box.innerHTML = html;
+      container.appendChild(box);
+    });
+
+    // 백업 — 읽기 전용 안내(입력 아님)
+    var backup = el("div", { class: "sm:col-span-2" });
+    backup.innerHTML = labelHtml("백업") +
+      '<div class="rounded-lg border border-dashed border-border bg-muted px-3 py-2 text-sm text-muted-foreground">자동 백업 활성화, 보존 기간은 기본값</div>';
+    container.appendChild(backup);
+
+    appendTagField(container, null);
+    wireDynamicRows(container);
+    collect();
+  }
+
+  // ── Storage 공통 설정 렌더링 ──────────────────────────────────────────────
+  function renderStorageCommon(container, platforms) {
+    container.innerHTML = "";
+
+    // 이름(서비스) — 읽기 전용 라벨(선택 종류 확인용)
+    var svc = el("div", { class: "sm:col-span-2" });
+    svc.innerHTML = labelHtml("이름(서비스)") +
+      '<div class="rounded-lg border border-dashed border-border bg-muted px-3 py-2 text-sm text-muted-foreground">Object Storage</div>';
+    container.appendChild(svc);
+
+    // 버킷/계정명 — 전역 고유(프리픽스 없음)
+    var bucket = el("div", { class: "sm:col-span-2" });
+    bucket.innerHTML = labelHtml("버킷/계정명", true) +
+      '<input type="text" data-cs="name" placeholder="my-unique-bucket" class="' + FIELD_INPUT + '" />' +
+      '<p class="mt-1 text-xs text-muted-foreground">전역에서 고유한 이름이어야 합니다.</p>';
+    container.appendChild(bucket);
+
+    // 리전 — 플랫폼별(Azure는 Central 고정 안내)
+    platforms.forEach(function (p) {
+      var note = p === "azure" ? "Azure는 'Central' 리전으로 고정됩니다." : null;
+      container.appendChild(regionFieldEl(p, note));
+    });
+
+    // 태그 — Azure 선택 시 경고
+    var azureWarn = platforms.indexOf("azure") >= 0
+      ? "컨테이너가 아닌 스토리지 계정 태그로 저장되어 태그 검색은 지원하지 않습니다."
+      : null;
+    appendTagField(container, azureWarn);
+    wireDynamicRows(container);
+    collect();
+  }
+
   // 커스텀 인바운드 행 / 태그 행 추가·삭제 버튼 배선
   function wireDynamicRows(container) {
     var addInbound = container.querySelector("[data-inbound-add]");
@@ -197,7 +310,7 @@
     }
   }
 
-  // ── DOM → 상태 수집 ──────────────────────────────────────────────────────
+  // ── DOM → 상태 수집 (리소스 종류 범용) ───────────────────────────────────
   function collect() {
     var container = document.getElementById("prov-common-fields");
     state.platforms = readPlatforms();
@@ -205,29 +318,18 @@
     // 선택 안 된 플랫폼의 이전 값이 남지 않도록 providerSpec을 매번 새로 구성
     state.providerSpec = { aws: {}, azure: {}, gcp: {} };
 
-    if (state.resourceKind !== "compute" || !container) return;
+    var kind = state.resourceKind;
+    if (!container || !kind || kind === "cdn") { state.commonSpec = {}; return; }
 
     var cs = {};
-    var nameInput = container.querySelector('[data-cs="name"]');
-    if (nameInput) cs.name = "mcp-" + (nameInput.value || "").trim();
-    var specSel = container.querySelector('[data-cs="specTier"]');
-    var tierKey = specSel ? specSel.value : null;
-    cs.specTier = tierKey;
-
-    // 인바운드: 프리셋 체크 + 커스텀 행
-    var rules = [];
-    container.querySelectorAll("[data-inbound-preset]").forEach(function (cb) {
-      if (cb.checked) rules.push({ port: Number(cb.getAttribute("data-inbound-preset")), cidr: DEFAULT_CIDR });
+    // 공통 스칼라 필드(data-cs). data-prefix가 있으면 접두어를 붙인다(예: 이름 mcp-).
+    container.querySelectorAll("[data-cs]").forEach(function (inp) {
+      var key = inp.getAttribute("data-cs");
+      var prefix = inp.getAttribute("data-prefix");
+      cs[key] = prefix ? prefix + (inp.value || "").trim() : inp.value;
     });
-    container.querySelectorAll("[data-inbound-custom] > div").forEach(function (row) {
-      var portEl = row.querySelector("[data-inbound-port]");
-      var cidrEl = row.querySelector("[data-inbound-cidr]");
-      var port = portEl && portEl.value ? Number(portEl.value) : null;
-      if (port) rules.push({ port: port, cidr: (cidrEl && cidrEl.value.trim()) || DEFAULT_CIDR });
-    });
-    cs.inboundRules = rules;
 
-    // 태그
+    // 태그(모든 종류 공통)
     var tags = {};
     container.querySelectorAll("[data-tag-rows] > div").forEach(function (row) {
       var k = row.querySelector("[data-tag-key]");
@@ -236,21 +338,35 @@
     });
     cs.tags = tags;
 
-    cs.network = "auto"; // 오늘은 항상 자동 생성 고정
+    // Compute 전용: 인바운드 규칙 + 네트워크 고정
+    if (kind === "compute") {
+      var rules = [];
+      container.querySelectorAll("[data-inbound-preset]").forEach(function (cb) {
+        if (cb.checked) rules.push({ port: Number(cb.getAttribute("data-inbound-preset")), cidr: DEFAULT_CIDR });
+      });
+      container.querySelectorAll("[data-inbound-custom] > div").forEach(function (row) {
+        var portEl = row.querySelector("[data-inbound-port]");
+        var cidrEl = row.querySelector("[data-inbound-cidr]");
+        var port = portEl && portEl.value ? Number(portEl.value) : null;
+        if (port) rules.push({ port: port, cidr: (cidrEl && cidrEl.value.trim()) || DEFAULT_CIDR });
+      });
+      cs.inboundRules = rules;
+      cs.network = "auto"; // 항상 자동 생성 고정
+    }
+    if (kind === "db") cs.backup = "auto"; // 자동 백업 고정(표시만)
+
     state.commonSpec = cs;
 
-    // 플랫폼별: 리전 + 사양 SKU + 인증
-    var tier = SPEC_TIERS.filter(function (t) { return t.key === tierKey; })[0];
+    // 플랫폼별(data-ps) — 리전/엔진/인증 등. Compute는 사양 등급 → SKU 매핑도 채운다.
+    var tier = kind === "compute"
+      ? SPEC_TIERS.filter(function (t) { return t.key === cs.specTier; })[0]
+      : null;
     state.platforms.forEach(function (p) {
       var ps = state.providerSpec[p];
-      var regionSel = container.querySelector('[data-ps-platform="' + p + '"][data-ps="region"]');
-      if (regionSel) ps.region = regionSel.value;
-      if (tier) ps.instanceType = tier.sku[p];
       container.querySelectorAll('[data-ps-platform="' + p + '"][data-ps]').forEach(function (input) {
-        var key = input.getAttribute("data-ps");
-        if (key === "region") return;
-        ps[key] = input.value;
+        ps[input.getAttribute("data-ps")] = input.value;
       });
+      if (tier) ps.instanceType = tier.sku[p];
     });
   }
 
@@ -265,8 +381,14 @@
     if (state.resourceKind === "compute") {
       if (section) section.hidden = false;
       renderComputeCommon(container, state.platforms);
+    } else if (state.resourceKind === "db") {
+      if (section) section.hidden = false;
+      renderDbCommon(container, state.platforms);
+    } else if (state.resourceKind === "storage_object") {
+      if (section) section.hidden = false;
+      renderStorageCommon(container, state.platforms);
     } else {
-      // DB/Storage(단위 2), CDN 스텝 건너뛰기(단위 3/4)는 후속 커밋에서 처리.
+      // CDN 스텝 건너뛰기(④ 숨김) + ⑤ 준비중 안내는 단위 3에서 처리.
       container.innerHTML = "";
       collect();
     }
