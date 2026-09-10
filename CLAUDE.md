@@ -57,6 +57,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 |---|---|---|---|
 | 페이지 UI 구현 — 확정 화면 12개 정적 UI | `solcho/fe-pages` | 조은솔 | in progress |
 | 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
+| 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -70,6 +71,12 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
   `resources.resource_type_id`)을 제거(Alembic `0caab346f140`, 테이블 15→13).
   credentials 암호화·Account/Credential 분리·인벤토리 캐시·비용/감사 구조 등 나머지
   개선은 유지. 현재 스키마는 `docs/DB_ERD_v1.1.md` 참고.
+- **목업/데모 데이터(2026-09-10)**: 화면 하드코딩 예시값(MY-01/INV-01/DASH-01)을
+  `backend/app/seed_mock_data.py`로 시딩 — 데모 유저 1, 클라우드 계정 3, 자격증명 3
+  (dev-gcp만 `verified=false` 검증실패 예시), 리소스 5, 프로비저닝 잡 2(성공/실패),
+  동기화 상태 AWS·Azure·GCP 각각 상이, 비용 카드용 최소 행. **재실행 idempotent**.
+  credentials는 `app/security/credential_crypto.py`(AES-256-GCM)로 실제 암호화 저장하며,
+  이후 BE API(키 관리/리소스 조회/대시보드)는 이 데이터 위에서 개발·테스트한다.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 
