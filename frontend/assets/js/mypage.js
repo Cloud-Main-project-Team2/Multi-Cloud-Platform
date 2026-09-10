@@ -46,7 +46,11 @@
       return null;
     }
     if (!data || data.type !== "service_account") return null;
-    if (!data.client_email || !data.private_key_id || !data.private_key || !data.project_id) return null;
+    // token_uri까지 확인한다 — google-auth의 from_service_account_info()가 필수로 요구하는
+    // 필드라서, 빠지면 키가 멀쩡해도 서버 검증이 무조건 실패한다.
+    if (!data.client_email || !data.private_key_id || !data.private_key || !data.project_id || !data.token_uri) {
+      return null;
+    }
     return data;
   }
 
@@ -124,7 +128,7 @@
       fieldsHtml:
         '<div>' +
           '<label for="cred-gcp-json" class="mb-1 block text-sm font-medium">서비스 계정 키 (JSON)</label>' +
-          '<textarea id="cred-gcp-json" rows="6" placeholder=\'{"type":"service_account","project_id":"...","client_email":"...","private_key_id":"...","private_key":"..."}\'' +
+          '<textarea id="cred-gcp-json" rows="6" placeholder=\'{"type":"service_account","project_id":"...","private_key_id":"...","private_key":"...","client_email":"...","token_uri":"https://oauth2.googleapis.com/token"}\'' +
           ' class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary font-mono"></textarea>' +
           '<p id="cred-gcp-hint" class="mt-1 text-xs text-muted-foreground">GCP 콘솔에서 다운로드한 서비스 계정 키 JSON 파일 내용을 그대로 붙여넣으세요.</p>' +
         '</div>',
@@ -132,10 +136,10 @@
         return parseGcpJson() !== null;
       },
       secretPayload: function () {
-        var data = parseGcpJson();
-        return data
-          ? { type: data.type, client_email: data.client_email, private_key_id: data.private_key_id, private_key: data.private_key }
-          : null;
+        // 서비스 계정 키 JSON을 통째로 보낸다. 필드를 골라 담으면 google-auth가 필수로 쓰는
+        // token_uri 같은 값이 빠져 인증이 실패한다(2026-09-11 수정). 이 payload는 서버에서
+        // AES-256-GCM으로 암호화 저장되므로 원본을 그대로 보관해도 된다.
+        return parseGcpJson();
       },
       publicIdentifier: function () {
         var data = parseGcpJson();
@@ -169,7 +173,7 @@
         } else if (data) {
           gcpHint.textContent = "감지된 프로젝트 ID: " + data.project_id;
         } else {
-          gcpHint.textContent = "JSON 형식 또는 필수 필드(type, project_id, client_email, private_key_id, private_key)를 확인해 주세요.";
+          gcpHint.textContent = "JSON 형식 또는 필수 필드(type, project_id, client_email, private_key_id, private_key, token_uri)를 확인해 주세요. 파일 내용을 일부만 잘라 붙이지 말고 통째로 넣어야 합니다.";
         }
       });
     }
