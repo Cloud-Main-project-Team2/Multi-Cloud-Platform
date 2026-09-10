@@ -58,6 +58,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 | 페이지 UI 구현 — 확정 화면 12개 정적 UI | `solcho/fe-pages` | 조은솔 | in progress |
 | 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
 | 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | in progress |
+| 키 관리(마이페이지) API — cloud-accounts/credentials 10개 엔드포인트 + 최소 로그인(JWT) | `solcho/be-credentials-api` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -77,6 +78,43 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
   동기화 상태 AWS·Azure·GCP 각각 상이, 비용 카드용 최소 행. **재실행 idempotent**.
   credentials는 `app/security/credential_crypto.py`(AES-256-GCM)로 실제 암호화 저장하며,
   이후 BE API(키 관리/리소스 조회/대시보드)는 이 데이터 위에서 개발·테스트한다.
+- **최소 인증(JWT) 구현(2026-09-10, `solcho/be-credentials-api`)**: `01_API_명세서_v1.1.md`
+  §5는 회원가입·로그인·비밀번호 재설정·`/me`까지 전체 인증 스펙을 정의하지만, 백엔드에는
+  인증이 전혀 구현돼 있지 않았다(프론트 `auth-guard.js`는 `localStorage` 데모 세션일 뿐 실제
+  토큰이 아님). credentials API 전체가 소유권 검사(`current_user`)를 전제로 하므로, 이 세션에서
+  범위를 넓혀 `POST /api/v1/auth/login` + `Authorization: Bearer <JWT>` 검증만 최소 구현했다
+  (`app/security/jwt_tokens.py`, `app/deps.py`, `app/routers/auth.py`). 회원가입·비밀번호
+  재설정·`/me`·refresh token은 여전히 범위 밖 — 별도 인증 세션에서 이어서 구현한다. 목업
+  데모 계정(`demo@multicloud.example` / `demo-pass-1234`, `seed_mock_data.py`)으로 로그인 가능.
+- **회원가입(`POST /auth/sign-up`) 추가(2026-09-10, `solcho/be-credentials-api`)**: 로그인만
+  있으면 목업 데모 계정 외에는 아무도 로그인할 수 없어(가입 경로 없음) 범위를 넓혀 회원가입만
+  추가했다. 비밀번호 재설정·`/me`는 여전히 범위 밖(실제 메일 발송 없는 데모형 토큰 발급이
+  필요해 별도 세션으로 미룸). 이때 §19 미확정 항목 두 개를 확정:
+  - **비밀번호 정책**: `frontend/assets/js/validate.js`의 `MCVAL.isStrongPassword`와 동일하게
+    "8자 이상 + 영문/숫자/기호 중 2종 이상"으로 통일(`app/security/passwords.py`의
+    `is_strong_password`). 프론트가 이미 이 규칙으로 UI를 만들어 둬서 그대로 재사용했다.
+  - **`affiliation_type=company`일 때 단체명 필수 여부**: 필수로 확정. `affiliation_name`이
+    비어 있으면 `422 VALIDATION_ERROR`.
+- **credential 검증 실패 시 저장 정책(2026-09-10, `solcho/be-credentials-api`)**: §19에서
+  미확정으로 남아 있던 두 옵션 중 **"검증 실패해도 암호화 저장하고 `verified=false`로 반환"**
+  (§6.2 옵션 1)을 채택했다. 근거: 사용자가 실패 원인을 보고 재시도/수정할 수 있어야 하고,
+  rollback하면 마이페이지 "검증 실패" 행 UI(정적 화면에 이미 존재)가 표시할 대상 자체가
+  사라진다. `POST /credentials/{provider}`·시크릿 교체를 포함한 `PATCH /credentials/{id}`
+  모두 이 정책을 따른다.
+- **cloud account 삭제 API 보류(2026-09-10, `solcho/be-credentials-api`)**: §6.5·§19에 명시된
+  대로 snapshot 보존 정책이 확정되지 않아 `DELETE /cloud-accounts/{id}`는 실제로 삭제하지
+  않는다. 라우트는 만들어 두되(소유권 검사까지는 정상 수행) 항상 `501
+  CLOUD_ACCOUNT_DELETE_NOT_IMPLEMENTED`를 반환한다.
+- **credential 실검증 permission_scope 프로빙 범위 축소(2026-09-10,
+  `solcho/be-credentials-api`)**: `app/providers/{aws,azure,gcp}.py`는 신원 확인(AWS
+  `sts:GetCallerIdentity`, Azure `SubscriptionClient.subscriptions.get`, GCP
+  `projects.get`)은 3사 모두 실제로 호출한다. 그 위의 `permission_scope` 자동 판별은
+  **AWS만 4개 항목 모두**(`inventory_read`=`ec2:DescribeInstances`, `cost_read`=Cost
+  Explorer, `resource_control`/`provision`=`iam:SimulatePrincipalPolicy`) 구현했고,
+  **Azure/GCP는 `inventory_read`만** 가벼운 목록 조회로 채우고 나머지는 `false` 고정이다.
+  근거: 안전한 읽기 전용 프로빙 API가 provider/권한마다 표준화돼 있지 않고, GCP 비용 수집
+  방식·권한은 이미 §19에 미확정 항목으로 남아 있어 이 세션에서 새로 정하지 않았다. 화면의
+  자기신고 체크박스(정적 UI, 이번 세션에서 변경 없음)로 나머지를 보완하는 것을 전제로 한다.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 
