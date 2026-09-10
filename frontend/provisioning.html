@@ -58,9 +58,19 @@
         <h1 class="text-2xl font-bold">프로비저닝</h1>
         <p class="mt-1 text-sm text-muted-foreground">여러 플랫폼에 걸쳐 리소스를 한 번에 생성합니다.</p>
 
-        <div class="mt-6 space-y-4">
+        <!-- 스텝 인디케이터 (①~⑥) -->
+        <ol id="prov-steps-indicator" class="mt-6 flex flex-wrap gap-2 text-xs font-medium">
+          <li data-step-dot="1" class="rounded-full border border-border px-2.5 py-1">① 플랫폼</li>
+          <li data-step-dot="2" class="rounded-full border border-border px-2.5 py-1">② 계정</li>
+          <li data-step-dot="3" class="rounded-full border border-border px-2.5 py-1">③ 종류</li>
+          <li data-step-dot="4" class="rounded-full border border-border px-2.5 py-1">④ 공통</li>
+          <li data-step-dot="5" class="rounded-full border border-border px-2.5 py-1">⑤ 추가</li>
+          <li data-step-dot="6" class="rounded-full border border-border px-2.5 py-1">⑥ 생성</li>
+        </ol>
+
+        <div class="mt-4">
           <!-- ① 플랫폼 선택 -->
-          <section class="rounded-2xl border border-border bg-surface p-5">
+          <section data-step="1" class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">①</span> 플랫폼 선택 <span class="font-normal text-muted-foreground">(중복 선택 가능)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
               <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="aws" checked /> AWS</label>
@@ -70,7 +80,7 @@
           </section>
 
           <!-- ② 계정 선택 -->
-          <section class="rounded-2xl border border-border bg-surface p-5">
+          <section data-step="2" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">②</span> 계정 선택 <span class="font-normal text-muted-foreground">(다중 선택 가능)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
               <label data-select-chip class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted text-muted-foreground px-3 py-2 text-sm"><input type="checkbox" data-prov-account="aws" value="prod-aws-01" checked /> prod-aws-01</label>
@@ -81,7 +91,7 @@
           </section>
 
           <!-- ③ 리소스 종류 -->
-          <section class="rounded-2xl border border-border bg-surface p-5">
+          <section data-step="3" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">③</span> 리소스 종류 <span class="font-normal text-muted-foreground">(단일 선택)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
               <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="compute" checked /> Compute</label>
@@ -93,22 +103,33 @@
           </section>
 
           <!-- ④ 공통 설정 (리소스 종류에 따라 assets/js/provisioning.js가 동적 렌더링) -->
-          <section id="prov-step-common" class="rounded-2xl border border-border bg-surface p-5">
+          <section data-step="4" id="prov-step-common" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">④</span> 공통 설정</p>
             <div id="prov-common-fields" class="mt-3 grid gap-3 sm:grid-cols-2"></div>
           </section>
 
           <!-- ⑤ 플랫폼별 추가 설정 (리소스 종류/플랫폼에 따라 provisioning.js가 동적 렌더링) -->
-          <section id="prov-step-provider" class="rounded-2xl border border-border bg-surface p-5">
+          <section data-step="5" id="prov-step-provider" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">⑤</span> 플랫폼별 추가 설정 <span class="font-normal text-muted-foreground">(선택한 플랫폼만)</span></p>
             <div id="prov-provider-fields" class="mt-3 space-y-3"></div>
           </section>
 
-          <!-- ⑥ 액션 -->
-          <div class="flex items-center justify-end gap-2">
-            <button type="button" data-modal-open="#prov-price-modal" class="rounded-xl border border-border bg-surface px-5 py-3 text-sm font-semibold hover:bg-muted">비교하기</button>
-            <button type="button" id="prov-submit-btn" data-modal-open="#prov-progress-modal" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">생성하기</button>
-          </div>
+          <!-- ⑥ 검토 및 생성 -->
+          <section data-step="6" hidden class="rounded-2xl border border-border bg-surface p-5">
+            <p class="text-sm font-semibold"><span class="mr-1 text-primary">⑥</span> 검토 및 생성</p>
+            <div id="prov-review" class="mt-3 space-y-1 text-sm text-muted-foreground"></div>
+            <div class="mt-4 flex items-center justify-end gap-2">
+              <button type="button" data-modal-open="#prov-price-modal" class="rounded-xl border border-border bg-surface px-5 py-3 text-sm font-semibold hover:bg-muted">비교하기</button>
+              <button type="button" id="prov-submit-btn" data-modal-open="#prov-progress-modal" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">생성하기</button>
+            </div>
+          </section>
+        </div>
+
+        <!-- 이전/다음 네비게이션 -->
+        <div class="mt-4 flex items-center justify-between">
+          <button type="button" id="prov-prev" hidden class="rounded-xl border border-border bg-surface px-5 py-2.5 text-sm font-semibold hover:bg-muted">이전</button>
+          <span></span>
+          <button type="button" id="prov-next" class="rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90">다음</button>
         </div>
         </div>
 

@@ -672,19 +672,15 @@
     state.platforms = readPlatforms();
     var kind = state.resourceKind;
 
-    // ④ 공통 설정 (CDN은 공통 필드가 없어 스텝 자체를 건너뛰어 숨긴다)
+    // ④ 공통 설정 필드 렌더(섹션 표시/숨김은 위저드가 제어. CDN은 공통 필드 없음).
     if (kind === "compute") {
-      if (commonSection) commonSection.hidden = false;
       renderComputeCommon(commonC, state.platforms);
     } else if (kind === "db") {
-      if (commonSection) commonSection.hidden = false;
       renderDbCommon(commonC, state.platforms);
     } else if (kind === "storage_object") {
-      if (commonSection) commonSection.hidden = false;
       renderStorageCommon(commonC, state.platforms);
     } else {
-      if (commonSection) commonSection.hidden = true; // CDN: ④ 건너뛰기
-      commonC.innerHTML = "";
+      commonC.innerHTML = ""; // CDN: ④ 공통 없음(위저드 네비가 스텝 4를 건너뜀)
     }
 
     // ⑤ 플랫폼별 추가 설정
@@ -694,14 +690,109 @@
     updateSubmitState();
   }
 
+  // ── 마법사(스텝) 흐름 ─────────────────────────────────────────────────────
+  var wiz = { current: 1 };
+  var KIND_LABEL = { compute: "Compute", db: "Database", storage_object: "Storage", cdn: "CDN" };
+
+  // 현재 리소스 종류에서 실제로 노출되는 스텝 순서(CDN은 ④ 공통을 건너뜀).
+  function visibleSteps() {
+    var order = [1, 2, 3, 4, 5, 6];
+    if (state.resourceKind === "cdn") order = order.filter(function (s) { return s !== 4; });
+    return order;
+  }
+
+  // 스텝별 '다음' 진행 가능 여부(필수값 검증).
+  function stepValid(n) {
+    if (n === 1) return state.platforms.length > 0;
+    if (n === 2) return Object.keys(state.selectedAccounts).length > 0;
+    if (n === 3) return !!state.resourceKind;
+    if (n === 4) {
+      var cs = state.commonSpec || {};
+      if (state.resourceKind === "storage_object") return isFilled(cs.name);
+      return !!cs.name && cs.name !== "mcp-";
+    }
+    if (n === 5) return validate(); // 공통+추가 전체 필수 충족
+    return validate();
+  }
+
+  function renderReview() {
+    var box = document.getElementById("prov-review");
+    if (!box) return;
+    var accounts = Object.keys(state.selectedAccounts)
+      .map(function (k) { return state.selectedAccounts[k]; }).join(", ") || "-";
+    var cs = state.commonSpec || {};
+    box.innerHTML =
+      "<div>플랫폼: <b>" + (state.platforms.join(", ") || "-") + "</b></div>" +
+      "<div>계정: <b>" + accounts + "</b></div>" +
+      "<div>종류: <b>" + (KIND_LABEL[state.resourceKind] || "-") + "</b></div>" +
+      (cs.country ? "<div>리전(국가): <b>" + cs.country + "</b></div>" : "");
+  }
+
+  function updateWizardNav() {
+    var order = visibleSteps();
+    var idx = order.indexOf(wiz.current);
+    var prevBtn = document.getElementById("prov-prev");
+    var nextBtn = document.getElementById("prov-next");
+    if (prevBtn) prevBtn.hidden = idx <= 0;
+    if (nextBtn) {
+      var isLast = idx >= order.length - 1; // ⑥ 검토·생성 스텝
+      nextBtn.hidden = isLast;
+      var ok = stepValid(wiz.current);
+      nextBtn.disabled = !ok;
+      nextBtn.classList.toggle("opacity-50", !ok);
+      nextBtn.classList.toggle("cursor-not-allowed", !ok);
+    }
+  }
+
+  function showStep(n) {
+    wiz.current = n;
+    document.querySelectorAll("[data-step]").forEach(function (sec) {
+      sec.hidden = Number(sec.getAttribute("data-step")) !== n;
+    });
+    var order = visibleSteps();
+    document.querySelectorAll("[data-step-dot]").forEach(function (dot) {
+      var s = Number(dot.getAttribute("data-step-dot"));
+      var pos = order.indexOf(s);
+      var base = "rounded-full border px-2.5 py-1";
+      if (s === n) dot.className = base + " border-primary text-primary";
+      else if (pos >= 0 && pos < order.indexOf(n)) dot.className = base + " border-sky bg-sky text-white";
+      else if (pos < 0) dot.className = base + " border-border opacity-40"; // 건너뛴 스텝(CDN의 ④)
+      else dot.className = base + " border-border text-muted-foreground";
+    });
+    if (n === 6) renderReview();
+    updateWizardNav();
+  }
+
+  function nextStep() {
+    if (!stepValid(wiz.current)) return;
+    var order = visibleSteps();
+    var idx = order.indexOf(wiz.current);
+    if (idx < order.length - 1) showStep(order[idx + 1]);
+  }
+  function prevStep() {
+    var order = visibleSteps();
+    var idx = order.indexOf(wiz.current);
+    if (idx > 0) showStep(order[idx - 1]);
+  }
+
+  // 현재 스텝이 (종류 변경 등으로) 노출 목록에서 사라졌으면 가까운 스텝으로 보정.
+  function clampWizard() {
+    var order = visibleSteps();
+    if (order.indexOf(wiz.current) < 0) {
+      showStep(order.filter(function (s) { return s < wiz.current; }).pop() || order[0]);
+    } else {
+      updateWizardNav();
+    }
+  }
+
   // ── 이벤트 배선 ──────────────────────────────────────────────────────────
   function init() {
     var container = document.getElementById("prov-common-fields");
     if (!container) return; // provisioning 화면이 아니면 무시
     var providerC = document.getElementById("prov-provider-fields");
 
-    // ④ 공통 필드: 입력 변화 → 상태 수집 + 제출 상태 갱신
-    function onFieldChange() { collect(); updateSubmitState(); }
+    // ④ 공통 필드: 입력 변화 → 상태 수집 + 제출 상태 + 위저드 다음버튼 갱신
+    function onFieldChange() { collect(); updateSubmitState(); updateWizardNav(); }
     container.addEventListener("input", onFieldChange);
     container.addEventListener("change", onFieldChange);
     // 동적 행 삭제(위임) — 컨테이너에 1회만 배선(재렌더 시 누적 방지)
@@ -726,19 +817,26 @@
       });
     }
 
-    // 플랫폼/리소스 종류 변경 → 재렌더 + 선택 시각 피드백 갱신
+    // 플랫폼/리소스 종류 변경 → 재렌더 + 선택 시각 피드백 + 위저드 보정
     document.querySelectorAll("[data-prov-platform]").forEach(function (cb) {
-      cb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); });
+      cb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); clampWizard(); });
     });
     document.querySelectorAll("[data-prov-kind]").forEach(function (rb) {
-      rb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); });
+      rb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); clampWizard(); });
     });
     document.querySelectorAll("[data-prov-account]").forEach(function (cb) {
       cb.addEventListener("change", function () { onFieldChange(); syncSelectionUI(); });
     });
 
+    // 다음/이전 버튼
+    var nextBtn = document.getElementById("prov-next");
+    var prevBtn = document.getElementById("prov-prev");
+    if (nextBtn) nextBtn.addEventListener("click", nextStep);
+    if (prevBtn) prevBtn.addEventListener("click", prevStep);
+
     renderSteps();
     syncSelectionUI();
+    showStep(1);
   }
 
   // 후속 단위에서 재사용할 수 있도록 최소 API 노출
