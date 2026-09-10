@@ -59,7 +59,8 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 | 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
 | 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | in progress |
 | 키 관리(마이페이지) API — cloud-accounts/credentials 10개 엔드포인트 + 최소 로그인(JWT)·회원가입 | `solcho/be-credentials-api` 외 | 조은솔 | merged |
-| 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | in progress |
+| 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | merged |
+| 리소스 동기화 API — 실제 CSP 리소스 탐색 + `/sync-jobs` 4개 엔드포인트 | `solcho/be-sync-api` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -149,6 +150,35 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
     한 번도 검증된 적 없는 값"(예: `seed_mock_data.py`처럼 손으로 넣은 데이터)이라는 뜻이다.
     이렇게 해야 목업 credential(permission_scope 없음)로도 액션 파이프라인을 테스트할 수
     있다.
+- **리소스 동기화 아키텍처(2026-09-10, `solcho/be-sync-api`)**: 이 서버엔 별도 워커/큐
+  프로세스가 없어 `POST /sync-jobs`는 FastAPI `BackgroundTasks`로 응답을 먼저 돌려주고 같은
+  프로세스 안에서 백그라운드로 실행한다(§9). **단일 프로세스 전제** — `docker-compose.yml`이
+  이미 alembic 마이그레이션을 위해 `api` replica 1개를 전제하고 있어 이 제약과 같은 종류다.
+  replica를 늘리면 별도 워커로 분리해야 한다.
+  - **취소는 best-effort, 비영속**: `POST /sync-jobs/{id}/cancel`은 프로세스 메모리의 집합
+    (`app/routers/sync_jobs.py`의 `_CANCEL_REQUESTED`)에 표시만 하고, 다음 계정 항목으로
+    넘어가기 전에 확인해 멈춘다. 이미 시작된 항목 하나는 끝까지 진행된다. 이 집합은 DB
+    컬럼이 아니라서 프로세스 재시작 시 사라진다 — 영속 취소 플래그는 이번 세션 범위 밖.
+  - **동시 실행 정책**: 같은 사용자에게 `pending|running` job이 이미 있으면 `409
+    JOB_ALREADY_RUNNING`으로 거부한다(§19 "구현 전 확정 필요" 중 기본 안전 동작 그대로 채택).
+  - **동기화는 자동 삭제를 하지 않는다**: 이번 실행에서 안 보인 리소스는 `is_stale=true`로만
+    표시하고 `deleted_at`은 건드리지 않는다(§9.3 "필요 시 deleted_at" 정책은 미확정으로 남겨
+    둠) — 실제 삭제는 여전히 `POST /resources/action`(delete)을 통해서만 일어난다.
+  - **CSP 호출 실패는 대부분 "0건 발견"으로 보인다, 실패가 아니라**: 리전/서비스별 호출은
+    각각 개별 `try/except`로 감싸 하나가 막혀도(예: opt-in 리전 미활성화) 나머지는 계속
+    수집한다. 그 결과 credential 자체가 완전히 잘못된 경우에도 item은 보통 `PROVIDER_API_ERROR`
+    로 실패하지 않고 `resources_discovered=0`인 `success`로 끝난다(직접 확인함 — 목업 계정으로
+    동기화하면 대상 리소스가 전부 `is_stale=true`가 된다). 사용자에게 "왜 0건이지?"를 구분해
+    보여주려면 추후 세션에서 신원 확인(§6.2와 같은 `sts:GetCallerIdentity` 등)을 동기화 시작
+    전 사전 게이트로 추가하는 것을 고려한다.
+  - **탐색 범위는 `resource_actions.py`와 동일**: AWS EC2(리전 `ap-northeast-2`/`us-east-1`만,
+    프로비저닝 폼 허용 리전과 통일)·EBS Volume·RDS 인스턴스·S3 버킷(리전은 조회 비용 때문에
+    `None` 고정), Azure Virtual Machine(`list_all()`의 `provisioning_state`를 상태로 씀 —
+    실제 전원 상태 아님, VM별 instance view 호출은 비용 문제로 생략), GCP Compute Engine
+    인스턴스만 실제로 수집한다. 나머지 서비스는 `discover_resources()`가 빈 목록을 반환한다
+    (에러 아님 — 단순히 아직 미지원).
+  - **audit_events에 동기화를 기록하지 않는다**: §14 기본 기록 대상 표에 `resource.sync`류
+    action이 없어 이번 세션에서 새로 만들지 않았다(표에 없는 action을 임의로 추가하지 않음).
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 

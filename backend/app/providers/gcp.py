@@ -57,3 +57,33 @@ def perform_resource_action(
         operation.result()
     except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError) as exc:
         raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+
+def discover_resources(secret_payload: dict, project_id: str) -> list:
+    """Compute Engine 인스턴스만 동기화한다(§9 지원 범위는 resource_actions.py와 동일)."""
+    from app.resource_sync import DiscoveredResource
+
+    results: list[DiscoveredResource] = []
+    try:
+        credentials = service_account.Credentials.from_service_account_info(secret_payload)
+        client = compute_v1.InstancesClient(credentials=credentials)
+        for zone, scoped_list in client.aggregated_list(project=project_id):
+            if not scoped_list.instances:
+                continue
+            zone_name = zone.split("/")[-1]
+            for instance in scoped_list.instances:
+                results.append(
+                    DiscoveredResource(
+                        service_code="compute_engine",
+                        external_resource_id=instance.name,
+                        original_resource_type="Compute Engine Instance",
+                        name=instance.name,
+                        region=zone_name,
+                        status=(instance.status or "").upper() or None,
+                        tags=dict(instance.labels) if instance.labels else {},
+                    )
+                )
+    except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError):
+        pass
+
+    return results
