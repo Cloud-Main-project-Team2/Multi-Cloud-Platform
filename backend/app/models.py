@@ -149,89 +149,11 @@ class ServiceCatalog(CreatedAtMixin, Base):
     )
 
 
-class ResourceType(CreatedAtMixin, Base):
-    """CSP 원본 리소스 유형. service_catalog(공통 서비스 분류)과는 별개 개념이다.
-
-    service_catalog은 "EC2"처럼 provider의 서비스 단위를 나타내고,
-    resource_type은 그 서비스가 실제로 다루는 CSP 원본 리소스 종류(예: EC2 Instance)를
-    나타낸다. resources.original_resource_type은 수집 원문 보존용이고,
-    이 테이블의 type_code는 그것을 정규화한 안정적인 코드다.
-    """
-
-    __tablename__ = "resource_types"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    service_catalog_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("service_catalog.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    type_code: Mapped[str] = mapped_column(String(150), nullable=False)
-    display_name: Mapped[str] = mapped_column(String(200), nullable=False)
-    category: Mapped[str] = mapped_column(String(100), nullable=False)
-    provisionable: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=sa.text("false"), default=False
-    )
-    supports_start: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=sa.text("false"), default=False
-    )
-    supports_stop: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=sa.text("false"), default=False
-    )
-    supports_delete: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default=sa.text("false"), default=False
-    )
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
-    )
-
-    __table_args__ = (
-        sa.UniqueConstraint("service_catalog_id", "type_code", name="uq_resource_types_service_catalog_type_code"),
-    )
-
-
-class ProvisioningRequest(CreatedAtMixin, Base):
-    """사용자의 한 번의 프로비저닝 의도(부모). 실제 실행 단위는 ProvisioningJob(자식)이다.
-
-    다중 계정을 선택했을 때 실제로 몇 개의 job이 어떤 조합 규칙으로 생성되는지는
-    아직 정책이 확정되지 않았다. 이 테이블은 "요청 1개 : job 여러 개"를 표현할 수 있게만
-    설계하며, 조합 규칙 자체는 구현하지 않는다.
-    """
-
-    __tablename__ = "provisioning_requests"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    request_key: Mapped[str] = mapped_column(String(255), nullable=False)
-    resource_type_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("resource_types.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    # common_spec_json에는 secret을 저장하지 않는다(access key, secret key 등 자격 증명 값 금지).
-    # provisioning_jobs.spec_json과 마찬가지로 API 계층에서 secret 필드를 거부한 뒤에만 저장한다.
-    common_spec_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="queued", default="queued")
-    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    __table_args__ = (
-        sa.CheckConstraint(
-            "status IN ('queued','running','success','partial_success','failed','cancelled')",
-            name="ck_provisioning_requests_status",
-        ),
-        sa.UniqueConstraint("user_id", "request_key", name="uq_provisioning_requests_user_request_key"),
-        sa.CheckConstraint(
-            "finished_at IS NULL OR started_at IS NULL OR finished_at >= started_at",
-            name="ck_provisioning_requests_finished_after_started",
-        ),
-    )
-
-
 class ProvisioningJob(CreatedAtMixin, Base):
-    """한 credential, 한 provider, 한 Terraform workspace에 대한 실제 실행 단위(자식).
+    """한 credential, 한 provider, 한 Terraform workspace에 대한 실제 실행 단위.
 
-    상위 ProvisioningRequest의 status는 이 테이블의 자식 row들을 집계한 값이며,
-    DB trigger로 자동 계산하지 않는다. 서비스 계층이 하나의 transaction 안에서
-    자식 job들의 상태를 읽고 부모 request.status를 갱신해야 한다.
+    이전 API 명세(provider별 개별 엔드포인트) 유지 결정에 따라 상위 부모
+    ProvisioningRequest 개념은 제거됐다. status는 이 테이블의 row 단위로 관리한다.
     """
 
     __tablename__ = "provisioning_jobs"
@@ -239,9 +161,6 @@ class ProvisioningJob(CreatedAtMixin, Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
-    )
-    provisioning_request_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("provisioning_requests.id", ondelete="CASCADE"), nullable=False, index=True
     )
     credential_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("credentials.id", ondelete="RESTRICT"), nullable=False, index=True
@@ -313,11 +232,6 @@ class Resource(CreatedAtMixin, Base):
         BigInteger, ForeignKey("service_catalog.id", ondelete="RESTRICT"), nullable=False, index=True
     )
 
-    # 확실하게 매핑되는 기존 행만 backfill되어 있을 수 있다. 수집 코드가 항상 값을 채우게
-    # 되기 전까지는 nullable로 유지한다(NOT NULL 전환은 별도 migration에서 검토).
-    resource_type_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("resource_types.id", ondelete="RESTRICT"), nullable=True, index=True
-    )
     first_collected_by_credential_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True, index=True
     )

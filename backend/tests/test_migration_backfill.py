@@ -21,6 +21,9 @@ from app.seed import SERVICE_CATALOG_SEED, seed_service_catalog
 
 BASE_REVISION = "7bf7892874c3"
 HEAD_REVISION = "2964dfe0a706"
+# 이전 API 명세(provider별 개별 엔드포인트) 유지 결정으로 통합 API 전용 스키마 조각을
+# 되돌리는 revision.
+REVERT_REVISION = "0caab346f140"
 MIGRATION_TEST_DB_NAME = "mcp_db_migration_test"
 
 
@@ -240,3 +243,70 @@ def test_phase2_migration_preserves_and_backfills_existing_data(alembic_config, 
             ).scalar_one()
             is not None
         )
+
+
+def test_revert_revision_drops_only_unified_api_pieces(alembic_config, migration_db_url):
+    """0caab346f140: provisioning_requests/resource_types 및 두 FK 컬럼만 제거하고,
+    나머지 테이블은 그대로 두며, downgrade/upgrade 왕복이 에러 없이 동작한다."""
+    # 1차 스키마에 legacy 데이터를 넣고 phase-2로 올려 backfill까지 끝낸 뒤 revert한다
+    # (실배포와 동일한 데이터 상태에서 revert가 안전한지 확인).
+    command.upgrade(alembic_config, BASE_REVISION)
+
+    setup_engine = create_engine(migration_db_url, future=True)
+    _insert_legacy_dataset(setup_engine)
+    setup_engine.dispose()
+
+    command.upgrade(alembic_config, HEAD_REVISION)
+
+    # revert 적용 — 제거 대상 4가지만 사라지고 나머지 데이터는 보존
+    command.upgrade(alembic_config, REVERT_REVISION)
+
+    with create_engine(migration_db_url, future=True).connect() as conn:
+        tables = set(sa.inspect(conn).get_table_names())
+        assert "provisioning_requests" not in tables
+        assert "resource_types" not in tables
+        # 유지돼야 하는 테이블
+        for kept in ("provisioning_jobs", "resources", "cloud_resource_costs", "audit_events"):
+            assert kept in tables
+
+        job_columns = {c["name"] for c in sa.inspect(conn).get_columns("provisioning_jobs")}
+        assert "provisioning_request_id" not in job_columns
+        # 무해하게 남겨두는 컬럼들은 유지
+        assert {"progress_percent", "created_resource_count", "terraform_state_ref"} <= job_columns
+
+        resource_columns = {c["name"] for c in sa.inspect(conn).get_columns("resources")}
+        assert "resource_type_id" not in resource_columns
+
+        # 기존 데이터 보존
+        assert conn.execute(text("SELECT count(*) FROM provisioning_jobs")).scalar_one() == 1
+        assert conn.execute(text("SELECT count(*) FROM resources")).scalar_one() == 1
+
+
+def test_revert_revision_downgrade_roundtrip(alembic_config, migration_db_url):
+    """운영 데이터가 없다는 전제(0caab346f140)하에서 downgrade -> upgrade 왕복이
+    에러 없이 동작한다. downgrade가 provisioning_request_id를 원본과 동일하게
+    NOT NULL로 재생성하므로, provisioning_jobs가 비어 있어야 안전하다."""
+    command.upgrade(alembic_config, REVERT_REVISION)
+
+    with create_engine(migration_db_url, future=True).connect() as conn:
+        tables = set(sa.inspect(conn).get_table_names())
+        assert "provisioning_requests" not in tables
+        assert "resource_types" not in tables
+
+    # HEAD로 downgrade -> 되돌린 두 테이블이 다시 생김
+    command.downgrade(alembic_config, HEAD_REVISION)
+    with create_engine(migration_db_url, future=True).connect() as conn:
+        tables = set(sa.inspect(conn).get_table_names())
+        assert "provisioning_requests" in tables
+        assert "resource_types" in tables
+        job_columns = {c["name"] for c in sa.inspect(conn).get_columns("provisioning_jobs")}
+        assert "provisioning_request_id" in job_columns
+        resource_columns = {c["name"] for c in sa.inspect(conn).get_columns("resources")}
+        assert "resource_type_id" in resource_columns
+
+    # 다시 REVERT로 upgrade -> 되돌린 두 테이블이 또 사라짐
+    command.upgrade(alembic_config, REVERT_REVISION)
+    with create_engine(migration_db_url, future=True).connect() as conn:
+        tables = set(sa.inspect(conn).get_table_names())
+        assert "provisioning_requests" not in tables
+        assert "resource_types" not in tables

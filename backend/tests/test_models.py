@@ -12,8 +12,6 @@ EXPECTED_TABLES = {
     "resources",
     "resource_sync_jobs",
     "resource_sync_job_items",
-    "resource_types",
-    "provisioning_requests",
     "cloud_resource_costs",
     "audit_events",
 }
@@ -88,12 +86,6 @@ def test_password_reset_tokens_never_store_plaintext(engine):
 def test_phase2_unique_constraints_exist(engine):
     inspector = sa.inspect(engine)
 
-    resource_type_uniques = {tuple(u["column_names"]) for u in inspector.get_unique_constraints("resource_types")}
-    assert ("service_catalog_id", "type_code") in resource_type_uniques
-
-    request_uniques = {tuple(u["column_names"]) for u in inspector.get_unique_constraints("provisioning_requests")}
-    assert ("user_id", "request_key") in request_uniques
-
     cost_uniques = {tuple(u["column_names"]) for u in inspector.get_unique_constraints("cloud_resource_costs")}
     assert ("provider", "source_record_key") in cost_uniques
 
@@ -116,16 +108,6 @@ def test_phase2_check_constraints_exist(engine):
 def test_phase2_foreign_keys_exist(engine):
     inspector = sa.inspect(engine)
 
-    job_fks = {fk["referred_table"] for fk in inspector.get_foreign_keys("provisioning_jobs")}
-    assert "provisioning_requests" in job_fks
-
-    request_fks = {fk["referred_table"] for fk in inspector.get_foreign_keys("provisioning_requests")}
-    assert "resource_types" in request_fks
-    assert "users" in request_fks
-
-    resource_fks = {fk["referred_table"] for fk in inspector.get_foreign_keys("resources")}
-    assert "resource_types" in resource_fks
-
     cost_fks = {fk["referred_table"] for fk in inspector.get_foreign_keys("cloud_resource_costs")}
     assert "resources" in cost_fks
 
@@ -133,11 +115,22 @@ def test_phase2_foreign_keys_exist(engine):
     assert "users" in audit_fks
 
 
+def test_reverted_entities_absent(engine):
+    """이전 API 명세 유지 결정으로 제거된 스키마 조각이 없는지 확인."""
+    inspector = sa.inspect(engine)
+    tables = set(inspector.get_table_names())
+    assert "resource_types" not in tables
+    assert "provisioning_requests" not in tables
+
+    job_columns = {c["name"] for c in inspector.get_columns("provisioning_jobs")}
+    assert "provisioning_request_id" not in job_columns
+
+    resource_columns = {c["name"] for c in inspector.get_columns("resources")}
+    assert "resource_type_id" not in resource_columns
+
+
 def test_phase2_key_indexes_exist(engine):
     inspector = sa.inspect(engine)
-
-    resource_indexes = {ix["name"] for ix in inspector.get_indexes("resources")}
-    assert "ix_resources_resource_type_id" in resource_indexes
 
     audit_indexes = {ix["name"] for ix in inspector.get_indexes("audit_events")}
     assert "ix_audit_events_actor_created" in audit_indexes
