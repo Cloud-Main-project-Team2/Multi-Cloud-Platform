@@ -633,6 +633,35 @@
     btn.classList.toggle("cursor-not-allowed", !ok);
   }
 
+  // ── 선택 상태 → 시각 피드백 (①플랫폼/③종류=카드, ②계정=chip) ──────────────
+  // 마크업의 고정색을 없애고, 실제 체크/선택 상태에서 강조 클래스를 계산해 반영한다.
+  var SELECT_STYLE = {
+    card: { on: ["border-primary", "bg-muted"], off: ["border-border"] },
+    chip: { on: ["bg-sky", "text-white", "border-primary"], off: ["bg-muted", "text-muted-foreground", "border-border"] },
+  };
+  function applySelectState(labelEl, on, style) {
+    style.on.forEach(function (c) { labelEl.classList.toggle(c, on); });
+    style.off.forEach(function (c) { labelEl.classList.toggle(c, !on); });
+  }
+  function syncSelectionUI() {
+    document.querySelectorAll("[data-prov-platform]").forEach(function (cb) {
+      var label = cb.closest("[data-select-card]");
+      if (label) applySelectState(label, cb.checked, SELECT_STYLE.card);
+    });
+    document.querySelectorAll("[data-prov-kind]").forEach(function (rb) {
+      var label = rb.closest("[data-select-card]");
+      if (label) applySelectState(label, rb.checked, SELECT_STYLE.card);
+    });
+    var count = 0;
+    document.querySelectorAll("[data-prov-account]").forEach(function (cb) {
+      var label = cb.closest("[data-select-chip]");
+      if (label) applySelectState(label, cb.checked, SELECT_STYLE.chip);
+      if (cb.checked) count++;
+    });
+    var countEl = document.getElementById("prov-account-count");
+    if (countEl) countEl.textContent = "(" + count + "개 선택)";
+  }
+
   // ── 스텝 렌더 진입점 (④ 공통 + ⑤ 추가) ──────────────────────────────────
   function renderSteps() {
     var commonSection = document.getElementById("prov-step-common");
@@ -697,18 +726,19 @@
       });
     }
 
-    // 플랫폼/리소스 종류 변경 → 재렌더(관련 필드가 바뀌므로)
+    // 플랫폼/리소스 종류 변경 → 재렌더 + 선택 시각 피드백 갱신
     document.querySelectorAll("[data-prov-platform]").forEach(function (cb) {
-      cb.addEventListener("change", renderSteps);
+      cb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); });
     });
     document.querySelectorAll("[data-prov-kind]").forEach(function (rb) {
-      rb.addEventListener("change", renderSteps);
+      rb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); });
     });
     document.querySelectorAll("[data-prov-account]").forEach(function (cb) {
-      cb.addEventListener("change", onFieldChange);
+      cb.addEventListener("change", function () { onFieldChange(); syncSelectionUI(); });
     });
 
     renderSteps();
+    syncSelectionUI();
   }
 
   // 후속 단위에서 재사용할 수 있도록 최소 API 노출
