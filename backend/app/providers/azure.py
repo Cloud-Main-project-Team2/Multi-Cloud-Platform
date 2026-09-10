@@ -69,3 +69,37 @@ def perform_resource_action(service_code: str, action: str, secret_payload: dict
         poller.result()
     except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
         raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+
+def discover_resources(secret_payload: dict, subscription_id: str) -> list:
+    """VM만 동기화한다(§9 지원 범위는 resource_actions.py와 동일 — CLAUDE.md 기록).
+
+    실제 전원 상태(instance view)는 VM마다 별도 API 호출이 필요해 비용이 커서 이번 세션에서는
+    생략하고 목록 API의 `provisioning_state`(ARM 리소스 생성 상태 — RUNNING/STOPPED 같은 실제
+    전원 상태가 아니다)를 대신 넣는다."""
+    from app.resource_sync import DiscoveredResource
+
+    results: list[DiscoveredResource] = []
+    try:
+        credential = ClientSecretCredential(
+            tenant_id=secret_payload["tenant_id"],
+            client_id=secret_payload["client_id"],
+            client_secret=secret_payload["client_secret"],
+        )
+        compute_client = ComputeManagementClient(credential, subscription_id)
+        for vm in compute_client.virtual_machines.list_all():
+            results.append(
+                DiscoveredResource(
+                    service_code="vm",
+                    external_resource_id=vm.id,
+                    original_resource_type="Virtual Machine",
+                    name=vm.name,
+                    region=vm.location,
+                    status=(vm.provisioning_state or "").upper() or None,
+                    tags=dict(vm.tags or {}),
+                )
+            )
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError):
+        pass
+
+    return results
