@@ -3,6 +3,7 @@ import uuid
 
 from fastapi import FastAPI, Request, Response, status
 from fastapi.exceptions import RequestValidationError
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -15,6 +16,16 @@ from app.routers import auth, credentials
 app = FastAPI(title="Multi-Cloud Platform API")
 app.include_router(auth.router)
 app.include_router(credentials.router)
+
+# 프론트(:8080, nginx 정적 서빙)와 API(:8000)가 서로 다른 오리진이라 브라우저 fetch에는
+# CORS 허용이 필요하다. Bearer 토큰만 쓰고 쿠키는 쓰지 않으므로 allow_credentials는 False로 둔다.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080"],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.middleware("http")
