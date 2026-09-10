@@ -86,6 +86,15 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
   (`app/security/jwt_tokens.py`, `app/deps.py`, `app/routers/auth.py`). 회원가입·비밀번호
   재설정·`/me`·refresh token은 여전히 범위 밖 — 별도 인증 세션에서 이어서 구현한다. 목업
   데모 계정(`demo@multicloud.example` / `demo-pass-1234`, `seed_mock_data.py`)으로 로그인 가능.
+- **회원가입(`POST /auth/sign-up`) 추가(2026-09-10, `solcho/be-credentials-api`)**: 로그인만
+  있으면 목업 데모 계정 외에는 아무도 로그인할 수 없어(가입 경로 없음) 범위를 넓혀 회원가입만
+  추가했다. 비밀번호 재설정·`/me`는 여전히 범위 밖(실제 메일 발송 없는 데모형 토큰 발급이
+  필요해 별도 세션으로 미룸). 이때 §19 미확정 항목 두 개를 확정:
+  - **비밀번호 정책**: `frontend/assets/js/validate.js`의 `MCVAL.isStrongPassword`와 동일하게
+    "8자 이상 + 영문/숫자/기호 중 2종 이상"으로 통일(`app/security/passwords.py`의
+    `is_strong_password`). 프론트가 이미 이 규칙으로 UI를 만들어 둬서 그대로 재사용했다.
+  - **`affiliation_type=company`일 때 단체명 필수 여부**: 필수로 확정. `affiliation_name`이
+    비어 있으면 `422 VALIDATION_ERROR`.
 - **credential 검증 실패 시 저장 정책(2026-09-10, `solcho/be-credentials-api`)**: §19에서
   미확정으로 남아 있던 두 옵션 중 **"검증 실패해도 암호화 저장하고 `verified=false`로 반환"**
   (§6.2 옵션 1)을 채택했다. 근거: 사용자가 실패 원인을 보고 재시도/수정할 수 있어야 하고,
