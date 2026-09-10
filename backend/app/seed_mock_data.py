@@ -143,11 +143,17 @@ def seed_mock_data(db: Session) -> None:
     cred_gcp = get_or_create(
         db, Credential,
         defaults={
+            # 실제 서비스 계정 키 JSON과 같은 형태로 통째로 저장한다(token_uri 포함) —
+            # google-auth가 요구하는 필드가 빠지지 않도록 목업도 실제 shape을 따른다.
             **_encrypt({
                 "type": "service_account",
-                "client_email": "sa-dev@dev-gcp-01-project.iam.gserviceaccount.com",
+                "project_id": "dev-gcp-01-project",
                 "private_key_id": "abcdef0123456789",
                 "private_key": "-----BEGIN PRIVATE KEY-----\\nEXAMPLE\\n-----END PRIVATE KEY-----\\n",
+                "client_email": "sa-dev@dev-gcp-01-project.iam.gserviceaccount.com",
+                "client_id": "123456789012345678901",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
             }),
             "public_identifier": "sa-dev@dev-gcp-01-project…",
             "verified": False,  # MY-01 검증 실패 예시
@@ -239,17 +245,21 @@ def seed_mock_data(db: Session) -> None:
         user_id=user.id, workspace_name="mcp-g7h8-vm",
     )
 
-    # 6) 리소스 동기화 작업 1건 + 계정별 항목 (INV-01 배너: AWS success/Azure running/GCP pending)
+    # 6) 리소스 동기화 작업 1건 + 계정별 항목 (INV-01 배너: AWS 성공/Azure 실패/GCP 취소 예시).
+    #    반드시 종결 상태로 심는다 — "running"으로 두면 실제 동기화 API(solcho/be-sync-api)의
+    #    "이미 진행 중인 job이 있으면 거부" 로직과 충돌해 데모 계정에서 새로고침이 영원히
+    #    막히기 때문이다(2026-09-10 발견, CLAUDE.md 기록).
     sync_job = get_or_create(
         db, ResourceSyncJob,
-        defaults={"status": "running", "started_at": _NOW},
+        defaults={"status": "partial_success", "started_at": _NOW, "finished_at": _NOW},
         user_id=user.id, requested_at=_NOW,
     )
     sync_item_specs = [
         (acct_aws, cred_aws, "aws", "success", {"resources_discovered": 2, "resources_updated": 2,
                                                 "started_at": _NOW, "finished_at": _NOW}),
-        (acct_az, cred_az, "azure", "running", {"started_at": _NOW}),
-        (acct_gcp, cred_gcp, "gcp", "pending", {}),
+        (acct_az, cred_az, "azure", "failed", {"started_at": _NOW, "finished_at": _NOW,
+                                               "error_code": "PROVIDER_API_ERROR"}),
+        (acct_gcp, cred_gcp, "gcp", "cancelled", {"started_at": _NOW, "finished_at": _NOW}),
     ]
     for acct, cred, provider, status, extra in sync_item_specs:
         get_or_create(

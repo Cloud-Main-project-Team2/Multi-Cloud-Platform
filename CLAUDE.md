@@ -59,6 +59,10 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 | 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
 | 프로비저닝 — Azure VM 생성 (`POST /provisioning/azure/vm`) | `seunghyun/be-azure-vm-provisioning` | 이승현 | in progress (PR 대기) |
 | 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | in progress |
+| 키 관리(마이페이지) API — cloud-accounts/credentials 10개 엔드포인트 + 최소 로그인(JWT)·회원가입 | `solcho/be-credentials-api` 외 | 조은솔 | merged |
+| 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | merged |
+| 리소스 동기화 API — 실제 CSP 리소스 탐색 + `/sync-jobs` 4개 엔드포인트 | `solcho/be-sync-api` | 조은솔 | merged |
+| 인벤토리(INV-01/INV-02) 실API 연동 — 조회·동기화·시작/중지/삭제 | `solcho/fe-inventory-integration` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -75,7 +79,10 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 - **목업/데모 데이터(2026-09-10)**: 화면 하드코딩 예시값(MY-01/INV-01/DASH-01)을
   `backend/app/seed_mock_data.py`로 시딩 — 데모 유저 1, 클라우드 계정 3, 자격증명 3
   (dev-gcp만 `verified=false` 검증실패 예시), 리소스 5, 프로비저닝 잡 2(성공/실패),
-  동기화 상태 AWS·Azure·GCP 각각 상이, 비용 카드용 최소 행. **재실행 idempotent**.
+  동기화 상태 AWS·Azure·GCP 각각 상이(성공/실패/취소 — **항상 종결 상태로 시딩한다**: "running"으로
+  두면 실제 `/sync-jobs` API의 "이미 진행 중인 job 있으면 거부" 로직과 충돌해 데모 계정에서
+  새로고침이 영원히 막힌다, 2026-09-10 `solcho/fe-inventory-integration`에서 발견해 수정),
+  비용 카드용 최소 행. **재실행 idempotent**.
   credentials는 `app/security/credential_crypto.py`(AES-256-GCM)로 실제 암호화 저장하며,
   이후 BE API(키 관리/리소스 조회/대시보드)는 이 데이터 위에서 개발·테스트한다.
 - **Azure VM `admin_password` 정책(2026-09-10)**: `frontend/assets/js/provisioning.js`가
@@ -94,6 +101,128 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
   (curated label, publisher/offer/sku/version은 서버가 내부 매핑)로, `common_spec`을
   `name`/`tags`/`inbound_rules`(포트·CIDR 목록)로 확정. `instance_type`은 프론트가
   `Standard_` 접두사 없이 보내므로(`B1s` 등) 서버가 자동 보정한다.
+- **최소 인증(JWT) 구현(2026-09-10, `solcho/be-credentials-api`)**: `01_API_명세서_v1.1.md`
+  §5는 회원가입·로그인·비밀번호 재설정·`/me`까지 전체 인증 스펙을 정의하지만, 백엔드에는
+  인증이 전혀 구현돼 있지 않았다(프론트 `auth-guard.js`는 `localStorage` 데모 세션일 뿐 실제
+  토큰이 아님). credentials API 전체가 소유권 검사(`current_user`)를 전제로 하므로, 이 세션에서
+  범위를 넓혀 `POST /api/v1/auth/login` + `Authorization: Bearer <JWT>` 검증만 최소 구현했다
+  (`app/security/jwt_tokens.py`, `app/deps.py`, `app/routers/auth.py`). 회원가입·비밀번호
+  재설정·`/me`·refresh token은 여전히 범위 밖 — 별도 인증 세션에서 이어서 구현한다. 목업
+  데모 계정(`demo@multicloud.example` / `demo-pass-1234`, `seed_mock_data.py`)으로 로그인 가능.
+- **회원가입(`POST /auth/sign-up`) 추가(2026-09-10, `solcho/be-credentials-api`)**: 로그인만
+  있으면 목업 데모 계정 외에는 아무도 로그인할 수 없어(가입 경로 없음) 범위를 넓혀 회원가입만
+  추가했다. 비밀번호 재설정·`/me`는 여전히 범위 밖(실제 메일 발송 없는 데모형 토큰 발급이
+  필요해 별도 세션으로 미룸). 이때 §19 미확정 항목 두 개를 확정:
+  - **비밀번호 정책**: `frontend/assets/js/validate.js`의 `MCVAL.isStrongPassword`와 동일하게
+    "8자 이상 + 영문/숫자/기호 중 2종 이상"으로 통일(`app/security/passwords.py`의
+    `is_strong_password`). 프론트가 이미 이 규칙으로 UI를 만들어 둬서 그대로 재사용했다.
+  - **`affiliation_type=company`일 때 단체명 필수 여부**: 필수로 확정. `affiliation_name`이
+    비어 있으면 `422 VALIDATION_ERROR`.
+- **credential 검증 실패 시 저장 정책(2026-09-10, `solcho/be-credentials-api`)**: §19에서
+  미확정으로 남아 있던 두 옵션 중 **"검증 실패해도 암호화 저장하고 `verified=false`로 반환"**
+  (§6.2 옵션 1)을 채택했다. 근거: 사용자가 실패 원인을 보고 재시도/수정할 수 있어야 하고,
+  rollback하면 마이페이지 "검증 실패" 행 UI(정적 화면에 이미 존재)가 표시할 대상 자체가
+  사라진다. `POST /credentials/{provider}`·시크릿 교체를 포함한 `PATCH /credentials/{id}`
+  모두 이 정책을 따른다.
+- **cloud account 삭제 API 보류(2026-09-10, `solcho/be-credentials-api`)**: §6.5·§19에 명시된
+  대로 snapshot 보존 정책이 확정되지 않아 `DELETE /cloud-accounts/{id}`는 실제로 삭제하지
+  않는다. 라우트는 만들어 두되(소유권 검사까지는 정상 수행) 항상 `501
+  CLOUD_ACCOUNT_DELETE_NOT_IMPLEMENTED`를 반환한다.
+- **credential 실검증 permission_scope 프로빙 범위 축소(2026-09-10,
+  `solcho/be-credentials-api`)**: `app/providers/{aws,azure,gcp}.py`는 신원 확인(AWS
+  `sts:GetCallerIdentity`, Azure `SubscriptionClient.subscriptions.get`, GCP
+  `projects.get`)은 3사 모두 실제로 호출한다. 그 위의 `permission_scope` 자동 판별은
+  **AWS만 4개 항목 모두**(`inventory_read`=`ec2:DescribeInstances`, `cost_read`=Cost
+  Explorer, `resource_control`/`provision`=`iam:SimulatePrincipalPolicy`) 구현했고,
+  **Azure/GCP는 `inventory_read`만** 가벼운 목록 조회로 채우고 나머지는 `false` 고정이다.
+  근거: 안전한 읽기 전용 프로빙 API가 provider/권한마다 표준화돼 있지 않고, GCP 비용 수집
+  방식·권한은 이미 §19에 미확정 항목으로 남아 있어 이 세션에서 새로 정하지 않았다. 화면의
+  자기신고 체크박스(정적 UI, 이번 세션에서 변경 없음)로 나머지를 보완하는 것을 전제로 한다.
+- **GCP secret_payload는 서비스 계정 키 JSON을 통째로 저장한다(2026-09-11,
+  `solcho/fix-gcp-credential-payload`)**: 처음엔 프론트가 붙여넣은 JSON에서 `type`/
+  `client_email`/`private_key_id`/`private_key` 4개만 골라 보냈는데, google-auth의
+  `service_account.Credentials.from_service_account_info()`가 **`token_uri`를 필수로**
+  요구해서(`MalformedError: missing fields token_uri`) 멀쩡한 키인데도 검증·동기화·리소스
+  액션이 전부 실패했다. **필드를 골라 담지 말고 키 파일 전체를 그대로 저장한다**(어차피
+  AES-256-GCM으로 암호화 저장된다). `REQUIRED_SECRET_FIELDS["gcp"]`에도 `token_uri`를 넣어
+  잘린 payload는 검증 전에 422로 걸러낸다. `tests/test_gcp_credential_payload.py`가
+  "우리가 필수로 받는 필드만으로 google-auth가 credential을 만들 수 있는가"를 고정한다.
+  ⚠️ 이 수정 이전에 등록된 GCP credential은 payload가 잘린 상태로 저장돼 있어 **다시 등록하거나
+  마이페이지에서 "수정"으로 키를 교체해야** 한다(원본 키를 서버가 따로 보관하지 않으므로
+  마이그레이션 불가).
+- **마이페이지 자격 증명 수정/삭제 UI(2026-09-11, `solcho/fix-gcp-credential-payload`)**:
+  검증에 실패할 때마다 새로 등록하느라 키를 반복해서 붙여넣어야 하는 불편이 있어, "연결된
+  클라우드 계정" 표에 **수정 / 재검증 / 삭제** 버튼을 붙였다(백엔드 §6.7~6.9는 이미 있었고
+  화면에서만 안 쓰고 있었다).
+  - **수정 모드에서 바꿀 수 있는 것은 이름과 키 값뿐**이다. `external_account_id`(계정 식별자)와
+    provider는 클라우드 계정에 속한 값이라 잠근다 — 다른 계정/프로젝트의 키라면 새로 등록해야
+    한다. GCP도 마찬가지라 붙여넣은 JSON의 `project_id`가 달라도 계정은 바뀌지 않는다.
+  - **키 값을 비워두고 저장하면 이름만 수정**된다(메타데이터 전용 PATCH — 서버가 확인 헤더를
+    요구하지 않는 경로). 키를 채우면 교체 + 즉시 재검증이며 `X-Action-Confirmed: true`를 보낸다.
+  - 표 행 드래그(순서 변경) 핸들러가 `pointerdown`에서 `preventDefault()`를 부르기 때문에,
+    관리 버튼에서 시작한 pointerdown은 드래그 대상에서 제외해야 클릭이 먹지 않는다.
+- **resources/action 일괄 요청 원자성(2026-09-10, `solcho/be-resources-api`)**: §19 미확정
+  항목 중 "전체 실패 또는 항목별 부분 성공"을 **항목별 부분 성공**으로 확정(§8.5 예시 응답과
+  같은 방향). 리소스 하나가 실패해도 나머지 리소스는 계속 처리하고, 각 항목은
+  `success | rejected | failed` 중 하나로 결과에 남는다(`rejected`=사전 검사 단계에서 걸러짐,
+  `failed`=CSP 호출까지 갔다가 실패). `app/routers/resources.py`의 `_process_action_item`.
+- **resources/action SDK 어댑터 구현 범위(2026-09-10, `solcho/be-resources-api`)**:
+  `aws_client.py`/`azure_client.py`/`gcp_client.py` 어댑터가 이 저장소에 전혀 없어서(구버전
+  프로토타입 세션이 실행된 적 없음) `app/providers/{aws,azure,gcp}.py`의 `perform_resource_action`
+  으로 새로 구현했다. §0 지시대로 "최소 EC2/RDS/S3"를 채우고, 목업 리소스(mcp-c3d4-vm)가
+  Azure VM이라 Azure VM도, 같은 이유로 GCP Compute Engine도 추가했다.
+  - **지원**: AWS EC2 인스턴스(start/stop/delete) · EBS Volume(delete만) · RDS 인스턴스
+    (start/stop/delete) · S3 버킷(delete만, 비어있지 않으면 `BucketNotEmpty` →
+    `force_empty:true` 재요청 지원) · Azure Virtual Machine(start/stop/delete) · GCP
+    Compute Engine 인스턴스(start/stop/delete).
+  - **미지원(`UNSUPPORTED_OPERATION` 고정)**: Azure SQL Database/Storage Account/CDN, GCP
+    Cloud SQL/Cloud Storage/Cloud CDN, AWS CloudFront — 어댑터가 없어서가 아니라 이번 세션
+    범위 밖으로 의도적으로 뺐다. `app/resource_actions.py`의 `supported_actions()` 참고.
+  - **Azure 리소스 식별 규칑**: `resources.external_resource_id`는 Azure의 경우 ARM 리소스 ID
+    전체(`/subscriptions/.../resourceGroups/.../providers/.../virtualMachines/...`)라고
+    가정한다 — VM 이름만으로는 조작에 필요한 resource group을 알 수 없기 때문. 동기화(9장)
+    구현 시 이 형식으로 저장해야 한다.
+  - **GCP zone 단순화**: GCP Compute 인스턴스는 zone 단위로 존재하는데 스키마에 별도 zone
+    컬럼이 없어 `resources.region` 값을 zone으로 그대로 사용한다(예: `asia-northeast3-a`).
+  - **CSP 호출은 완료를 기다리지 않을 수 있다**: AWS(`start_instances`/`stop_instances`/
+    `start_db_instance`/`stop_db_instance`)는 호출이 accept되면 성공으로 본다(실제 상태 전이
+    완료까지 폴링하지 않음). Azure(`begin_*().result()`)와 GCP(`operation.result()`)는 SDK
+    관용구상 완료까지 기다린다 — provider별 비대칭이 의도적이다.
+  - **credential 권한 검사와 목업 데이터 호환**: 실행 전 `credentials.permission_scope
+    .resource_control`이 있으면 확인하되, **빈 딕셔너리(`{}`)면 검사를 건너뛴다** — 실제
+    `verify_credential()`을 거친 credential은 항상 4개 키를 다 채우므로, 빈 값은 "아직
+    한 번도 검증된 적 없는 값"(예: `seed_mock_data.py`처럼 손으로 넣은 데이터)이라는 뜻이다.
+    이렇게 해야 목업 credential(permission_scope 없음)로도 액션 파이프라인을 테스트할 수
+    있다.
+- **리소스 동기화 아키텍처(2026-09-10, `solcho/be-sync-api`)**: 이 서버엔 별도 워커/큐
+  프로세스가 없어 `POST /sync-jobs`는 FastAPI `BackgroundTasks`로 응답을 먼저 돌려주고 같은
+  프로세스 안에서 백그라운드로 실행한다(§9). **단일 프로세스 전제** — `docker-compose.yml`이
+  이미 alembic 마이그레이션을 위해 `api` replica 1개를 전제하고 있어 이 제약과 같은 종류다.
+  replica를 늘리면 별도 워커로 분리해야 한다.
+  - **취소는 best-effort, 비영속**: `POST /sync-jobs/{id}/cancel`은 프로세스 메모리의 집합
+    (`app/routers/sync_jobs.py`의 `_CANCEL_REQUESTED`)에 표시만 하고, 다음 계정 항목으로
+    넘어가기 전에 확인해 멈춘다. 이미 시작된 항목 하나는 끝까지 진행된다. 이 집합은 DB
+    컬럼이 아니라서 프로세스 재시작 시 사라진다 — 영속 취소 플래그는 이번 세션 범위 밖.
+  - **동시 실행 정책**: 같은 사용자에게 `pending|running` job이 이미 있으면 `409
+    JOB_ALREADY_RUNNING`으로 거부한다(§19 "구현 전 확정 필요" 중 기본 안전 동작 그대로 채택).
+  - **동기화는 자동 삭제를 하지 않는다**: 이번 실행에서 안 보인 리소스는 `is_stale=true`로만
+    표시하고 `deleted_at`은 건드리지 않는다(§9.3 "필요 시 deleted_at" 정책은 미확정으로 남겨
+    둠) — 실제 삭제는 여전히 `POST /resources/action`(delete)을 통해서만 일어난다.
+  - **CSP 호출 실패는 대부분 "0건 발견"으로 보인다, 실패가 아니라**: 리전/서비스별 호출은
+    각각 개별 `try/except`로 감싸 하나가 막혀도(예: opt-in 리전 미활성화) 나머지는 계속
+    수집한다. 그 결과 credential 자체가 완전히 잘못된 경우에도 item은 보통 `PROVIDER_API_ERROR`
+    로 실패하지 않고 `resources_discovered=0`인 `success`로 끝난다(직접 확인함 — 목업 계정으로
+    동기화하면 대상 리소스가 전부 `is_stale=true`가 된다). 사용자에게 "왜 0건이지?"를 구분해
+    보여주려면 추후 세션에서 신원 확인(§6.2와 같은 `sts:GetCallerIdentity` 등)을 동기화 시작
+    전 사전 게이트로 추가하는 것을 고려한다.
+  - **탐색 범위는 `resource_actions.py`와 동일**: AWS EC2(리전 `ap-northeast-2`/`us-east-1`만,
+    프로비저닝 폼 허용 리전과 통일)·EBS Volume·RDS 인스턴스·S3 버킷(리전은 조회 비용 때문에
+    `None` 고정), Azure Virtual Machine(`list_all()`의 `provisioning_state`를 상태로 씀 —
+    실제 전원 상태 아님, VM별 instance view 호출은 비용 문제로 생략), GCP Compute Engine
+    인스턴스만 실제로 수집한다. 나머지 서비스는 `discover_resources()`가 빈 목록을 반환한다
+    (에러 아님 — 단순히 아직 미지원).
+  - **audit_events에 동기화를 기록하지 않는다**: §14 기본 기록 대상 표에 `resource.sync`류
+    action이 없어 이번 세션에서 새로 만들지 않았다(표에 없는 action을 임의로 추가하지 않음).
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 

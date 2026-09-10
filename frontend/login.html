@@ -88,6 +88,7 @@
 
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/validate.js"></script>
+  <script src="assets/js/api.js"></script>
   <script>
     (function () {
       var form = document.getElementById("login-form");
@@ -95,6 +96,7 @@
       var pw = document.getElementById("password");
       var btn = document.getElementById("login-btn");
       var err = document.getElementById("login-error");
+      var errText = err.querySelector("span:last-child");
 
       function valid() { return MCVAL.isEmail(email.value) && MCVAL.isNonEmpty(pw.value); }
       function refresh() {
@@ -105,22 +107,36 @@
       pw.addEventListener("input", refresh);
       refresh();
 
+      function showError(message) {
+        errText.textContent = message;
+        err.classList.remove("hidden");
+        err.classList.add("flex");
+      }
+
+      // 회원가입/비밀번호 재설정 등 나머지 인증 기능은 범위 밖 — 로그인 API만 실제로 붙인다.
       form.addEventListener("submit", function (e) {
         e.preventDefault();
-        if (valid()) {
-          // 데모 세션 플래그 저장(실제 토큰 아님 — API 연동 단계에서 실제 인증으로 교체).
-          try {
-            localStorage.setItem("mcp_demo_session", JSON.stringify({
-              email: email.value.trim(),
-              loggedInAt: new Date().toISOString()
-            }));
-          } catch (e) {}
-          // 데모 리다이렉트 (실제 인증 없음 — API 연동 단계에서 붙음)
-          window.location.href = "dashboard.html";
-        } else {
-          err.classList.remove("hidden");
-          err.classList.add("flex");
+        if (!valid()) {
+          showError("이메일 또는 비밀번호가 일치하지 않습니다.");
+          return;
         }
+        MCVAL.setEnabled(btn, false);
+        MCPApi.request("/auth/login", {
+          method: "POST",
+          body: { email: email.value.trim(), password: pw.value },
+        })
+          .then(function (data) {
+            MCPApi.saveLoginResponse(data);
+            window.location.href = "dashboard.html";
+          })
+          .catch(function (e) {
+            MCVAL.setEnabled(btn, true);
+            if (e.code === "INVALID_CREDENTIALS" || e.code === "USER_WITHDRAWN") {
+              showError("이메일 또는 비밀번호가 일치하지 않습니다.");
+            } else {
+              showError("로그인에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+            }
+          });
       });
     })();
   </script>

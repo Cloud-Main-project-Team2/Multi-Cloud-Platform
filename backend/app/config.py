@@ -10,6 +10,9 @@ class Settings(BaseSettings):
     database_url: str = Field(alias="DATABASE_URL")
     credential_encryption_key: str = Field(default="", alias="CREDENTIAL_ENCRYPTION_KEY")
     credential_encryption_key_version: str = Field(default="v1", alias="CREDENTIAL_ENCRYPTION_KEY_VERSION")
+    jwt_secret_key: str = Field(default="", alias="JWT_SECRET_KEY")
+    jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
+    jwt_access_token_expires_seconds: int = Field(default=3600, alias="JWT_ACCESS_TOKEN_EXPIRES_SECONDS")
 
     # 프로비저닝(Terraform 실행) 설정. MVP: 로컬 backend + FastAPI BackgroundTasks.
     # terraform/README.md "알려진 한계" 참고.

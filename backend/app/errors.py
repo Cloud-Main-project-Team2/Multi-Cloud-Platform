@@ -1,21 +1,13 @@
-"""공통 API 오류 표현.
+"""API 명세서 v1.1 §2.8/§17 오류 응답 규약을 코드로 옮긴 예외 타입.
 
-docs/01_API_명세서_v1.1.md 2.8절의 오류 응답 envelope
-(`{"error": {"code", "message", "request_id", "details"}}`)을 모든 라우터가
-동일하게 만들도록 하는 공용 예외와 FastAPI exception handler.
+라우터는 이 예외들을 raise하면 되고, 실제 JSON envelope 조립과 request_id 부착은
+`app.main`의 전역 예외 핸들러가 담당한다.
 """
 
 from __future__ import annotations
 
-import uuid
-
-from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse
-
 
 class ApiError(Exception):
-    """의도적으로 클라이언트에 보여줄 오류. 내부 예외 메시지를 그대로 담지 않는다."""
-
     def __init__(
         self,
         status_code: int,
@@ -27,23 +19,20 @@ class ApiError(Exception):
         self.code = code
         self.message = message
         self.details = details
-        super().__init__(f"{code}: {message}")
+        super().__init__(code)
 
 
-def new_request_id() -> str:
-    return uuid.uuid4().hex
+def auth_required(message: str = "인증이 필요합니다.") -> ApiError:
+    return ApiError(401, "AUTHENTICATION_REQUIRED", message)
 
 
-def register_error_handlers(app: FastAPI) -> None:
-    @app.exception_handler(ApiError)
-    async def _handle_api_error(request: Request, exc: ApiError) -> JSONResponse:
-        body: dict = {
-            "error": {
-                "code": exc.code,
-                "message": exc.message,
-                "request_id": new_request_id(),
-            }
-        }
-        if exc.details:
-            body["error"]["details"] = exc.details
-        return JSONResponse(status_code=exc.status_code, content=body)
+def invalid_token(message: str = "유효하지 않은 토큰입니다.") -> ApiError:
+    return ApiError(401, "INVALID_TOKEN", message)
+
+
+def confirmation_required() -> ApiError:
+    return ApiError(428, "CONFIRMATION_REQUIRED", "이 작업은 확인이 필요합니다.")
+
+
+def validation_error(message: str, details: list[dict] | None = None) -> ApiError:
+    return ApiError(422, "VALIDATION_ERROR", message, details)

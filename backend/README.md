@@ -28,6 +28,27 @@ python3 -c "import base64, os; print(base64.b64encode(os.urandom(32)).decode())"
 
 키가 없거나 base64로 디코딩되지 않거나 32바이트가 아니면 `app/security/credential_crypto.py`는 `CredentialEncryptionError`를 즉시 발생시킨다. 키 값이나 복호화된 평문은 예외 메시지·로그에 포함하지 않는다.
 
+## 인증(JWT) — 최소 구현
+
+`solcho/be-credentials-api` 세션에서 credentials API가 동작하려면 최소한의 로그인이 필요해
+`POST /api/v1/auth/login`만 추가했다(회원가입·비밀번호 재설정·`/me`는 범위 밖 — `CLAUDE.md`
+"핵심 아키텍처 결정" 참고). `JWT_SECRET_KEY`는 HMAC 서명 키로, 운영 환경에서는 반드시 긴
+무작위 문자열로 교체한다.
+
+```bash
+python3 -c "import secrets; print(secrets.token_urlsafe(48))"
+```
+
+목업 데이터의 데모 계정으로 로그인하려면:
+
+```bash
+curl -X POST http://localhost:8000/api/v1/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"demo@multicloud.example","password":"demo-pass-1234"}'
+```
+
+응답의 `data.access_token`을 `Authorization: Bearer <token>` 헤더로 credentials API에 사용한다.
+
 ## Migration 생성 및 적용
 
 모델은 `app/models.py`, 마이그레이션은 `alembic/versions/`에 있다. 스키마 변경은 항상 Alembic으로만 한다 — 애플리케이션은 기동 시 `Base.metadata.create_all()`을 호출하지 않는다.
