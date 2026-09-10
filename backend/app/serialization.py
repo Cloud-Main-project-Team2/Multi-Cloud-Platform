@@ -6,6 +6,7 @@ API 명세서 v1.1 §2.1: ID는 bigint를 문자열로, 시각은 `...Z` 형식�
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 
 
 def iso_z(value: dt.datetime | None) -> str | None:
@@ -17,6 +18,11 @@ def iso_z(value: dt.datetime | None) -> str | None:
 
 
 def str_id(value: int | None) -> str | None:
+    return None if value is None else str(value)
+
+
+def decimal_str(value: Decimal | None) -> str | None:
+    """§2.1: 금액은 정밀도 손실을 막기 위해 JSON 문자열로 반환한다."""
     return None if value is None else str(value)
 
 
