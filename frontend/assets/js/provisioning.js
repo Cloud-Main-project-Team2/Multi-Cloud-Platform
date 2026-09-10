@@ -461,11 +461,57 @@
     }
   }
 
-  // 생성하기 활성/비활성 (단위 3: CDN이면 비활성. 필수필드 전체 검증은 단위 4에서 확장)
+  function isFilled(v) {
+    return typeof v === "string" ? v.trim().length > 0 : v != null;
+  }
+
+  // 선택된 각 플랫폼에 대해 리소스 종류의 공통 필수 + 해당 플랫폼 추가 필수 필드가
+  // 전부 채워졌는지 검사. CDN은 항상 false.
+  function validate() {
+    var kind = state.resourceKind;
+    if (!kind || kind === "cdn") return false;
+    if (!state.platforms.length) return false;
+    var cs = state.commonSpec || {};
+
+    if (kind === "compute") {
+      if (!cs.name || cs.name === "mcp-") return false; // 이름(프리픽스만이면 미입력)
+      if (!cs.inboundRules || !cs.inboundRules.length) return false; // 인바운드 최소 1개
+      return state.platforms.every(function (p) {
+        var ps = state.providerSpec[p] || {};
+        if (!isFilled(ps.region)) return false;
+        if (p === "aws" && !isFilled(ps.keyPairName)) return false;
+        if (p === "azure" && (!isFilled(ps.adminUsername) || !isFilled(ps.adminPassword))) return false;
+        if (p === "gcp" && !isFilled(ps.sshPublicKey)) return false;
+        // ⑤ AWS 이미지가 직접 AMI ID 입력이면 AMI ID 필수
+        if (p === "aws" && ps.image === AMI_CUSTOM && !isFilled(ps.amiId)) return false;
+        return true;
+      });
+    }
+
+    if (kind === "db") {
+      if (!cs.name || cs.name === "mcp-") return false;
+      return state.platforms.every(function (p) {
+        var ps = state.providerSpec[p] || {};
+        if (!isFilled(ps.region) || !isFilled(ps.engine)) return false;
+        if (p === "gcp") return isFilled(ps.masterPassword);
+        return isFilled(ps.masterUsername) && isFilled(ps.masterPassword);
+      });
+    }
+
+    if (kind === "storage_object") {
+      if (!isFilled(cs.name)) return false; // 버킷/계정명(프리픽스 없음)
+      return state.platforms.every(function (p) {
+        return isFilled((state.providerSpec[p] || {}).region);
+      });
+    }
+    return false;
+  }
+
+  // 생성하기 활성/비활성
   function updateSubmitState() {
     var btn = document.getElementById("prov-submit-btn");
     if (!btn) return;
-    var ok = state.resourceKind !== "cdn";
+    var ok = validate();
     btn.disabled = !ok;
     btn.classList.toggle("opacity-50", !ok);
     btn.classList.toggle("cursor-not-allowed", !ok);
@@ -544,7 +590,7 @@
   }
 
   // 후속 단위에서 재사용할 수 있도록 최소 API 노출
-  window.PROV = { state: state, collect: collect, render: renderSteps, SPEC_TIERS: SPEC_TIERS, REGIONS: REGIONS };
+  window.PROV = { state: state, collect: collect, render: renderSteps, validate: validate, SPEC_TIERS: SPEC_TIERS, REGIONS: REGIONS };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
