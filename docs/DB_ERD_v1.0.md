@@ -1,16 +1,22 @@
-# DB ERD — Multi-Cloud Platform
+# DB ERD — Multi-Cloud Platform (v1.0)
 
 현재 구축된 데이터베이스(PostgreSQL)의 ERD 및 스키마 문서.
+**이 버전은 실제 기동한 DB에 접속해 스키마를 introspection으로 대조·검증한 결과다.**
 
-- **출처(소스 오브 트루스)**: `backend/app/models.py` (SQLAlchemy ORM) + Alembic 마이그레이션
-  - `7bf7892874c3_initial_schema.py` (초기 스키마)
-  - `2964dfe0a706_phase_2_db_enhancements.py` (Phase 2 확장)
-- **반영 브랜치**: `solcho/be-db-enhancements`
-- **DBMS**: PostgreSQL (JSONB, GIN 인덱스, `CHAR(3)` 통화코드 등 PG 기능 사용)
-- **작성 기준일**: 2026-09-10
+## 문서 버전 정보
 
-> 이 문서는 스키마를 사람이 읽기 위해 정리한 것으로, 실제 DDL은 위 마이그레이션 파일이 기준이다.
-> 스키마가 바뀌면 마이그레이션과 함께 이 문서도 갱신한다.
+| 항목 | 값 |
+|---|---|
+| 문서 버전 | **v1.0** |
+| 검증 방식 | `docker compose up`으로 실제 Postgres 기동 → `alembic upgrade head` 적용 → `information_schema` / `pg_catalog` introspection |
+| DB 이미지 | `postgres:16` |
+| Alembic head | `2964dfe0a706` (phase 2 db enhancements) ← `7bf7892874c3` (initial schema) |
+| 검증 시점 스키마 규모 | 테이블 15개(+`alembic_version`), FK 23, UNIQUE 14, CHECK 26 |
+| 소스 | `backend/app/models.py` + `backend/alembic/versions/*` (실 DB와 일치 확인됨) |
+| 검증 기준일 | 2026-09-10 |
+
+> 이전 `docs/DB_ERD.md`(모델 정의만 보고 작성한 미검증본)를 이 문서가 대체한다.
+> 스키마 변경 시 마이그레이션과 함께 이 문서의 버전을 올린다(v1.1, v2.0 …).
 
 ---
 
@@ -26,13 +32,24 @@
 | 비용 | `cloud_resource_costs` (+ `resources`의 cost_* 요약 컬럼) |
 | 알림·감사 | `notifications`, `audit_events` |
 
-총 **15개 테이블**.
+도메인 테이블 **15개** (그 외 Alembic 관리용 `alembic_version` 1개).
 
 ### 설계 원칙 (모델 docstring 기준)
-- **비밀/민감정보 저장 금지**: `credentials`의 자격증명 값은 `encrypted_payload`(암호화)로만 저장. `common_spec_json`/`spec_json`/`metadata_json` 등 JSONB에는 access/secret key, SA JSON, 복호화된 payload, 원본 토큰을 넣지 않는다.
+- **비밀/민감정보 저장 금지**: 자격증명 값은 `credentials.encrypted_payload`(암호화)로만 저장. `common_spec_json`/`spec_json`/`metadata_json` 등 JSONB에는 access/secret key, SA JSON, 복호화된 payload, 원본 토큰을 넣지 않는다.
 - **Terraform state 미저장**: state 본문·output은 DB에 두지 않고 외부 백엔드(S3/GCS 등) 참조(`terraform_state_ref`)만 저장.
 - **부모-자식 상태 집계는 앱 계층 책임**: `provisioning_requests.status`는 자식 `provisioning_jobs`를 앱이 트랜잭션 내에서 집계해 갱신(DB 트리거 없음).
 - **감사 로그 불변**: `audit_events`는 수정/삭제 API를 만들지 않는다.
+
+### 검증 시점 실제 데이터(seed)
+`python -m app.seed`로 `service_catalog` 12행이 적재되어 있고, 나머지 업무 테이블은 0행(빈 스키마)이었다.
+
+| provider | 적재된 service_code |
+|---|---|
+| aws | ec2, rds, s3, cloudfront |
+| azure | vm, sql_database, storage_account, cdn |
+| gcp | compute_engine, cloud_sql, cloud_storage, cloud_cdn |
+
+12행 모두 `provisionable = true`. 카테고리: `compute`, `db_rdbms`, `storage_object`, `cdn`.
 
 ---
 
@@ -47,7 +64,7 @@ erDiagram
     users ||--o{ provisioning_jobs : "owns"
     users ||--o{ notifications : "receives"
     users ||--o{ resource_sync_jobs : "triggers"
-    users |o--o{ audit_events : "actor"
+    users |o--o{ audit_events : "actor (SET NULL)"
 
     cloud_accounts ||--o{ credentials : "has"
     cloud_accounts ||--o{ resources : "contains"
@@ -62,7 +79,7 @@ erDiagram
     service_catalog ||--o{ provisioning_jobs : "targets"
 
     resource_types ||--o{ provisioning_requests : "requested type"
-    resource_types |o--o{ resources : "normalized type"
+    resource_types |o--o{ resources : "normalized type (nullable)"
 
     provisioning_requests ||--o{ provisioning_jobs : "spawns"
 
@@ -215,47 +232,55 @@ erDiagram
 
 ---
 
-## 3. 관계(외래키) 요약
+## 3. 관계(외래키) 요약 — 실 DB introspection 결과
 
-| 자식 테이블 | 컬럼 | 부모 테이블 | ON DELETE | 비고 |
-|---|---|---|---|---|
-| social_accounts | user_id | users | CASCADE | |
-| password_reset_tokens | user_id | users | CASCADE | |
-| cloud_accounts | user_id | users | RESTRICT | 연결 계정 있으면 유저 삭제 차단 |
-| credentials | cloud_account_id | cloud_accounts | CASCADE | |
-| resource_types | service_catalog_id | service_catalog | RESTRICT | |
-| provisioning_requests | user_id | users | RESTRICT | |
-| provisioning_requests | resource_type_id | resource_types | RESTRICT | |
-| provisioning_jobs | user_id | users | RESTRICT | |
-| provisioning_jobs | provisioning_request_id | provisioning_requests | CASCADE | |
-| provisioning_jobs | credential_id | credentials | RESTRICT | |
-| provisioning_jobs | service_catalog_id | service_catalog | RESTRICT | |
-| notifications | user_id | users | CASCADE | |
-| resources | cloud_account_id | cloud_accounts | CASCADE | |
-| resources | service_catalog_id | service_catalog | RESTRICT | |
-| resources | resource_type_id | resource_types | RESTRICT | nullable(backfill 중) |
-| resources | first_collected_by_credential_id | credentials | SET NULL | nullable |
-| resources | last_collected_by_credential_id | credentials | SET NULL | nullable |
-| cloud_resource_costs | resource_id | resources | CASCADE | |
-| resource_sync_jobs | user_id | users | RESTRICT | |
-| resource_sync_job_items | sync_job_id | resource_sync_jobs | CASCADE | |
-| resource_sync_job_items | cloud_account_id | cloud_accounts | RESTRICT | |
-| resource_sync_job_items | credential_id | credentials | SET NULL | nullable |
-| audit_events | actor_user_id | users | SET NULL | nullable |
+아래 23개 FK와 `ON DELETE` 규칙은 실제 DB `pg_constraint`에서 그대로 확인한 값이다.
+
+| 자식 테이블 | 컬럼 | 부모 테이블 | ON DELETE |
+|---|---|---|---|
+| social_accounts | user_id | users | CASCADE |
+| password_reset_tokens | user_id | users | CASCADE |
+| cloud_accounts | user_id | users | RESTRICT |
+| credentials | cloud_account_id | cloud_accounts | CASCADE |
+| resource_types | service_catalog_id | service_catalog | RESTRICT |
+| provisioning_requests | user_id | users | RESTRICT |
+| provisioning_requests | resource_type_id | resource_types | RESTRICT |
+| provisioning_jobs | user_id | users | RESTRICT |
+| provisioning_jobs | provisioning_request_id | provisioning_requests | CASCADE |
+| provisioning_jobs | credential_id | credentials | RESTRICT |
+| provisioning_jobs | service_catalog_id | service_catalog | RESTRICT |
+| notifications | user_id | users | CASCADE |
+| resources | cloud_account_id | cloud_accounts | CASCADE |
+| resources | service_catalog_id | service_catalog | RESTRICT |
+| resources | resource_type_id | resource_types | RESTRICT |
+| resources | first_collected_by_credential_id | credentials | SET NULL |
+| resources | last_collected_by_credential_id | credentials | SET NULL |
+| cloud_resource_costs | resource_id | resources | CASCADE |
+| resource_sync_jobs | user_id | users | RESTRICT |
+| resource_sync_job_items | sync_job_id | resource_sync_jobs | CASCADE |
+| resource_sync_job_items | cloud_account_id | cloud_accounts | RESTRICT |
+| resource_sync_job_items | credential_id | credentials | SET NULL |
+| audit_events | actor_user_id | users | SET NULL |
+
+**인덱스 참고**: 모든 FK 컬럼에는 단일 컬럼 B-tree 인덱스가 자동 생성되어 있고(`ix_<table>_<col>`), 아래 복합/특수 인덱스가 추가로 존재한다.
+- `resources`: `(cloud_account_id, service_catalog_id)`, `(cloud_account_id, status)`, `(region)`, `(last_synced_at)`, `(tags)` **GIN**
+- `cloud_resource_costs`: `(resource_id, period_start, period_end)`, `(provider, cost_kind, period_start)`, `(as_of)`
+- `audit_events`: `(actor_user_id, created_at)`, `(target_type, target_id, created_at)`, `(action, created_at)`, `(request_id)`
 
 ---
 
 ## 4. 테이블 상세
 
 모든 테이블은 `created_at timestamptz NOT NULL DEFAULT now()`(`CreatedAtMixin`)를 가진다.
-아래 표에는 각 테이블 고유 컬럼만 정리한다. PK는 전부 `bigint` 자동 증가.
+아래 표에는 각 테이블 고유 컬럼만 정리한다. PK는 전부 `bigint` 자동 증가(`nextval` 시퀀스).
+타입·NULL 여부·기본값·제약은 실 DB `information_schema.columns` / `pg_constraint`와 대조 완료.
 
 ### 4.1 users — 사용자
 | 컬럼 | 타입 | Null | 기본값/제약 |
 |---|---|---|---|
 | id | bigint | N | PK |
 | email | varchar(320) | N | 원본 이메일 |
-| normalized_email | varchar(320) | N | **UNIQUE** (정규화된 로그인 식별자) |
+| normalized_email | varchar(320) | N | **UNIQUE** (`users_normalized_email_key`) |
 | password_hash | varchar | Y | 소셜 전용 계정이면 NULL |
 | name | varchar(100) | N | |
 | affiliation_type | varchar(20) | N | CHECK `IN ('company','individual')` |
@@ -300,7 +325,7 @@ UNIQUE: `(user_id, provider, external_account_id)`.
 | encrypted_payload | bytea | N | 암호화된 자격증명 본문 |
 | encryption_nonce | bytea | N | |
 | encryption_key_version | varchar(50) | N | 키 로테이션 대응 |
-| public_identifier | varchar(255) | Y | 비밀 아닌 식별자(예: access key ID 앞부분) |
+| public_identifier | varchar(255) | Y | 비밀 아닌 식별자 |
 | permission_scope | jsonb | N | default `{}` |
 | verified | bool | N | default false |
 | verified_at | timestamptz | Y | |
@@ -314,13 +339,13 @@ UNIQUE: `(cloud_account_id, name)`.
 | 컬럼 | 타입 | Null | 제약 |
 |---|---|---|---|
 | provider | varchar(20) | N | CHECK `IN ('aws','azure','gcp')` |
-| service_code | varchar(100) | N | 예: EC2 |
+| service_code | varchar(100) | N | 예: ec2 |
 | category | varchar(100) | N | 예: compute |
 | display_name | varchar(200) | N | |
 | provisionable | bool | N | default false |
 | updated_at | timestamptz | N | onupdate now() |
 
-UNIQUE: `(provider, service_code)`.
+UNIQUE: `(provider, service_code)`. (검증 시점 12행 seed됨 — §1 참고)
 
 ### 4.7 resource_types — CSP 원본 리소스 유형
 `service_catalog`(서비스 단위)과 별개로, 서비스가 실제 다루는 리소스 종류를 정규화한 코드.
@@ -352,7 +377,7 @@ UNIQUE: `(service_catalog_id, type_code)`.
 | common_spec_json | jsonb | N | **secret 저장 금지** |
 | status | varchar(30) | N | default `queued`, CHECK `IN ('queued','running','success','partial_success','failed','cancelled')` |
 | started_at | timestamptz | Y | |
-| finished_at | timestamptz | Y | CHECK `finished_at >= started_at` |
+| finished_at | timestamptz | Y | CHECK `finished_at >= started_at`(둘 중 NULL 허용) |
 
 UNIQUE: `(user_id, request_key)`.
 
@@ -420,7 +445,7 @@ UNIQUE: `(user_id, workspace_name)`, `(user_id, idempotency_key)`.
 | updated_at | timestamptz | N | onupdate now() |
 
 UNIQUE: `(cloud_account_id, provider_resource_key)`.
-INDEX: `(cloud_account_id, service_catalog_id)`, `(cloud_account_id, status)`, `region`, `last_synced_at`, `tags` (GIN).
+INDEX: `(cloud_account_id, service_catalog_id)`, `(cloud_account_id, status)`, `region`, `last_synced_at`, `tags` (GIN), + 각 FK 단일 인덱스.
 
 ### 4.12 cloud_resource_costs — 비용 이력
 `resources`의 cost_* 요약 컬럼과 별개인 **기간별 전체 이력**. `cost_kind`가 다른 값은 합산하지 않는다.
@@ -478,11 +503,11 @@ UNIQUE: `(sync_job_id, cloud_account_id)`.
 | provider | varchar(20) | Y | CHECK NULL 또는 `IN ('aws','azure','gcp')` |
 | metadata_json | jsonb | N | default `{}` |
 
-INDEX: `(actor_user_id, created_at)`, `(target_type, target_id, created_at)`, `(action, created_at)`.
+INDEX: `(actor_user_id, created_at)`, `(target_type, target_id, created_at)`, `(action, created_at)`, `(request_id)`.
 
 ---
 
-## 5. Enum(문자열 CHECK) 값 모음
+## 5. Enum(문자열 CHECK) 값 모음 — 실 DB 확인
 
 | 컬럼 | 허용 값 |
 |---|---|
@@ -496,3 +521,22 @@ INDEX: `(actor_user_id, created_at)`, `(target_type, target_id, created_at)`, `(
 | resource_sync_job_items.status | pending, running, success, failed, cancelled |
 | cloud_resource_costs.cost_kind | actual, estimated, list_price_estimate |
 | audit_events.result | requested, success, failure, denied |
+
+---
+
+## 6. 재현 방법 (검증 절차)
+
+```bash
+# 1) DB + API 기동 (api 엔트리포인트가 alembic upgrade head + seed 실행)
+docker compose up -d --build api
+
+# 2) 마이그레이션 head 확인
+docker compose exec db psql -U mcp_user -d mcp_db -c "SELECT version_num FROM alembic_version;"
+#  -> 2964dfe0a706
+
+# 3) 스키마 introspection (테이블/FK/제약/인덱스)
+docker compose exec db psql -U mcp_user -d mcp_db -c "\d+ <table>"
+
+# 4) 정리
+docker compose down -v   # -v 는 db 볼륨까지 삭제
+```
