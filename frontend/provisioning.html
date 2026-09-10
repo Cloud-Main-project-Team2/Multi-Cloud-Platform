@@ -58,57 +58,71 @@
         <h1 class="text-2xl font-bold">프로비저닝</h1>
         <p class="mt-1 text-sm text-muted-foreground">여러 플랫폼에 걸쳐 리소스를 한 번에 생성합니다.</p>
 
-        <div class="mt-6 space-y-4">
+        <!-- 스텝 인디케이터 (①~⑥) -->
+        <ol id="prov-steps-indicator" class="mt-6 flex flex-wrap gap-2 text-xs font-medium">
+          <li data-step-dot="1" class="rounded-full border border-border px-2.5 py-1">① 플랫폼</li>
+          <li data-step-dot="2" class="rounded-full border border-border px-2.5 py-1">② 계정</li>
+          <li data-step-dot="3" class="rounded-full border border-border px-2.5 py-1">③ 종류</li>
+          <li data-step-dot="4" class="rounded-full border border-border px-2.5 py-1">④ 공통</li>
+          <li data-step-dot="5" class="rounded-full border border-border px-2.5 py-1">⑤ 추가</li>
+          <li data-step-dot="6" class="rounded-full border border-border px-2.5 py-1">⑥ 생성</li>
+        </ol>
+
+        <div class="mt-4">
           <!-- ① 플랫폼 선택 -->
-          <section class="rounded-2xl border border-border bg-surface p-5">
+          <section data-step="1" class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">①</span> 플랫폼 선택 <span class="font-normal text-muted-foreground">(중복 선택 가능)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="aws" checked /> AWS</label>
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="azure" checked /> Azure</label>
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="gcp" /> GCP</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="aws" checked /> AWS</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="azure" checked /> Azure</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="gcp" /> GCP</label>
             </div>
           </section>
 
           <!-- ② 계정 선택 -->
-          <section class="rounded-2xl border border-border bg-surface p-5">
+          <section data-step="2" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">②</span> 계정 선택 <span class="font-normal text-muted-foreground">(다중 선택 가능)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" data-prov-account="aws" value="prod-aws-01" checked /> prod-aws-01</label>
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="checkbox" data-prov-account="azure" value="prod-az-01" checked /> prod-az-01</label>
-              <span class="self-center text-sm text-muted-foreground">(2개 선택)</span>
+              <label data-select-chip class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted text-muted-foreground px-3 py-2 text-sm"><input type="checkbox" data-prov-account="aws" value="prod-aws-01" checked /> prod-aws-01</label>
+              <label data-select-chip class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted text-muted-foreground px-3 py-2 text-sm"><input type="checkbox" data-prov-account="azure" value="prod-az-01" checked /> prod-az-01</label>
+              <span id="prov-account-count" class="self-center text-sm text-muted-foreground">(2개 선택)</span>
             </div>
             <p class="mt-2 text-xs text-muted-foreground">같은 설정으로 선택한 계정 수만큼 생성됩니다.</p>
           </section>
 
           <!-- ③ 리소스 종류 -->
-          <section class="rounded-2xl border border-border bg-surface p-5">
+          <section data-step="3" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">③</span> 리소스 종류 <span class="font-normal text-muted-foreground">(단일 선택)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-primary bg-muted px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="compute" checked /> Compute</label>
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="db" /> Database</label>
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="storage_object" /> Storage</label>
-              <label class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="cdn" /> CDN</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="compute" checked /> Compute</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="db" /> Database</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="storage_object" /> Storage</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="cdn" /> CDN</label>
             </div>
-            <p class="mt-2 text-xs text-muted-foreground">CDN은 클라우드별 설정 체계 차이로 상세 입력 폼이 준비 중이며, 선택 시 생성이 비활성화됩니다.</p>
+            <p class="mt-2 text-xs text-muted-foreground">CDN은 플랫폼마다 설정 체계가 크게 달라 공통 설정 없이 플랫폼별 추가 설정만 입력합니다.</p>
           </section>
 
           <!-- ④ 공통 설정 (리소스 종류에 따라 assets/js/provisioning.js가 동적 렌더링) -->
-          <section id="prov-step-common" class="rounded-2xl border border-border bg-surface p-5">
+          <section data-step="4" id="prov-step-common" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">④</span> 공통 설정</p>
             <div id="prov-common-fields" class="mt-3 grid gap-3 sm:grid-cols-2"></div>
           </section>
 
           <!-- ⑤ 플랫폼별 추가 설정 (리소스 종류/플랫폼에 따라 provisioning.js가 동적 렌더링) -->
-          <section id="prov-step-provider" class="rounded-2xl border border-border bg-surface p-5">
+          <section data-step="5" id="prov-step-provider" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">⑤</span> 플랫폼별 추가 설정 <span class="font-normal text-muted-foreground">(선택한 플랫폼만)</span></p>
             <div id="prov-provider-fields" class="mt-3 space-y-3"></div>
           </section>
 
-          <!-- ⑥ 액션 -->
-          <div class="flex items-center justify-end gap-2">
-            <button type="button" data-modal-open="#prov-price-modal" class="rounded-xl border border-border bg-surface px-5 py-3 text-sm font-semibold hover:bg-muted">비교하기</button>
-            <button type="button" id="prov-submit-btn" data-modal-open="#prov-progress-modal" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">생성하기</button>
-          </div>
+          <!-- ⑥ 검토 및 생성 -->
+          <section data-step="6" hidden class="rounded-2xl border border-border bg-surface p-5">
+            <p class="text-sm font-semibold"><span class="mr-1 text-primary">⑥</span> 검토 및 생성</p>
+            <div id="prov-review" class="mt-3 space-y-1 text-sm text-muted-foreground"></div>
+            <div class="mt-4 flex items-center justify-end gap-2">
+              <button type="button" data-modal-open="#prov-price-modal" class="rounded-xl border border-border bg-surface px-5 py-3 text-sm font-semibold hover:bg-muted">비교하기</button>
+              <button type="button" id="prov-submit-btn" data-modal-open="#prov-confirm-modal" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">생성하기</button>
+            </div>
+          </section>
         </div>
         </div>
 
@@ -118,8 +132,22 @@
     </div>
   </div>
 
+  <!-- ===== 생성 확인 모달 (생성하기 → 확인 → 진행률) ===== -->
+  <div id="prov-confirm-modal" data-modal class="hidden fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 py-10 pr-4 pl-[220px]">
+    <div class="w-full max-w-md rounded-2xl border border-border bg-surface shadow-xl">
+      <div class="border-b border-border p-5">
+        <h2 class="text-lg font-bold">실제 리소스를 생성할까요?</h2>
+        <p class="mt-1 text-sm text-muted-foreground">선택한 플랫폼·계정에 실제 클라우드 리소스가 생성되며 과금이 발생할 수 있습니다.</p>
+      </div>
+      <div class="flex justify-end gap-2 p-5">
+        <button type="button" data-modal-close class="rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">취소</button>
+        <button type="button" id="prov-confirm-create" class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">생성 확인</button>
+      </div>
+    </div>
+  </div>
+
   <!-- ===== 가격 비교 모달 (열기/닫기 순수 UI 토글) ===== -->
-  <div id="prov-price-modal" data-modal class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 py-10">
+  <div id="prov-price-modal" data-modal class="hidden fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 py-10 pr-4 pl-[220px]">
     <div class="w-full max-w-lg rounded-2xl border border-border bg-surface shadow-xl">
       <div class="flex items-start justify-between border-b border-border p-5">
         <div>
@@ -144,25 +172,11 @@
   </div>
 
   <!-- 생성 진행률 모달 (기본형) — '생성하기'로 열림 -->
-  <div id="prov-progress-modal" data-modal class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 py-10">
+  <div id="prov-progress-modal" data-modal class="hidden fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 py-10 pr-4 pl-[220px]">
     <div class="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-xl">
       <h3 class="text-lg font-semibold">리소스를 생성하고 있습니다</h3>
       <p class="mt-1 text-sm text-muted-foreground">생성에는 몇 분이 걸릴 수 있습니다. 이 창을 닫아도 작업은 계속됩니다.</p>
-      <div class="mt-5 space-y-4">
-        <div>
-          <div class="flex justify-between text-sm"><span>AWS · mcp-a1b2-vm</span><span class="text-primary">완료 100%</span></div>
-          <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full bg-primary" style="width:100%"></div></div>
-        </div>
-        <div>
-          <div class="flex justify-between text-sm"><span>Azure · mcp-c3d4-vm</span><span class="text-muted-foreground">진행중 72%</span></div>
-          <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full bg-sky" style="width:72%"></div></div>
-        </div>
-        <div>
-          <div class="flex justify-between text-sm"><span>GCP · mcp-g7h8-vm</span><span class="text-white"><span class="rounded px-1.5 py-0.5 text-xs" style="background:#c0392b">실패</span></span></div>
-          <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full" style="width:40%;background:#c0392b"></div></div>
-          <p class="mt-1 text-xs" style="color:#c0392b">할당량 초과 — 해당 리전의 vCPU 한도를 넘었습니다.</p>
-        </div>
-      </div>
+      <div id="prov-progress-list" class="mt-5 space-y-4"></div>
       <div class="mt-6 flex items-center justify-end gap-2">
         <a href="inventory.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">인벤토리로 이동하기</a>
         <button id="prov-to-mini" type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">닫기</button>
@@ -172,12 +186,7 @@
 
   <!-- 생성 진행률 축소형 카드 (우측 하단 고정) — 클릭 시 기본형으로 복귀 -->
   <div id="prov-progress-mini" class="hidden fixed bottom-4 right-4 z-40 w-64 cursor-pointer rounded-xl border border-border bg-surface p-4 shadow-lg" role="button" aria-label="진행률 모달 열기">
-    <div class="flex items-center justify-between"><span class="text-sm font-semibold">생성 중 2/3 ▴</span></div>
-    <div class="mt-2 flex gap-3 text-xs text-muted-foreground">
-      <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-primary"></span>완료 1</span>
-      <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-sky"></span>진행 1</span>
-      <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" style="background:#c0392b"></span>실패 1</span>
-    </div>
+    <div id="prov-mini-body"><div class="text-sm font-semibold">생성 중 ▴</div></div>
   </div>
 
   <script src="assets/js/ui.js"></script>

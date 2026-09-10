@@ -633,6 +633,35 @@
     btn.classList.toggle("cursor-not-allowed", !ok);
   }
 
+  // ── 선택 상태 → 시각 피드백 (①플랫폼/③종류=카드, ②계정=chip) ──────────────
+  // 마크업의 고정색을 없애고, 실제 체크/선택 상태에서 강조 클래스를 계산해 반영한다.
+  var SELECT_STYLE = {
+    card: { on: ["border-primary", "bg-muted"], off: ["border-border"] },
+    chip: { on: ["bg-sky", "text-white", "border-primary"], off: ["bg-muted", "text-muted-foreground", "border-border"] },
+  };
+  function applySelectState(labelEl, on, style) {
+    style.on.forEach(function (c) { labelEl.classList.toggle(c, on); });
+    style.off.forEach(function (c) { labelEl.classList.toggle(c, !on); });
+  }
+  function syncSelectionUI() {
+    document.querySelectorAll("[data-prov-platform]").forEach(function (cb) {
+      var label = cb.closest("[data-select-card]");
+      if (label) applySelectState(label, cb.checked, SELECT_STYLE.card);
+    });
+    document.querySelectorAll("[data-prov-kind]").forEach(function (rb) {
+      var label = rb.closest("[data-select-card]");
+      if (label) applySelectState(label, rb.checked, SELECT_STYLE.card);
+    });
+    var count = 0;
+    document.querySelectorAll("[data-prov-account]").forEach(function (cb) {
+      var label = cb.closest("[data-select-chip]");
+      if (label) applySelectState(label, cb.checked, SELECT_STYLE.chip);
+      if (cb.checked) count++;
+    });
+    var countEl = document.getElementById("prov-account-count");
+    if (countEl) countEl.textContent = "(" + count + "개 선택)";
+  }
+
   // ── 스텝 렌더 진입점 (④ 공통 + ⑤ 추가) ──────────────────────────────────
   function renderSteps() {
     var commonSection = document.getElementById("prov-step-common");
@@ -643,19 +672,15 @@
     state.platforms = readPlatforms();
     var kind = state.resourceKind;
 
-    // ④ 공통 설정 (CDN은 공통 필드가 없어 스텝 자체를 건너뛰어 숨긴다)
+    // ④ 공통 설정 필드 렌더(섹션 표시/숨김은 위저드가 제어. CDN은 공통 필드 없음).
     if (kind === "compute") {
-      if (commonSection) commonSection.hidden = false;
       renderComputeCommon(commonC, state.platforms);
     } else if (kind === "db") {
-      if (commonSection) commonSection.hidden = false;
       renderDbCommon(commonC, state.platforms);
     } else if (kind === "storage_object") {
-      if (commonSection) commonSection.hidden = false;
       renderStorageCommon(commonC, state.platforms);
     } else {
-      if (commonSection) commonSection.hidden = true; // CDN: ④ 건너뛰기
-      commonC.innerHTML = "";
+      commonC.innerHTML = ""; // CDN: ④ 공통 없음(위저드 네비가 스텝 4를 건너뜀)
     }
 
     // ⑤ 플랫폼별 추가 설정
@@ -665,14 +690,168 @@
     updateSubmitState();
   }
 
+  // ── 스텝(점진적 노출) 흐름 ────────────────────────────────────────────────
+  var KIND_LABEL = { compute: "Compute", db: "Database", storage_object: "Storage", cdn: "CDN" };
+
+  // 현재 리소스 종류에서 실제로 노출되는 스텝 순서(CDN은 ④ 공통을 건너뜀).
+  function visibleSteps() {
+    var order = [1, 2, 3, 4, 5, 6];
+    if (state.resourceKind === "cdn") order = order.filter(function (s) { return s !== 4; });
+    return order;
+  }
+
+  // 스텝별 '다음' 진행 가능 여부(필수값 검증).
+  function stepValid(n) {
+    if (n === 1) return state.platforms.length > 0;
+    if (n === 2) return Object.keys(state.selectedAccounts).length > 0;
+    if (n === 3) return !!state.resourceKind;
+    if (n === 4) {
+      var cs = state.commonSpec || {};
+      if (state.resourceKind === "storage_object") return isFilled(cs.name);
+      return !!cs.name && cs.name !== "mcp-";
+    }
+    if (n === 5) return validate(); // 공통+추가 전체 필수 충족
+    return validate();
+  }
+
+  function renderReview() {
+    var box = document.getElementById("prov-review");
+    if (!box) return;
+    var accounts = Object.keys(state.selectedAccounts)
+      .map(function (k) { return state.selectedAccounts[k]; }).join(", ") || "-";
+    var cs = state.commonSpec || {};
+    box.innerHTML =
+      "<div>플랫폼: <b>" + (state.platforms.join(", ") || "-") + "</b></div>" +
+      "<div>계정: <b>" + accounts + "</b></div>" +
+      "<div>종류: <b>" + (KIND_LABEL[state.resourceKind] || "-") + "</b></div>" +
+      (cs.country ? "<div>리전(국가): <b>" + cs.country + "</b></div>" : "");
+  }
+
+  // 점진적 노출: 한 단계를 만족하면 바로 아래에 다음 단계가 자동으로 나타난다.
+  // 완료된 단계는 위에 그대로 쌓여 보이고, 별도의 다음/이전 버튼은 없다.
+  var DOT_BASE = "rounded-full border px-2.5 py-1";
+  function revealSteps() {
+    var order = visibleSteps();
+
+    // 노출 목록에 없는 스텝(CDN의 ④)은 숨기고 인디케이터도 흐리게
+    document.querySelectorAll("[data-step]").forEach(function (sec) {
+      if (order.indexOf(Number(sec.getAttribute("data-step"))) < 0) sec.hidden = true;
+    });
+    document.querySelectorAll("[data-step-dot]").forEach(function (dot) {
+      if (order.indexOf(Number(dot.getAttribute("data-step-dot"))) < 0) {
+        dot.className = DOT_BASE + " border-border opacity-40";
+      }
+    });
+
+    var reveal = true;      // 첫 스텝은 항상 노출
+    var currentMarked = false;
+    order.forEach(function (s) {
+      var sec = document.querySelector('[data-step="' + s + '"]');
+      if (sec) sec.hidden = !reveal;
+
+      var valid = stepValid(s);
+      var dot = document.querySelector('[data-step-dot="' + s + '"]');
+      if (dot) {
+        if (reveal && valid) dot.className = DOT_BASE + " border-sky bg-sky text-white";       // 완료
+        else if (reveal && !currentMarked) { dot.className = DOT_BASE + " border-primary text-primary"; currentMarked = true; } // 현재
+        else dot.className = DOT_BASE + " border-border text-muted-foreground";                 // 대기
+      }
+      if (s === 6 && reveal) renderReview();
+
+      reveal = reveal && valid; // 이 스텝을 만족해야 다음 스텝이 노출된다
+    });
+  }
+
+  // ── 진행률 시뮬레이션 (실제 API 없이 진행바를 애니메이션) ──────────────────
+  var KIND_SUFFIX = { compute: "vm", db: "db", storage_object: "obj", cdn: "cdn" };
+  var simTimer = null;
+
+  function updateMini(targets) {
+    var mini = document.getElementById("prov-mini-body");
+    if (!mini) return;
+    var done = 0, failed = 0;
+    targets.forEach(function (t) { if (t.status === "done") done++; else if (t.status === "failed") failed++; });
+    var running = targets.length - done - failed;
+    mini.innerHTML =
+      '<div class="text-sm font-semibold">생성 ' + (done + failed) + "/" + targets.length + " ▴</div>" +
+      '<div class="mt-2 flex gap-3 text-xs text-muted-foreground">' +
+      '<span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-primary"></span>완료 ' + done + "</span>" +
+      '<span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-sky"></span>진행 ' + running + "</span>" +
+      '<span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" style="background:#c0392b"></span>실패 ' + failed + "</span></div>";
+  }
+
+  function startProvisioningSim() {
+    var list = document.getElementById("prov-progress-list");
+    if (!list) return;
+
+    // 선택한 대상(플랫폼×계정)별 타겟 생성. 실패 시점(failAt)은 랜덤(매 실행 다름).
+    var suffix = KIND_SUFFIX[state.resourceKind] || "res";
+    var targets = state.platforms.map(function (p) {
+      var account = state.selectedAccounts[p] || (PLATFORM_LABEL[p] + " 계정");
+      var name = "mcp-" + Math.random().toString(36).slice(2, 6) + "-" + suffix;
+      var willFail = Math.random() < 0.25;
+      return {
+        platform: p, account: account, name: name, progress: 0, status: "pending",
+        failAt: willFail ? 35 + Math.floor(Math.random() * 45) : null,
+      };
+    });
+
+    list.innerHTML = targets.map(function (t, i) {
+      return '<div data-sim-row="' + i + '">' +
+        '<div class="flex justify-between text-sm"><span>' + PLATFORM_LABEL[t.platform] + " · " + t.account + " · " + t.name +
+        '</span><span data-sim-status class="text-muted-foreground">대기</span></div>' +
+        '<div class="mt-1 h-2 rounded-full bg-muted"><div data-sim-bar class="h-2 rounded-full bg-sky" style="width:0%"></div></div>' +
+        '<p data-sim-msg class="mt-1 text-xs" hidden></p></div>';
+    }).join("");
+
+    if (simTimer) clearInterval(simTimer);
+    updateMini(targets);
+    simTimer = setInterval(function () {
+      var allDone = true;
+      targets.forEach(function (t, i) {
+        if (t.status === "done" || t.status === "failed") return;
+        allDone = false;
+        t.status = "running";
+        t.progress += 4 + Math.floor(Math.random() * 9);
+        if (t.failAt != null && t.progress >= t.failAt) { t.progress = t.failAt; t.status = "failed"; }
+        else if (t.progress >= 100) { t.progress = 100; t.status = "done"; }
+
+        var row = list.querySelector('[data-sim-row="' + i + '"]');
+        if (!row) return;
+        var bar = row.querySelector("[data-sim-bar]");
+        var st = row.querySelector("[data-sim-status]");
+        var msg = row.querySelector("[data-sim-msg]");
+        bar.style.width = t.progress + "%";
+        if (t.status === "failed") {
+          bar.className = "h-2 rounded-full";
+          bar.style.background = "#c0392b";
+          st.textContent = "실패";
+          st.className = "rounded px-1.5 py-0.5 text-xs text-white";
+          st.style.background = "#c0392b";
+          msg.hidden = false;
+          msg.style.color = "#c0392b";
+          msg.textContent = "할당량 초과 — 해당 리전의 한도를 넘었습니다.";
+        } else if (t.status === "done") {
+          bar.className = "h-2 rounded-full bg-primary";
+          st.textContent = "완료 100%";
+          st.className = "text-sm text-primary";
+        } else {
+          st.textContent = "진행중 " + t.progress + "%";
+        }
+      });
+      updateMini(targets);
+      if (allDone) { clearInterval(simTimer); simTimer = null; }
+    }, 450);
+  }
+
   // ── 이벤트 배선 ──────────────────────────────────────────────────────────
   function init() {
     var container = document.getElementById("prov-common-fields");
     if (!container) return; // provisioning 화면이 아니면 무시
     var providerC = document.getElementById("prov-provider-fields");
 
-    // ④ 공통 필드: 입력 변화 → 상태 수집 + 제출 상태 갱신
-    function onFieldChange() { collect(); updateSubmitState(); }
+    // ④ 공통 필드: 입력 변화 → 상태 수집 + 제출 상태 + 다음 단계 노출 갱신
+    function onFieldChange() { collect(); updateSubmitState(); revealSteps(); }
     container.addEventListener("input", onFieldChange);
     container.addEventListener("change", onFieldChange);
     // 동적 행 삭제(위임) — 컨테이너에 1회만 배선(재렌더 시 누적 방지)
@@ -697,18 +876,32 @@
       });
     }
 
-    // 플랫폼/리소스 종류 변경 → 재렌더(관련 필드가 바뀌므로)
+    // 플랫폼/리소스 종류 변경 → 재렌더 + 선택 시각 피드백 + 다음 단계 노출
     document.querySelectorAll("[data-prov-platform]").forEach(function (cb) {
-      cb.addEventListener("change", renderSteps);
+      cb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); revealSteps(); });
     });
     document.querySelectorAll("[data-prov-kind]").forEach(function (rb) {
-      rb.addEventListener("change", renderSteps);
+      rb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); revealSteps(); });
     });
     document.querySelectorAll("[data-prov-account]").forEach(function (cb) {
-      cb.addEventListener("change", onFieldChange);
+      cb.addEventListener("change", function () { onFieldChange(); syncSelectionUI(); });
     });
 
+    // 생성 확인 모달의 "생성 확인" → 확인 모달 닫고 진행률 모달 열기(+시뮬레이션은 단위 6)
+    var confirmBtn = document.getElementById("prov-confirm-create");
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", function () {
+        if (window.MCPModal) {
+          MCPModal.close("#prov-confirm-modal");
+          MCPModal.open("#prov-progress-modal");
+        }
+        if (typeof startProvisioningSim === "function") startProvisioningSim();
+      });
+    }
+
     renderSteps();
+    syncSelectionUI();
+    revealSteps();
   }
 
   // 후속 단위에서 재사용할 수 있도록 최소 API 노출
