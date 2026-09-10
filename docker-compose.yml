@@ -24,6 +24,9 @@ services:
       DATABASE_URL: ${DATABASE_URL:-postgresql+psycopg2://mcp_user:change_me@db:5432/mcp_db}
       CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-ItGuIvwBa1vpQkpSuONI0GHpbxwtSxL8UPh4dp340ak=}
       CREDENTIAL_ENCRYPTION_KEY_VERSION: ${CREDENTIAL_ENCRYPTION_KEY_VERSION:-v1}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-jwt-secret-change-me}
+      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
+      JWT_ACCESS_TOKEN_EXPIRES_SECONDS: ${JWT_ACCESS_TOKEN_EXPIRES_SECONDS:-3600}
     depends_on:
       db:
         condition: service_healthy
