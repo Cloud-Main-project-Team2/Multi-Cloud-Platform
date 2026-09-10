@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class CloudAccountBrief(BaseModel):
@@ -76,3 +76,30 @@ class ResourceSummaryData(BaseModel):
 
 class ResourceSummaryResponse(BaseModel):
     data: ResourceSummaryData
+
+
+class ResourceActionRequest(BaseModel):
+    action: Literal["start", "stop", "delete"]
+    resource_ids: list[str] = Field(min_length=1)
+    # S3/GCS 버킷이 비어 있지 않아 삭제가 거부됐을 때(BucketNotEmpty) 클라이언트가 재요청하는
+    # 흐름을 지원하기 위한 확장 필드 — §8.5 canonical 예시엔 없지만 이번 세션에서 추가(§1 결정).
+    force_empty: bool = False
+
+
+class ActionResultError(BaseModel):
+    code: str
+
+
+class ActionResultItem(BaseModel):
+    resource_id: str
+    status: Literal["success", "rejected", "failed"]
+    error: ActionResultError | None = None
+
+
+class ResourceActionData(BaseModel):
+    action: str
+    results: list[ActionResultItem]
+
+
+class ResourceActionResponse(BaseModel):
+    data: ResourceActionData

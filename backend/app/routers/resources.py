@@ -6,18 +6,27 @@ DB에 저장된 최신 snapshot을 그대로 반환한다(요청마다 CSP API�
 
 from __future__ import annotations
 
+import datetime as dt
+
 import sqlalchemy as sa
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
+from app.audit import record_audit_event
 from app.db import get_db
-from app.deps import get_current_user
+from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError, validation_error
-from app.models import CloudAccount, Resource, ServiceCatalog, User
+from app.models import CloudAccount, Credential, Resource, ServiceCatalog, User
+from app.resource_actions import ResourceActionError, perform_action, supported_actions
 from app.schemas.resources import (
+    ActionResultError,
+    ActionResultItem,
     CloudAccountBrief,
     CostSummary,
     ProviderCount,
+    ResourceActionData,
+    ResourceActionRequest,
+    ResourceActionResponse,
     ResourceListData,
     ResourceListResponse,
     ResourceOut,
@@ -26,11 +35,16 @@ from app.schemas.resources import (
     ResourceSummaryResponse,
     ServiceBrief,
 )
+from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json
 from app.serialization import decimal_str, iso_z, str_id
 
 router = APIRouter(prefix="/api/v1", tags=["resources"])
 
 _SEARCH_FIELDS = {"resource", "service", "region", "account"}
+
+
+def _request_id(request: Request) -> str | None:
+    return getattr(request.state, "request_id", None)
 
 
 def _parse_id(raw: str) -> int:
@@ -247,3 +261,147 @@ def get_resource(
         raise ApiError(404, "RESOURCE_NOT_FOUND", "리소스를 찾을 수 없습니다.")
     resource, account, service = row
     return ResourceResponse(data=_serialize_resource(resource, account, service))
+
+
+# --- POST /resources/action -------------------------------------------------------------
+
+
+def _rejected(resource_id: str, code: str) -> ActionResultItem:
+    return ActionResultItem(resource_id=resource_id, status="rejected", error=ActionResultError(code=code))
+
+
+def _failed(resource_id: str, code: str) -> ActionResultItem:
+    return ActionResultItem(resource_id=resource_id, status="failed", error=ActionResultError(code=code))
+
+
+def _process_action_item(
+    db: Session, current_user: User, raw_id: str, action: str, force_empty: bool, request: Request
+) -> ActionResultItem:
+    try:
+        resource_id = int(raw_id)
+    except ValueError:
+        return _rejected(raw_id, "RESOURCE_NOT_FOUND")
+
+    row = (
+        db.query(Resource, CloudAccount, ServiceCatalog)
+        .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
+        .join(ServiceCatalog, Resource.service_catalog_id == ServiceCatalog.id)
+        .filter(Resource.id == resource_id, CloudAccount.user_id == current_user.id)
+        .one_or_none()
+    )
+    if row is None:
+        return _rejected(raw_id, "RESOURCE_NOT_FOUND")
+    resource, account, service = row
+    resource_id_str = str_id(resource.id)
+
+    def _deny(code: str) -> ActionResultItem:
+        record_audit_event(
+            db,
+            actor_user_id=current_user.id,
+            action=f"resource.{action}",
+            target_type="resource",
+            target_id=resource_id_str,
+            result="denied",
+            provider=account.provider,
+            metadata={"error_code": code},
+            request_id=_request_id(request),
+        )
+        return _rejected(resource_id_str, code)
+
+    # 1) 서비스가 이 동작을 지원하는가
+    if action not in supported_actions(account.provider, service.service_code, resource.original_resource_type):
+        return _deny("UNSUPPORTED_OPERATION")
+
+    # 2) 사용 가능한 검증 credential과 provider 권한
+    credential = (
+        db.query(Credential)
+        .filter(Credential.cloud_account_id == account.id, Credential.verified.is_(True))
+        .order_by(Credential.display_order, Credential.id)
+        .first()
+    )
+    if credential is None:
+        return _deny("CLOUD_PERMISSION_DENIED")
+    # permission_scope가 비어 있으면(예: 목업 데이터처럼 실제 검증을 거치지 않은 credential)
+    # 아직 프로빙된 적이 없다는 뜻이라 이 검사를 건너뛴다 — 실제로 검증돼 채워진 경우에만
+    # resource_control이 명시적으로 false면 거부한다.
+    if credential.permission_scope and not credential.permission_scope.get("resource_control", False):
+        return _deny("CLOUD_PERMISSION_DENIED")
+
+    # 3) stale/deleted 상태가 동작을 허용하는가
+    if resource.deleted_at is not None:
+        return _deny("RESOURCE_ALREADY_DELETED")
+    if resource.is_stale:
+        return _deny("RESOURCE_STALE")
+
+    try:
+        secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+    except CredentialEncryptionError:
+        return _deny("PROVIDER_API_ERROR")
+
+    try:
+        perform_action(
+            provider=account.provider,
+            service_code=service.service_code,
+            original_resource_type=resource.original_resource_type,
+            action=action,
+            secret_payload=secret_payload,
+            external_account_id=account.external_account_id,
+            region=resource.region,
+            external_resource_id=resource.external_resource_id,
+            force_empty=force_empty,
+        )
+    except ResourceActionError as exc:
+        record_audit_event(
+            db,
+            actor_user_id=current_user.id,
+            action=f"resource.{action}",
+            target_type="resource",
+            target_id=resource_id_str,
+            result="failure",
+            provider=account.provider,
+            metadata={"error_code": exc.code},
+            request_id=_request_id(request),
+        )
+        return _failed(resource_id_str, exc.code)
+    finally:
+        del secret_payload
+
+    if action == "start":
+        resource.status = "RUNNING"
+    elif action == "stop":
+        resource.status = "STOPPED"
+    else:
+        resource.status = "DELETED"
+        resource.deleted_at = dt.datetime.now(dt.timezone.utc)
+
+    record_audit_event(
+        db,
+        actor_user_id=current_user.id,
+        action=f"resource.{action}",
+        target_type="resource",
+        target_id=resource_id_str,
+        result="success",
+        provider=account.provider,
+        request_id=_request_id(request),
+    )
+    return ActionResultItem(resource_id=resource_id_str, status="success", error=None)
+
+
+@router.post("/resources/action", response_model=ResourceActionResponse)
+def resource_action(
+    payload: ResourceActionRequest,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _confirmed: None = Depends(require_confirmation),
+) -> ResourceActionResponse:
+    if len(set(payload.resource_ids)) != len(payload.resource_ids):
+        raise validation_error("resource_ids에 중복된 값이 있습니다.")
+
+    # 일괄 요청은 항목별 부분 성공으로 처리한다(§19 미확정 항목 결정 — CLAUDE.md 기록).
+    results = [
+        _process_action_item(db, current_user, raw_id, payload.action, payload.force_empty, request)
+        for raw_id in payload.resource_ids
+    ]
+    db.commit()
+    return ResourceActionResponse(data=ResourceActionData(action=payload.action, results=results))
