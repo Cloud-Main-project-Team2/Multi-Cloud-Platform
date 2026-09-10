@@ -120,7 +120,7 @@
             <div id="prov-review" class="mt-3 space-y-1 text-sm text-muted-foreground"></div>
             <div class="mt-4 flex items-center justify-end gap-2">
               <button type="button" data-modal-open="#prov-price-modal" class="rounded-xl border border-border bg-surface px-5 py-3 text-sm font-semibold hover:bg-muted">비교하기</button>
-              <button type="button" id="prov-submit-btn" data-modal-open="#prov-progress-modal" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">생성하기</button>
+              <button type="button" id="prov-submit-btn" data-modal-open="#prov-confirm-modal" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">생성하기</button>
             </div>
           </section>
         </div>
@@ -135,6 +135,20 @@
 
         <!-- PROV-02 진행률: 실제 오버레이 모달(#prov-progress-modal) + 우측 하단 축소형 카드(#prov-progress-mini)로 아래에 구현. 생성하기로 열림. -->
 
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== 생성 확인 모달 (생성하기 → 확인 → 진행률) ===== -->
+  <div id="prov-confirm-modal" data-modal class="hidden fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 py-10">
+    <div class="w-full max-w-md rounded-2xl border border-border bg-surface shadow-xl">
+      <div class="border-b border-border p-5">
+        <h2 class="text-lg font-bold">실제 리소스를 생성할까요?</h2>
+        <p class="mt-1 text-sm text-muted-foreground">선택한 플랫폼·계정에 실제 클라우드 리소스가 생성되며 과금이 발생할 수 있습니다.</p>
+      </div>
+      <div class="flex justify-end gap-2 p-5">
+        <button type="button" data-modal-close class="rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">취소</button>
+        <button type="button" id="prov-confirm-create" class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">생성 확인</button>
       </div>
     </div>
   </div>

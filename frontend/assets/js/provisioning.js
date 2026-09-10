@@ -834,6 +834,18 @@
     if (nextBtn) nextBtn.addEventListener("click", nextStep);
     if (prevBtn) prevBtn.addEventListener("click", prevStep);
 
+    // 생성 확인 모달의 "생성 확인" → 확인 모달 닫고 진행률 모달 열기(+시뮬레이션은 단위 6)
+    var confirmBtn = document.getElementById("prov-confirm-create");
+    if (confirmBtn) {
+      confirmBtn.addEventListener("click", function () {
+        if (window.MCPModal) {
+          MCPModal.close("#prov-confirm-modal");
+          MCPModal.open("#prov-progress-modal");
+        }
+        if (typeof startProvisioningSim === "function") startProvisioningSim();
+      });
+    }
+
     renderSteps();
     syncSelectionUI();
     showStep(1);
