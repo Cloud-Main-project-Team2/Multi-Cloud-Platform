@@ -21,6 +21,7 @@ from app.db import Base, get_db
 from app.main import app
 from app.models import CloudAccount, Credential, ProvisioningJob, ServiceCatalog, User
 from app.security import credential_crypto as cc
+from app.security.jwt_tokens import create_access_token
 from app.services.provisioning import azure_vm
 
 VALID_KEY = base64.b64encode(os.urandom(32)).decode()
@@ -36,6 +37,7 @@ VALID_PROVIDER_SPEC = {
 @pytest.fixture(autouse=True)
 def _encryption_key(monkeypatch):
     monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", VALID_KEY)
+    monkeypatch.setenv("JWT_SECRET_KEY", "test-jwt-secret-key-not-for-production")
     cc.get_settings.cache_clear()
     yield
     cc.get_settings.cache_clear()
@@ -138,7 +140,8 @@ def azure_fixture(session_factory):
 
 
 def _auth(user_id) -> dict:
-    return {"Authorization": f"Bearer {user_id}"}
+    token, _ = create_access_token(user_id)
+    return {"Authorization": f"Bearer {token}"}
 
 
 def _headers(idempotency_key="key-1") -> dict:

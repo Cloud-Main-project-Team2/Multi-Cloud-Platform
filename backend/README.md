@@ -141,9 +141,9 @@ docker compose run --rm api python -m app.seed
   Terraform에 전달한다(`app/services/provisioning/azure_vm.py`
   `SENSITIVE_PROVIDER_SPEC_FIELDS`). 자세한 배경은 CLAUDE.md "Key architectural decisions"
   참고.
-- **인증은 자리표시자**다 — `app/security/auth.py`의 `get_current_user_id`는 실제 JWT 검증이
-  아니라 `Authorization: Bearer <user_id>`를 그대로 파싱한다. 회원가입/로그인이 구현되면 그
-  파일 하나만 실제 검증 로직으로 바꾸면 되고, 라우터는 그대로 둔다.
+- **인증은 `app/deps.py::get_current_user`(진짜 JWT 검증)를 그대로 쓴다.** 이 브랜치에서
+  만들었던 임시 `app/security/auth.py`(`Authorization: Bearer <user_id>`만 파싱)는
+  `solcho/be-credentials-api`가 main에 merge된 뒤 삭제하고 실제 인증으로 교체했다.
 - **`202` 이후 실행은 FastAPI `BackgroundTasks`**로 처리한다(worker 프로세스 없음). API 프로세스가
   죽으면 `running`에서 멈춘 job이 남을 수 있다 — Celery/RQ 같은 워커 도입 전까지의 임시 구현.
 - **Terraform state는 로컬 backend**다. `provisioning_jobs.terraform_state_ref`에는 로컬 경로
@@ -153,9 +153,8 @@ docker compose run --rm api python -m app.seed
 - Docker 이미지에 `terraform` CLI를 설치한다(`Dockerfile`, HashiCorp 릴리스 zip). provider
   plugin(azurerm)은 `TF_PLUGIN_CACHE_DIR`로 job 간에 재사용해 매 요청마다 재다운로드하지 않는다.
 
-> `POST /credentials/{provider}`는 이 브랜치에서 구현하지 않는다 — `solcho/be-credentials-api`
-> 브랜치에 실제 JWT 인증·CSP 실검증까지 포함된 버전이 이미 있다. 그 브랜치가 merge되면
-> `app/security/auth.py`의 임시 인증을 `app/deps.py::get_current_user`로 교체할 예정.
+> `POST /credentials/{provider}`는 `solcho/be-credentials-api`(main에 merge됨)에 실제
+> JWT 인증·CSP 실검증까지 포함된 버전이 이미 있다 — 이 브랜치에서는 그걸 그대로 쓴다.
 
 ## 이번 단계에서 구현하지 않은 것
 

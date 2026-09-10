@@ -17,10 +17,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError
-from app.models import AuditEvent, CloudAccount, Credential, ProvisioningJob, ServiceCatalog
+from app.models import AuditEvent, CloudAccount, Credential, ProvisioningJob, ServiceCatalog, User
 from app.schemas.provisioning import ProvisioningCreateRequest
-from app.security.auth import get_current_user_id
 from app.services.provisioning.registry import EXECUTORS
 from app.services.provisioning.validation import find_secret_field
 
@@ -51,14 +51,13 @@ def create_provisioning_job(
     body: ProvisioningCreateRequest,
     background_tasks: BackgroundTasks,
     idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
-    action_confirmed: str | None = Header(default=None, alias="X-Action-Confirmed"),
-    user_id: int = Depends(get_current_user_id),
+    current_user: User = Depends(get_current_user),
+    _confirmed: None = Depends(require_confirmation),
     db: Session = Depends(get_db),
 ) -> dict:
+    user_id = current_user.id
     if not idempotency_key:
         raise ApiError(400, "IDEMPOTENCY_KEY_REQUIRED", "Idempotency-Key 헤더가 필요합니다.")
-    if action_confirmed != "true":
-        raise ApiError(428, "CONFIRMATION_REQUIRED", "X-Action-Confirmed: true 헤더가 필요합니다.")
 
     catalog_row = db.execute(
         select(ServiceCatalog).where(ServiceCatalog.provider == provider, ServiceCatalog.service_code == service)
@@ -185,11 +184,11 @@ def create_provisioning_job(
 @router.get("/provisioning/jobs/{job_id}")
 def get_provisioning_job(
     job_id: int,
-    user_id: int = Depends(get_current_user_id),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> dict:
     job = db.get(ProvisioningJob, job_id)
-    if job is None or job.user_id != user_id:
+    if job is None or job.user_id != current_user.id:
         raise ApiError(404, "PROVISIONING_JOB_NOT_FOUND", "프로비저닝 job을 찾을 수 없습니다.")
 
     error = {"code": job.error_code, "message": job.error_message} if job.error_code else None

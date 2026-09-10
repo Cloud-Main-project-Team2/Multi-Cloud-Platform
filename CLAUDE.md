@@ -57,7 +57,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 |---|---|---|---|
 | 페이지 UI 구현 — 확정 화면 12개 정적 UI | `solcho/fe-pages` | 조은솔 | in progress |
 | 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
-| 프로비저닝 — Azure VM 생성 (`POST /provisioning/azure/vm`) | `seunghyun/be-azure-vm-provisioning` | 이승현 | in progress (PR 대기) |
+| 프로비저닝 — Azure VM 생성 (`POST /provisioning/azure/vm`) | `seunghyunlee/azure` | 이승현 | in progress (PR 대기) |
 | 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | in progress |
 | 키 관리(마이페이지) API — cloud-accounts/credentials 10개 엔드포인트 + 최소 로그인(JWT)·회원가입 | `solcho/be-credentials-api` 외 | 조은솔 | merged |
 | 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | merged |
