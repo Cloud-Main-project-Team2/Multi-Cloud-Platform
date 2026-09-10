@@ -33,7 +33,10 @@ _DEFAULT_SCOPE = {
 REQUIRED_SECRET_FIELDS: dict[str, set[str]] = {
     "aws": {"access_key_id", "secret_access_key"},
     "azure": {"client_id", "client_secret", "tenant_id"},
-    "gcp": {"type", "client_email", "private_key_id", "private_key"},
+    # GCP는 서비스 계정 키 JSON을 통째로 저장한다. `token_uri`는 google-auth의
+    # `from_service_account_info()`가 필수로 요구하는 필드라서 반드시 함께 받아야 한다 —
+    # 빠지면 키가 유효해도 `MalformedError`로 검증이 실패한다(2026-09-11 실제로 겪은 버그).
+    "gcp": {"type", "client_email", "private_key_id", "private_key", "token_uri"},
 }
 
 

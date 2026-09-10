@@ -121,6 +121,29 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
   근거: 안전한 읽기 전용 프로빙 API가 provider/권한마다 표준화돼 있지 않고, GCP 비용 수집
   방식·권한은 이미 §19에 미확정 항목으로 남아 있어 이 세션에서 새로 정하지 않았다. 화면의
   자기신고 체크박스(정적 UI, 이번 세션에서 변경 없음)로 나머지를 보완하는 것을 전제로 한다.
+- **GCP secret_payload는 서비스 계정 키 JSON을 통째로 저장한다(2026-09-11,
+  `solcho/fix-gcp-credential-payload`)**: 처음엔 프론트가 붙여넣은 JSON에서 `type`/
+  `client_email`/`private_key_id`/`private_key` 4개만 골라 보냈는데, google-auth의
+  `service_account.Credentials.from_service_account_info()`가 **`token_uri`를 필수로**
+  요구해서(`MalformedError: missing fields token_uri`) 멀쩡한 키인데도 검증·동기화·리소스
+  액션이 전부 실패했다. **필드를 골라 담지 말고 키 파일 전체를 그대로 저장한다**(어차피
+  AES-256-GCM으로 암호화 저장된다). `REQUIRED_SECRET_FIELDS["gcp"]`에도 `token_uri`를 넣어
+  잘린 payload는 검증 전에 422로 걸러낸다. `tests/test_gcp_credential_payload.py`가
+  "우리가 필수로 받는 필드만으로 google-auth가 credential을 만들 수 있는가"를 고정한다.
+  ⚠️ 이 수정 이전에 등록된 GCP credential은 payload가 잘린 상태로 저장돼 있어 **다시 등록하거나
+  마이페이지에서 "수정"으로 키를 교체해야** 한다(원본 키를 서버가 따로 보관하지 않으므로
+  마이그레이션 불가).
+- **마이페이지 자격 증명 수정/삭제 UI(2026-09-11, `solcho/fix-gcp-credential-payload`)**:
+  검증에 실패할 때마다 새로 등록하느라 키를 반복해서 붙여넣어야 하는 불편이 있어, "연결된
+  클라우드 계정" 표에 **수정 / 재검증 / 삭제** 버튼을 붙였다(백엔드 §6.7~6.9는 이미 있었고
+  화면에서만 안 쓰고 있었다).
+  - **수정 모드에서 바꿀 수 있는 것은 이름과 키 값뿐**이다. `external_account_id`(계정 식별자)와
+    provider는 클라우드 계정에 속한 값이라 잠근다 — 다른 계정/프로젝트의 키라면 새로 등록해야
+    한다. GCP도 마찬가지라 붙여넣은 JSON의 `project_id`가 달라도 계정은 바뀌지 않는다.
+  - **키 값을 비워두고 저장하면 이름만 수정**된다(메타데이터 전용 PATCH — 서버가 확인 헤더를
+    요구하지 않는 경로). 키를 채우면 교체 + 즉시 재검증이며 `X-Action-Confirmed: true`를 보낸다.
+  - 표 행 드래그(순서 변경) 핸들러가 `pointerdown`에서 `preventDefault()`를 부르기 때문에,
+    관리 버튼에서 시작한 pointerdown은 드래그 대상에서 제외해야 클릭이 먹지 않는다.
 - **resources/action 일괄 요청 원자성(2026-09-10, `solcho/be-resources-api`)**: §19 미확정
   항목 중 "전체 실패 또는 항목별 부분 성공"을 **항목별 부분 성공**으로 확정(§8.5 예시 응답과
   같은 방향). 리소스 하나가 실패해도 나머지 리소스는 계속 처리하고, 각 항목은

@@ -143,11 +143,17 @@ def seed_mock_data(db: Session) -> None:
     cred_gcp = get_or_create(
         db, Credential,
         defaults={
+            # 실제 서비스 계정 키 JSON과 같은 형태로 통째로 저장한다(token_uri 포함) —
+            # google-auth가 요구하는 필드가 빠지지 않도록 목업도 실제 shape을 따른다.
             **_encrypt({
                 "type": "service_account",
-                "client_email": "sa-dev@dev-gcp-01-project.iam.gserviceaccount.com",
+                "project_id": "dev-gcp-01-project",
                 "private_key_id": "abcdef0123456789",
                 "private_key": "-----BEGIN PRIVATE KEY-----\\nEXAMPLE\\n-----END PRIVATE KEY-----\\n",
+                "client_email": "sa-dev@dev-gcp-01-project.iam.gserviceaccount.com",
+                "client_id": "123456789012345678901",
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
             }),
             "public_identifier": "sa-dev@dev-gcp-01-project…",
             "verified": False,  # MY-01 검증 실패 예시
