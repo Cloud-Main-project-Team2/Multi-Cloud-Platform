@@ -154,6 +154,36 @@ PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫�
 - **진행 단위**: 이 브랜치는 (1)Compute 공통 폼 → (2)DB/Storage 공통 폼 → (3)⑤추가 설정+CDN
   → (4)생성하기 활성화 검증 순으로 커밋을 쪼갠다.
 
+### Assumptions — 프로비저닝 페이지 완성 (`solcho/fe-provisioning-complete`)
+
+`fe-provisioning-form` 후속. CDN 실입력 + 선택 시각 피드백 + 마법사 전체 흐름을 붙여 프로비저닝
+페이지를 완성한다. 실제 API로 리소스가 생성되는 것 외의 모든 기능(버튼·모달·진행바 애니메이션
+포함)을 구현하는 것이 목표. 서버 통신은 여전히 없음(Network 요청 0건).
+
+- **리전 = 국가 단일 선택**: 공통 설정은 플랫폼 무관해야 하므로, 플랫폼별 리전 select를 없애고 국가
+  하나(한국/미국)만 고르면 `COUNTRY_REGION` 상수로 각 플랫폼 리전(AWS `ap-northeast-2`/`us-east-1`,
+  Azure `koreacentral`/`eastus`, GCP `asia-northeast3`/`us-central1`)이 `providerSpec[p].region`에
+  자동 매핑된다. 일본 등 추가 국가는 허용 리전 확정 후.
+- **④ 공통은 플랫폼 무관, 플랫폼별 항목은 ⑤로**: 플랫폼마다 내용/구역이 달라지는 항목을 ④에서 빼
+  ⑤ 추가 설정으로 이동했다 — Compute의 **인바운드 규칙·인증**, DB의 **엔진·인증**. 결과적으로 ④
+  공통은 이름·리전(국가)·(Compute)사양·네트워크·(DB)백업·태그처럼 모든 플랫폼에 동일한 필드만 남는다.
+
+- **CDN 실입력 폼**: 공통 설정 스텝 없이 ③에서 CDN 선택 시 곧바로 플랫폼별(⑤) 폼만 렌더
+  (AWS→Azure→GCP 순). 필드 확정 근거는 `docs/멀티클라우드 3사 기능 맵핑 — 설정값 입력 범위
+  (2026-09-10).md` **4절 "구현용 필드 확정"(2026-09-11)** — 원칙은 "Terraform으로 설정 가능한
+  항목은 전부 입력받는다". 제외는 **Endpoint(결과값)·Scope(Global 고정)·Raw status(조회전용)**
+  세 가지뿐. 3사 필드셋이 완전히 다름:
+  - AWS(CloudFront): Origin(필수)·캐시 정책·Path routing·Compression·Viewer Protocol Policy·
+    Price Class. **Health Probe 없음**(CloudFront에 독립 헬스체크 인자 없음).
+  - Azure(Front Door): Origin·Resource Group·SKU(**셋 다 필수**)·쿼리스트링 캐시 처리·Compression·
+    지원 프로토콜·HTTPS 리다이렉트·Health Probe(경로/간격 기본 240).
+  - GCP(LB+Cloud CDN): Backend(필수)·LB stack 확인 체크박스(**필수**)·백엔드 유형(서비스/버킷)·
+    enableCdn·Cache Mode·Compression·HTTPS 강제 리다이렉트·Health Probe(**백엔드 서비스일 때만**
+    노출, 기본 10). Path routing은 기본 매핑 자동 생성이라 입력 없음.
+  - 필수 충족(AWS Origin / Azure Origin·RG·SKU / GCP Backend·LB stack 동의) 시 생성하기 활성화.
+- **진행률 모달 값**: PROV-02 진행률 모달의 성공/진행중/실패 3-상태는 **정적 예시 그대로** 재사용하며,
+  실제 job 상태 반영은 BE 연동 이후로 미룬다(이번 범위 아님).
+
 ## Pointer — where the planning docs live
 
 The functional spec (기능명세서), screen design (화면설계서), WBS, and the
