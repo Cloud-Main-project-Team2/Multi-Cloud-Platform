@@ -1,0 +1,498 @@
+# DB ERD — Multi-Cloud Platform
+
+현재 구축된 데이터베이스(PostgreSQL)의 ERD 및 스키마 문서.
+
+- **출처(소스 오브 트루스)**: `backend/app/models.py` (SQLAlchemy ORM) + Alembic 마이그레이션
+  - `7bf7892874c3_initial_schema.py` (초기 스키마)
+  - `2964dfe0a706_phase_2_db_enhancements.py` (Phase 2 확장)
+- **반영 브랜치**: `solcho/be-db-enhancements`
+- **DBMS**: PostgreSQL (JSONB, GIN 인덱스, `CHAR(3)` 통화코드 등 PG 기능 사용)
+- **작성 기준일**: 2026-09-10
+
+> 이 문서는 스키마를 사람이 읽기 위해 정리한 것으로, 실제 DDL은 위 마이그레이션 파일이 기준이다.
+> 스키마가 바뀌면 마이그레이션과 함께 이 문서도 갱신한다.
+
+---
+
+## 1. 개요
+
+| 도메인 | 테이블 |
+|---|---|
+| 계정·인증 | `users`, `social_accounts`, `password_reset_tokens` |
+| 클라우드 연결·자격증명 | `cloud_accounts`, `credentials` |
+| 서비스/리소스 분류 | `service_catalog`, `resource_types` |
+| 프로비저닝 | `provisioning_requests`, `provisioning_jobs` |
+| 인벤토리(리소스 수집) | `resources`, `resource_sync_jobs`, `resource_sync_job_items` |
+| 비용 | `cloud_resource_costs` (+ `resources`의 cost_* 요약 컬럼) |
+| 알림·감사 | `notifications`, `audit_events` |
+
+총 **15개 테이블**.
+
+### 설계 원칙 (모델 docstring 기준)
+- **비밀/민감정보 저장 금지**: `credentials`의 자격증명 값은 `encrypted_payload`(암호화)로만 저장. `common_spec_json`/`spec_json`/`metadata_json` 등 JSONB에는 access/secret key, SA JSON, 복호화된 payload, 원본 토큰을 넣지 않는다.
+- **Terraform state 미저장**: state 본문·output은 DB에 두지 않고 외부 백엔드(S3/GCS 등) 참조(`terraform_state_ref`)만 저장.
+- **부모-자식 상태 집계는 앱 계층 책임**: `provisioning_requests.status`는 자식 `provisioning_jobs`를 앱이 트랜잭션 내에서 집계해 갱신(DB 트리거 없음).
+- **감사 로그 불변**: `audit_events`는 수정/삭제 API를 만들지 않는다.
+
+---
+
+## 2. ERD (Mermaid)
+
+```mermaid
+erDiagram
+    users ||--o{ social_accounts : "has"
+    users ||--o{ password_reset_tokens : "has"
+    users ||--o{ cloud_accounts : "owns"
+    users ||--o{ provisioning_requests : "requests"
+    users ||--o{ provisioning_jobs : "owns"
+    users ||--o{ notifications : "receives"
+    users ||--o{ resource_sync_jobs : "triggers"
+    users |o--o{ audit_events : "actor"
+
+    cloud_accounts ||--o{ credentials : "has"
+    cloud_accounts ||--o{ resources : "contains"
+    cloud_accounts ||--o{ resource_sync_job_items : "scoped by"
+
+    credentials |o--o{ resources : "first/last collected by"
+    credentials ||--o{ provisioning_jobs : "used by"
+    credentials |o--o{ resource_sync_job_items : "used by"
+
+    service_catalog ||--o{ resource_types : "defines"
+    service_catalog ||--o{ resources : "classifies"
+    service_catalog ||--o{ provisioning_jobs : "targets"
+
+    resource_types ||--o{ provisioning_requests : "requested type"
+    resource_types |o--o{ resources : "normalized type"
+
+    provisioning_requests ||--o{ provisioning_jobs : "spawns"
+
+    resources ||--o{ cloud_resource_costs : "cost history"
+
+    resource_sync_jobs ||--o{ resource_sync_job_items : "per-account items"
+
+    users {
+        bigint id PK
+        string normalized_email UK
+        string email
+        string password_hash "nullable (social-only 계정)"
+        string name
+        string affiliation_type "company|individual"
+        string status "active|withdrawn"
+    }
+    social_accounts {
+        bigint id PK
+        bigint user_id FK
+        string provider
+        string provider_user_id
+    }
+    password_reset_tokens {
+        bigint id PK
+        bigint user_id FK
+        string token_hash UK
+        timestamptz expires_at
+        timestamptz used_at "nullable"
+    }
+    cloud_accounts {
+        bigint id PK
+        bigint user_id FK
+        string provider "aws|azure|gcp"
+        string external_account_id
+        string account_label "nullable"
+    }
+    credentials {
+        bigint id PK
+        bigint cloud_account_id FK
+        string name
+        bytea encrypted_payload
+        bytea encryption_nonce
+        string encryption_key_version
+        jsonb permission_scope
+        bool verified
+        jsonb tags
+        int display_order
+    }
+    service_catalog {
+        bigint id PK
+        string provider "aws|azure|gcp"
+        string service_code
+        string category
+        string display_name
+        bool provisionable
+    }
+    resource_types {
+        bigint id PK
+        bigint service_catalog_id FK
+        string type_code
+        string display_name
+        string category
+        bool provisionable
+        bool supports_start
+        bool supports_stop
+        bool supports_delete
+    }
+    provisioning_requests {
+        bigint id PK
+        bigint user_id FK
+        bigint resource_type_id FK
+        string request_key
+        jsonb common_spec_json
+        string status "queued|running|success|partial_success|failed|cancelled"
+    }
+    provisioning_jobs {
+        bigint id PK
+        bigint user_id FK
+        bigint provisioning_request_id FK
+        bigint credential_id FK
+        bigint service_catalog_id FK
+        string workspace_name
+        string idempotency_key
+        jsonb spec_json
+        string status "queued|running|success|failed|cancelled"
+        int progress_percent "0..100"
+        string terraform_state_ref "nullable, 외부참조만"
+    }
+    notifications {
+        bigint id PK
+        bigint user_id FK
+        string type
+        string message_key
+        jsonb message_params
+        bool is_read
+    }
+    resources {
+        bigint id PK
+        bigint cloud_account_id FK
+        bigint service_catalog_id FK
+        bigint resource_type_id FK "nullable"
+        bigint first_collected_by_credential_id FK "nullable"
+        bigint last_collected_by_credential_id FK "nullable"
+        string provider_resource_key
+        string external_resource_id
+        string original_resource_type "CSP 원본 유형(수집원문)"
+        numeric estimated_monthly_cost "요약"
+        numeric collected_cost_amount "요약"
+        jsonb tags
+        bool is_stale
+    }
+    cloud_resource_costs {
+        bigint id PK
+        bigint resource_id FK
+        string provider "aws|azure|gcp"
+        string cost_kind "actual|estimated|list_price_estimate"
+        numeric amount
+        char currency "CHAR(3)"
+        date period_start
+        date period_end
+        string source_record_key "멱등키"
+    }
+    resource_sync_jobs {
+        bigint id PK
+        bigint user_id FK
+        string status "pending|running|success|partial_success|failed|cancelled"
+        timestamptz requested_at
+    }
+    resource_sync_job_items {
+        bigint id PK
+        bigint sync_job_id FK
+        bigint cloud_account_id FK
+        bigint credential_id FK "nullable"
+        string provider "aws|azure|gcp"
+        string status "pending|running|success|failed|cancelled"
+        int resources_discovered
+    }
+    audit_events {
+        bigint id PK
+        bigint actor_user_id FK "nullable(SET NULL)"
+        string action
+        string target_type
+        string result "requested|success|failure|denied"
+        string provider "nullable, aws|azure|gcp"
+        jsonb metadata_json
+    }
+```
+
+> GitHub은 Mermaid `erDiagram`을 렌더링한다. 관계 표기: `||` 정확히 1, `o{` 0..N, `|o` 0..1.
+
+---
+
+## 3. 관계(외래키) 요약
+
+| 자식 테이블 | 컬럼 | 부모 테이블 | ON DELETE | 비고 |
+|---|---|---|---|---|
+| social_accounts | user_id | users | CASCADE | |
+| password_reset_tokens | user_id | users | CASCADE | |
+| cloud_accounts | user_id | users | RESTRICT | 연결 계정 있으면 유저 삭제 차단 |
+| credentials | cloud_account_id | cloud_accounts | CASCADE | |
+| resource_types | service_catalog_id | service_catalog | RESTRICT | |
+| provisioning_requests | user_id | users | RESTRICT | |
+| provisioning_requests | resource_type_id | resource_types | RESTRICT | |
+| provisioning_jobs | user_id | users | RESTRICT | |
+| provisioning_jobs | provisioning_request_id | provisioning_requests | CASCADE | |
+| provisioning_jobs | credential_id | credentials | RESTRICT | |
+| provisioning_jobs | service_catalog_id | service_catalog | RESTRICT | |
+| notifications | user_id | users | CASCADE | |
+| resources | cloud_account_id | cloud_accounts | CASCADE | |
+| resources | service_catalog_id | service_catalog | RESTRICT | |
+| resources | resource_type_id | resource_types | RESTRICT | nullable(backfill 중) |
+| resources | first_collected_by_credential_id | credentials | SET NULL | nullable |
+| resources | last_collected_by_credential_id | credentials | SET NULL | nullable |
+| cloud_resource_costs | resource_id | resources | CASCADE | |
+| resource_sync_jobs | user_id | users | RESTRICT | |
+| resource_sync_job_items | sync_job_id | resource_sync_jobs | CASCADE | |
+| resource_sync_job_items | cloud_account_id | cloud_accounts | RESTRICT | |
+| resource_sync_job_items | credential_id | credentials | SET NULL | nullable |
+| audit_events | actor_user_id | users | SET NULL | nullable |
+
+---
+
+## 4. 테이블 상세
+
+모든 테이블은 `created_at timestamptz NOT NULL DEFAULT now()`(`CreatedAtMixin`)를 가진다.
+아래 표에는 각 테이블 고유 컬럼만 정리한다. PK는 전부 `bigint` 자동 증가.
+
+### 4.1 users — 사용자
+| 컬럼 | 타입 | Null | 기본값/제약 |
+|---|---|---|---|
+| id | bigint | N | PK |
+| email | varchar(320) | N | 원본 이메일 |
+| normalized_email | varchar(320) | N | **UNIQUE** (정규화된 로그인 식별자) |
+| password_hash | varchar | Y | 소셜 전용 계정이면 NULL |
+| name | varchar(100) | N | |
+| affiliation_type | varchar(20) | N | CHECK `IN ('company','individual')` |
+| affiliation_name | varchar(200) | Y | |
+| status | varchar(20) | N | default `active`, CHECK `IN ('active','withdrawn')` |
+| updated_at | timestamptz | N | default now(), onupdate now() |
+| withdrawn_at | timestamptz | Y | 탈퇴 시각 |
+
+### 4.2 social_accounts — 소셜 로그인 연동
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| user_id | bigint | N | FK→users (CASCADE), index |
+| provider | varchar(50) | N | 예: google |
+| provider_user_id | varchar(255) | N | |
+
+UNIQUE: `(provider, provider_user_id)`, `(user_id, provider)`.
+
+### 4.3 password_reset_tokens — 비밀번호 재설정 토큰
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| user_id | bigint | N | FK→users (CASCADE), index |
+| token_hash | varchar(255) | N | **UNIQUE** (원본 토큰 아님, 해시만 저장) |
+| expires_at | timestamptz | N | 만료 시각 |
+| used_at | timestamptz | Y | 사용 시각 |
+
+### 4.4 cloud_accounts — 클라우드 계정 연결
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| user_id | bigint | N | FK→users (RESTRICT), index |
+| provider | varchar(20) | N | CHECK `IN ('aws','azure','gcp')` |
+| external_account_id | varchar(255) | N | CSP 계정 식별자 |
+| account_label | varchar(200) | Y | 사용자 지정 라벨 |
+| updated_at | timestamptz | N | onupdate now() |
+
+UNIQUE: `(user_id, provider, external_account_id)`.
+
+### 4.5 credentials — 암호화 자격증명
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| cloud_account_id | bigint | N | FK→cloud_accounts (CASCADE), index |
+| name | varchar(200) | N | |
+| encrypted_payload | bytea | N | 암호화된 자격증명 본문 |
+| encryption_nonce | bytea | N | |
+| encryption_key_version | varchar(50) | N | 키 로테이션 대응 |
+| public_identifier | varchar(255) | Y | 비밀 아닌 식별자(예: access key ID 앞부분) |
+| permission_scope | jsonb | N | default `{}` |
+| verified | bool | N | default false |
+| verified_at | timestamptz | Y | |
+| tags | jsonb | N | default `{}` |
+| display_order | int | N | default 0, CHECK `>= 0` |
+| updated_at | timestamptz | N | onupdate now() |
+
+UNIQUE: `(cloud_account_id, name)`.
+
+### 4.6 service_catalog — 공통 서비스 분류
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| provider | varchar(20) | N | CHECK `IN ('aws','azure','gcp')` |
+| service_code | varchar(100) | N | 예: EC2 |
+| category | varchar(100) | N | 예: compute |
+| display_name | varchar(200) | N | |
+| provisionable | bool | N | default false |
+| updated_at | timestamptz | N | onupdate now() |
+
+UNIQUE: `(provider, service_code)`.
+
+### 4.7 resource_types — CSP 원본 리소스 유형
+`service_catalog`(서비스 단위)과 별개로, 서비스가 실제 다루는 리소스 종류를 정규화한 코드.
+`resources.original_resource_type`(수집 원문)을 정규화한 안정적 코드가 `type_code`.
+
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| service_catalog_id | bigint | N | FK→service_catalog (RESTRICT), index |
+| type_code | varchar(150) | N | 예: EC2 Instance |
+| display_name | varchar(200) | N | |
+| category | varchar(100) | N | |
+| provisionable | bool | N | default false |
+| supports_start | bool | N | default false |
+| supports_stop | bool | N | default false |
+| supports_delete | bool | N | default false |
+| updated_at | timestamptz | N | onupdate now() |
+
+UNIQUE: `(service_catalog_id, type_code)`.
+
+### 4.8 provisioning_requests — 프로비저닝 요청(부모)
+사용자의 한 번의 프로비저닝 의도. 실제 실행 단위는 자식 `provisioning_jobs`.
+다중 계정 선택 시 요청 1 : job N 을 표현할 수 있게만 설계(조합 규칙은 앱 미구현).
+
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| user_id | bigint | N | FK→users (RESTRICT), index |
+| request_key | varchar(255) | N | 멱등 요청 키 |
+| resource_type_id | bigint | N | FK→resource_types (RESTRICT), index |
+| common_spec_json | jsonb | N | **secret 저장 금지** |
+| status | varchar(30) | N | default `queued`, CHECK `IN ('queued','running','success','partial_success','failed','cancelled')` |
+| started_at | timestamptz | Y | |
+| finished_at | timestamptz | Y | CHECK `finished_at >= started_at` |
+
+UNIQUE: `(user_id, request_key)`.
+
+### 4.9 provisioning_jobs — 프로비저닝 실행(자식)
+한 credential · 한 provider · 한 Terraform workspace 단위 실행.
+
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| user_id | bigint | N | FK→users (RESTRICT), index |
+| provisioning_request_id | bigint | N | FK→provisioning_requests (CASCADE), index |
+| credential_id | bigint | N | FK→credentials (RESTRICT), index |
+| service_catalog_id | bigint | N | FK→service_catalog (RESTRICT), index |
+| workspace_name | varchar(255) | N | |
+| idempotency_key | varchar(255) | N | |
+| spec_json | jsonb | N | **secret 저장 금지** |
+| status | varchar(30) | N | default `queued`, CHECK `IN ('queued','running','success','failed','cancelled')` |
+| progress_percent | int | N | default 0, CHECK `0..100` |
+| terraform_state_ref | varchar(1024) | Y | 외부 state 참조(본문 저장 X) |
+| created_resource_count | int | N | default 0, CHECK `>= 0` |
+| result_json | jsonb | Y | |
+| error_code | varchar(100) | Y | |
+| error_message | text | Y | |
+| started_at / finished_at | timestamptz | Y | CHECK `finished_at >= started_at` |
+
+UNIQUE: `(user_id, workspace_name)`, `(user_id, idempotency_key)`.
+
+### 4.10 notifications — 알림
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| user_id | bigint | N | FK→users (CASCADE), index |
+| type | varchar(100) | N | |
+| reference_type | varchar(100) | Y | 연관 엔티티 종류 |
+| reference_id | bigint | Y | 연관 엔티티 id(느슨한 참조, FK 아님) |
+| message_key | varchar(255) | N | i18n 메시지 키 |
+| message_params | jsonb | N | default `{}` |
+| is_read | bool | N | default false |
+| read_at | timestamptz | Y | |
+
+### 4.11 resources — 수집된 클라우드 리소스(인벤토리)
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| cloud_account_id | bigint | N | FK→cloud_accounts (CASCADE), index |
+| service_catalog_id | bigint | N | FK→service_catalog (RESTRICT), index |
+| resource_type_id | bigint | Y | FK→resource_types (RESTRICT), index (backfill 중 nullable) |
+| first_collected_by_credential_id | bigint | Y | FK→credentials (SET NULL), index |
+| last_collected_by_credential_id | bigint | Y | FK→credentials (SET NULL), index |
+| provider_resource_key | varchar(1024) | N | |
+| external_resource_id | varchar(512) | N | |
+| original_resource_type | varchar(255) | N | CSP 원본 유형(수집 원문) |
+| name | varchar(512) | Y | |
+| region | varchar(255) | Y | |
+| status | varchar(100) | Y | |
+| estimated_monthly_cost | numeric(19,6) | Y | CHECK `>= 0`, 최신 요약 스냅샷 |
+| collected_cost_amount | numeric(19,6) | Y | CHECK `>= 0`, 최신 요약 스냅샷 |
+| cost_currency | char(3) | Y | |
+| cost_period_start / cost_period_end | date | Y | |
+| cost_as_of | timestamptz | Y | |
+| cost_source | varchar(100) | Y | |
+| tags | jsonb | N | default `{}` |
+| raw_metadata | jsonb | Y | |
+| first_seen_at / last_seen_at | timestamptz | N | |
+| is_stale | bool | N | default false |
+| deleted_at | timestamptz | Y | soft delete |
+| last_synced_at | timestamptz | Y | |
+| updated_at | timestamptz | N | onupdate now() |
+
+UNIQUE: `(cloud_account_id, provider_resource_key)`.
+INDEX: `(cloud_account_id, service_catalog_id)`, `(cloud_account_id, status)`, `region`, `last_synced_at`, `tags` (GIN).
+
+### 4.12 cloud_resource_costs — 비용 이력
+`resources`의 cost_* 요약 컬럼과 별개인 **기간별 전체 이력**. `cost_kind`가 다른 값은 합산하지 않는다.
+
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| resource_id | bigint | N | FK→resources (CASCADE), index |
+| provider | varchar(20) | N | CHECK `IN ('aws','azure','gcp')` |
+| cost_kind | varchar(30) | N | CHECK `IN ('actual','estimated','list_price_estimate')` |
+| amount | numeric(19,6) | N | CHECK `>= 0` |
+| currency | char(3) | N | |
+| period_start / period_end | date | N | CHECK `period_end >= period_start` |
+| as_of | timestamptz | N | |
+| source | varchar(100) | N | |
+| source_record_key | varchar(512) | N | 재수집 멱등 키 |
+| metadata_json | jsonb | Y | |
+
+UNIQUE: `(provider, source_record_key)`.
+INDEX: `(resource_id, period_start, period_end)`, `(provider, cost_kind, period_start)`, `as_of`.
+
+### 4.13 resource_sync_jobs — 리소스 동기화 작업(부모)
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| user_id | bigint | N | FK→users (RESTRICT), index |
+| status | varchar(30) | N | default `pending`, CHECK `IN ('pending','running','success','partial_success','failed','cancelled')` |
+| requested_at | timestamptz | N | |
+| started_at / finished_at | timestamptz | Y | |
+
+### 4.14 resource_sync_job_items — 동기화 작업 항목(계정별)
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| sync_job_id | bigint | N | FK→resource_sync_jobs (CASCADE), index |
+| cloud_account_id | bigint | N | FK→cloud_accounts (RESTRICT), index |
+| credential_id | bigint | Y | FK→credentials (SET NULL), index |
+| provider | varchar(20) | N | CHECK `IN ('aws','azure','gcp')` |
+| status | varchar(30) | N | default `pending`, CHECK `IN ('pending','running','success','failed','cancelled')` |
+| resources_discovered/created/updated/marked_stale | int | N | default 0, 각 CHECK `>= 0` |
+| error_code | varchar(100) | Y | |
+| error_message | text | Y | |
+| started_at / finished_at | timestamptz | Y | |
+
+UNIQUE: `(sync_job_id, cloud_account_id)`.
+
+### 4.15 audit_events — 감사 이벤트(불변)
+보안·파괴적 작업 감사용. **수정/삭제 API 없음**, `metadata_json`에 민감정보 저장 금지.
+
+| 컬럼 | 타입 | Null | 제약 |
+|---|---|---|---|
+| actor_user_id | bigint | Y | FK→users (SET NULL), index |
+| action | varchar(100) | N | |
+| target_type | varchar(100) | N | |
+| target_id | varchar(255) | Y | |
+| request_id | varchar(100) | Y | index |
+| result | varchar(30) | N | CHECK `IN ('requested','success','failure','denied')` |
+| provider | varchar(20) | Y | CHECK NULL 또는 `IN ('aws','azure','gcp')` |
+| metadata_json | jsonb | N | default `{}` |
+
+INDEX: `(actor_user_id, created_at)`, `(target_type, target_id, created_at)`, `(action, created_at)`.
+
+---
+
+## 5. Enum(문자열 CHECK) 값 모음
+
+| 컬럼 | 허용 값 |
+|---|---|
+| users.affiliation_type | company, individual |
+| users.status | active, withdrawn |
+| provider (cloud_accounts / service_catalog / cloud_resource_costs / resource_sync_job_items) | aws, azure, gcp |
+| audit_events.provider | (NULL) 또는 aws, azure, gcp |
+| provisioning_requests.status | queued, running, success, partial_success, failed, cancelled |
+| provisioning_jobs.status | queued, running, success, failed, cancelled |
+| resource_sync_jobs.status | pending, running, success, partial_success, failed, cancelled |
+| resource_sync_job_items.status | pending, running, success, failed, cancelled |
+| cloud_resource_costs.cost_kind | actual, estimated, list_price_estimate |
+| audit_events.result | requested, success, failure, denied |
