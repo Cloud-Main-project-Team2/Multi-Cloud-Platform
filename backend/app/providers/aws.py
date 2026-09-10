@@ -72,3 +72,71 @@ def verify(external_account_id: str, secret_payload: dict) -> VerificationResult
         pass
 
     return VerificationResult(verified=True, permission_scope=scope)
+
+
+def _empty_bucket(s3_client, bucket: str) -> None:
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket):
+        objects = [{"Key": obj["Key"]} for obj in page.get("Contents", [])]
+        if objects:
+            s3_client.delete_objects(Bucket=bucket, Delete={"Objects": objects})
+
+
+def perform_resource_action(
+    service_code: str,
+    original_resource_type: str,
+    action: str,
+    secret_payload: dict,
+    region: str | None,
+    external_resource_id: str,
+    force_empty: bool = False,
+) -> None:
+    from app.resource_actions import ResourceActionError
+
+    region = region or "us-east-1"
+
+    try:
+        if service_code == "ec2" and original_resource_type != "EBS Volume":
+            ec2 = _client(secret_payload, "ec2", region)
+            if action == "start":
+                ec2.start_instances(InstanceIds=[external_resource_id])
+            elif action == "stop":
+                ec2.stop_instances(InstanceIds=[external_resource_id])
+            elif action == "delete":
+                ec2.terminate_instances(InstanceIds=[external_resource_id])
+            return
+
+        if service_code == "ec2" and original_resource_type == "EBS Volume":
+            ec2 = _client(secret_payload, "ec2", region)
+            ec2.delete_volume(VolumeId=external_resource_id)
+            return
+
+        if service_code == "rds":
+            rds = _client(secret_payload, "rds", region)
+            if action == "start":
+                rds.start_db_instance(DBInstanceIdentifier=external_resource_id)
+            elif action == "stop":
+                rds.stop_db_instance(DBInstanceIdentifier=external_resource_id)
+            elif action == "delete":
+                rds.delete_db_instance(DBInstanceIdentifier=external_resource_id, SkipFinalSnapshot=True)
+            return
+
+        if service_code == "s3":
+            s3 = _client(secret_payload, "s3", region)
+            try:
+                s3.delete_bucket(Bucket=external_resource_id)
+            except ClientError as exc:
+                error_code = exc.response.get("Error", {}).get("Code")
+                if error_code != "BucketNotEmpty":
+                    raise
+                if not force_empty:
+                    raise ResourceActionError("BucketNotEmpty") from exc
+                _empty_bucket(s3, external_resource_id)
+                s3.delete_bucket(Bucket=external_resource_id)
+            return
+
+        raise ResourceActionError("UNSUPPORTED_OPERATION")
+    except ResourceActionError:
+        raise
+    except (BotoCoreError, ClientError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
