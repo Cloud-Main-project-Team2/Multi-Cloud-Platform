@@ -35,7 +35,12 @@
   }
 
   var dragEl = null;
-  getRows().forEach(function (tr) { tr.setAttribute("draggable", "true"); });
+  getRows().forEach(function (tr) {
+    tr.setAttribute("draggable", "true");
+    tr.style.userSelect = "none";       // 드래그 시 텍스트 선택이 드래그를 가로채지 않도록
+    tr.style.webkitUserSelect = "none";
+    tr.style.cursor = "grab";
+  });
 
   tbody.addEventListener("dragstart", function (e) {
     var tr = e.target.closest("tr");
@@ -53,15 +58,18 @@
     dragEl = null;
   });
 
-  tbody.addEventListener("dragover", function (e) {
+  // dragenter/dragover 모두에서 preventDefault를 해야 drop이 허용된다(브라우저별 차이 방어).
+  function allowDrop(e) {
     if (!dragEl) return;
-    e.preventDefault(); // drop 허용
+    e.preventDefault();
     var over = e.target.closest("tr");
-    if (!over || over === dragEl) return;
+    if (!over || over === dragEl || over.parentNode !== tbody) return;
     var rect = over.getBoundingClientRect();
     var after = (e.clientY - rect.top) > rect.height / 2;
     tbody.insertBefore(dragEl, after ? over.nextSibling : over);
-  });
+  }
+  tbody.addEventListener("dragenter", allowDrop);
+  tbody.addEventListener("dragover", allowDrop);
 
   tbody.addEventListener("drop", function (e) {
     e.preventDefault();
