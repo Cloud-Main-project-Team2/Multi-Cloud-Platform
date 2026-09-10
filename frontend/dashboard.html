@@ -16,6 +16,8 @@
   <link rel="icon" type="image/png" href="assets/imgs/logo-navy.png" />
   <link rel="stylesheet" href="assets/css/theme.css" />
   <link rel="stylesheet" href="assets/css/shell.css" />
+  <!-- 데모 인증 가드: 세션 없으면 login.html로 리다이렉트(본문 렌더 전) -->
+  <script src="assets/js/auth-guard.js"></script>
 </head>
 <body>
   <div class="app-shell">
@@ -38,6 +40,12 @@
         <span class="nav-item disabled">🛡️ 보안 점검 <span class="badge">확장</span></span>
       </nav>
 
+      <div class="sidebar__utils">
+        <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="topbar__btn" aria-label="테마 전환">🌙</button>
+        <div class="lang-toggle"><span class="active">KOR</span><span>EN</span></div>
+        <span class="bell topbar__btn" role="button" aria-label="알림">🔔<span class="bell__badge">3</span></span>
+      </div>
+
       <div class="sidebar__foot">
         <div class="sidebar__email">name@company.com</div>
         <button type="button" class="sidebar__logout">로그아웃</button>
@@ -46,12 +54,6 @@
 
     <!-- ===== 본문 ===== -->
     <div class="main-area">
-      <!-- 상단 유틸 바 -->
-      <div class="topbar">
-        <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="topbar__btn" aria-label="테마 전환">🌙</button>
-        <div class="lang-toggle"><span class="active">KOR</span><span>EN</span></div>
-        <span class="bell topbar__btn" role="button" aria-label="알림">🔔<span class="bell__badge">3</span></span>
-      </div>
 
       <div class="content">
         <!-- 제목 + 콘솔 열기 버튼 -->
