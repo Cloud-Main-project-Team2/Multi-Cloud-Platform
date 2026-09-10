@@ -25,11 +25,21 @@ class TerraformResult:
     returncode: int
 
 
+MIN_REDACT_LENGTH = 8
+
+
 def redact(text: str, secrets: list[str]) -> str:
-    """text에서 secrets에 담긴 값들을 제거한다. 빈 문자열은 무시한다(전체 치환 방지)."""
+    """text에서 secrets에 담긴 값들을 제거한다.
+
+    `MIN_REDACT_LENGTH`보다 짧은 값은 무시한다 — 실제 Azure 등의 client secret/GUID는
+    충분히 길어서 문제가 없지만, 짧은 값(테스트 placeholder 등)은 에러 메시지 안의 흔한
+    단어와 우연히 겹쳐 메시지 전체를 알아볼 수 없게 뭉개버릴 수 있다(실제로 겪은 문제 —
+    tenant_id="t" 같은 한 글자 값이 "Trace"의 "T"까지 지워버렸다). 이 길이 미만 값은 애초에
+    redact로 보호할 실익도 적다.
+    """
     redacted = text
     for secret in secrets:
-        if secret:
+        if secret and len(secret) >= MIN_REDACT_LENGTH:
             redacted = redacted.replace(secret, "***REDACTED***")
     return redacted
 
