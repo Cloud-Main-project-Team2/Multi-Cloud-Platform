@@ -206,6 +206,32 @@ def _create_notification(db: Session, job: ProvisioningJob, *, success: bool, re
     )
 
 
+def _finalize_job(db: Session, job: ProvisioningJob, service: ServiceCatalog | None) -> None:
+    """job을 종결 상태로 커밋한다 — §14 "완료 시 알림을 만들고 감사 action `provisioning.complete`를
+    기록한다"는 success/failed 모든 경로에 적용되므로, 조기 반환(unverified credential 등)에서도
+    반드시 이 함수를 거치게 한다(처음엔 성공 경로에서만 호출해서 실제 서버로 확인해보니 조기 실패
+    job엔 알림·감사 로그가 안 남는 버그가 있었다).
+    """
+    job.finished_at = dt.datetime.now(dt.timezone.utc)
+    if job.status == "success":
+        _create_notification(db, job, success=True, resource_name=(job.result_json or {}).get("instance_name"))
+    elif job.status == "failed":
+        _create_notification(db, job, success=False, resource_name=None)
+    # cancelled는 §14 기본 기록 대상 표에 없어 알림을 만들지 않는다(sync_jobs와 동일한 정책).
+
+    record_audit_event(
+        db,
+        actor_user_id=job.user_id,
+        action="provisioning.complete",
+        target_type="provisioning_job",
+        target_id=str(job.id),
+        result="success" if job.status == "success" else "failure",
+        provider=service.provider if service else None,
+        metadata={"job_id": job.id, "error_code": job.error_code} if job.error_code else {"job_id": job.id},
+    )
+    db.commit()
+
+
 def _process_provisioning_job(db: Session, job: ProvisioningJob) -> None:
     """`_run_provisioning_job`이 `SessionLocal()`을 연 뒤 호출하는 실제 처리부.
 
@@ -221,8 +247,7 @@ def _process_provisioning_job(db: Session, job: ProvisioningJob) -> None:
         job.status = "failed"
         job.error_code = "CLOUD_PERMISSION_DENIED"
         job.error_message = "검증된 자격 증명이 없습니다."
-        job.finished_at = dt.datetime.now(dt.timezone.utc)
-        db.commit()
+        _finalize_job(db, job, service)
         return
 
     # permission_scope가 비어 있으면(예: 검증을 거치지 않은 목업 credential) 아직 프로빙된 적이
@@ -231,8 +256,7 @@ def _process_provisioning_job(db: Session, job: ProvisioningJob) -> None:
         job.status = "failed"
         job.error_code = "CLOUD_PERMISSION_DENIED"
         job.error_message = "이 자격 증명에는 생성 권한이 없습니다."
-        job.finished_at = dt.datetime.now(dt.timezone.utc)
-        db.commit()
+        _finalize_job(db, job, service)
         return
 
     runner = get_runner(service.provider, service.service_code)
@@ -241,8 +265,7 @@ def _process_provisioning_job(db: Session, job: ProvisioningJob) -> None:
         job.status = "failed"
         job.error_code = "TERRAFORM_ERROR"
         job.error_message = "지원하지 않는 프로비저닝 조합입니다."
-        job.finished_at = dt.datetime.now(dt.timezone.utc)
-        db.commit()
+        _finalize_job(db, job, service)
         return
 
     try:
@@ -250,8 +273,7 @@ def _process_provisioning_job(db: Session, job: ProvisioningJob) -> None:
     except CredentialEncryptionError:
         job.status = "failed"
         job.error_code = "PROVIDER_API_ERROR"
-        job.finished_at = dt.datetime.now(dt.timezone.utc)
-        db.commit()
+        _finalize_job(db, job, service)
         return
 
     settings = get_settings()
@@ -280,25 +302,12 @@ def _process_provisioning_job(db: Session, job: ProvisioningJob) -> None:
         job.progress_percent = 100
         job.result_json = result.outputs or {}
         _create_resource_from_job(db, job, service, account, credential, result.outputs or {})
-        _create_notification(db, job, success=True, resource_name=(result.outputs or {}).get("instance_name"))
     else:
         job.status = "failed"
         job.error_code = result.error_code
         job.error_message = result.error_message
-        _create_notification(db, job, success=False, resource_name=None)
 
-    job.finished_at = dt.datetime.now(dt.timezone.utc)
-    record_audit_event(
-        db,
-        actor_user_id=job.user_id,
-        action="provisioning.complete",
-        target_type="provisioning_job",
-        target_id=str(job.id),
-        result="success" if job.status == "success" else "failure",
-        provider=service.provider,
-        metadata={"job_id": job.id, "error_code": job.error_code} if job.error_code else {"job_id": job.id},
-    )
-    db.commit()
+    _finalize_job(db, job, service)
 
 
 def _run_provisioning_job(job_id: int) -> None:
