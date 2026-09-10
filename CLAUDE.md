@@ -175,9 +175,6 @@ PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫�
   다음 단계가 자동으로 나타나는** 방식(`revealSteps`). 완료된 단계는 위에 그대로 쌓여 보이고, 스텝
   인디케이터가 완료(sky)/현재(primary)/대기(muted)를 표시한다. **CDN은 ④ 공통을 건너뛰어** ③ 다음에
   바로 ⑤가 나타난다(`visibleSteps`). ⑥은 검토(선택 요약) + 비교하기/생성하기.
-=======
-
-
 - **CDN 실입력 폼**: 공통 설정 스텝 없이 ③에서 CDN 선택 시 곧바로 플랫폼별(⑤) 폼만 렌더
   (AWS→Azure→GCP 순). 필드 확정 근거는 `docs/멀티클라우드 3사 기능 맵핑 — 설정값 입력 범위
   (2026-09-10).md` **4절 "구현용 필드 확정"(2026-09-11)** — 원칙은 "Terraform으로 설정 가능한
@@ -195,6 +192,30 @@ PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫�
   API 없이 **클라이언트 시뮬레이션**(`startProvisioningSim`)으로, 선택한 대상(플랫폼×계정)별 진행바를
   0→100% 애니메이션하며 대기→진행중→완료/실패로 전환한다. 실패는 **매 실행 랜덤**(데모). 축소형
   카드도 진행 카운트와 연동. 실제 job 상태 폴링은 BE 연동 이후 이 시뮬레이션을 대체한다.
+
+### Assumptions — 순수 JS 나머지 기능 (`solcho/fe-remaining-js`)
+
+API 연동 없이 JS만으로 완성 가능한 나머지 데모 기능들. 서버 통신 없음(Network 요청 0건),
+전부 `localStorage`/하드코딩 목업/클라이언트 계산으로 시뮬레이션. API 연동 프롬프트가 아래
+자리들을 실제 호출로 교체한다.
+
+- **데모 인증 상태**: 로그인 성공(형식 검증 통과) 시 `localStorage.mcp_demo_session`
+  `{email, loggedInAt}` 저장(실제 토큰 아님). `assets/js/auth-guard.js`를 보호 화면 4개
+  (dashboard/inventory/provisioning/mypage) `<head>`에서 로드 → 세션 없으면 `login.html`로
+  리다이렉트(본문 렌더 전). 사이드바 이메일 표시를 세션 값으로 교체, 사이드바/마이페이지 로그아웃
+  버튼(`.sidebar__logout`, `[data-logout]`)은 세션 삭제 후 `login.html`로 이동. login/signup/
+  password-reset/main/INTRO는 가드 대상 아님. → API 연동 시 이 파일을 실제 인증(JWT 등)으로 교체.
+- **유틸 컨트롤을 사이드바 하단으로**: COMM-01의 흰 전체폭 유틸바(`.topbar`)를 제거하고, 테마·언어·
+  알림 세 컨트롤을 **사이드바 하단(footer 위) `.sidebar__utils`**에 개별 캡슐(`border-radius:999px`,
+  다크 네이비에 맞춘 은은한 톤)로 배치(shell.css + 4개 화면 마크업). 우상단 플로팅은 다른 콘텐츠와
+  겹쳐 사이드바 하단으로 옮김. 본문이 최상단까지 올라오고, 프로비저닝 과금 배너 sticky는 `top-0`.
+- **MY-01 계정 순서 드래그**: 연결된 클라우드 계정 표 행을 HTML5 Drag&Drop으로 재정렬
+  (`assets/js/mypage.js`), 순서는 `localStorage.mcp_account_order`(행 이름을 키)로 저장해 새로고침
+  후 유지. 기존 필터(행 hidden 토글)와 공존. → API 연동 시 서버(계정 display_order 등) 저장으로 교체.
+
+> **진행 순서 메모(2026-09-11)**: 마이페이지 계정 순서까지 완료 후, 나머지 웹 단위(KOR/EN 전환,
+> 알림 드롭다운, 인벤토리 CSV·액션, 프로비저닝 보강)는 **키값(credentials) API 연동이 끝난 뒤** 재개.
+> 키값 저장·검증 API가 팀원들의 프로비저닝 구현·테스트를 언블록하는 우선 작업이기 때문.
 
 ## Pointer — where the planning docs live
 
