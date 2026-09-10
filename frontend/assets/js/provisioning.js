@@ -44,6 +44,23 @@
   };
   var WARN_STYLE = 'style="color:#b45309"'; // amber-700, 경고 문구용
 
+  // ⑤ 추가 설정 옵션.
+  var AMI_CUSTOM = "직접 AMI ID 입력";
+  var COMPUTE_IMAGES = {
+    aws: ["Amazon Linux 2023", "Ubuntu 22.04", AMI_CUSTOM],
+    azure: ["Ubuntu 22.04", "Windows Server 2022"],
+    // gcp: 이미지 필드는 구조가 달라 노출하지 않음(맵핑 문서 "제외").
+  };
+  var STORAGE_CLASSES = ["Standard", "Nearline", "Coldline", "Archive"]; // GCP 전용
+
+  // 맵핑 문서 "제외" 필드 — 폼에 렌더링하지 않고 providerSpec에 서버 기본값만 채운다
+  // (사용자 입력 없음). 값은 데모 기본값이며 실제 정책은 BE 연동 시 확정한다.
+  var SERVER_DEFAULTS = {
+    compute: { rootVolumeGb: 30, iamRole: "default" }, // 스토리지·권한
+    db: { instanceClass: "db-standard", storageGb: 20, network: "auto", publicAccess: false, multiAz: false }, // 사양·스토리지·네트워크·접근제어·가용성
+    storage_object: { publicAccess: false, redundancy: "LRS", versioning: false }, // 접근제어·중복성·버전관리
+  };
+
   // ── 전역 상태 ────────────────────────────────────────────────────────────
   var state = {
     resourceKind: null, // 'compute' | 'db' | 'storage_object' | 'cdn'
@@ -357,73 +374,177 @@
 
     state.commonSpec = cs;
 
-    // 플랫폼별(data-ps) — 리전/엔진/인증 등. Compute는 사양 등급 → SKU 매핑도 채운다.
+    // 플랫폼별(data-ps) — 리전/엔진/인증(④) + 이미지/스토리지등급(⑤). 두 컨테이너 모두 스캔.
     var tier = kind === "compute"
       ? SPEC_TIERS.filter(function (t) { return t.key === cs.specTier; })[0]
       : null;
+    var providerContainer = document.getElementById("prov-provider-fields");
+    var scopes = [container, providerContainer].filter(Boolean);
     state.platforms.forEach(function (p) {
       var ps = state.providerSpec[p];
-      container.querySelectorAll('[data-ps-platform="' + p + '"][data-ps]').forEach(function (input) {
-        ps[input.getAttribute("data-ps")] = input.value;
+      scopes.forEach(function (scope) {
+        scope.querySelectorAll('[data-ps-platform="' + p + '"][data-ps]').forEach(function (input) {
+          ps[input.getAttribute("data-ps")] = input.value;
+        });
       });
       if (tier) ps.instanceType = tier.sku[p];
+      // 제외 필드의 서버 기본값 병합(사용자 입력 없음)
+      var defs = SERVER_DEFAULTS[kind];
+      if (defs) Object.keys(defs).forEach(function (k) { if (ps[k] === undefined) ps[k] = defs[k]; });
     });
   }
 
-  // ── 스텝 렌더 진입점 ──────────────────────────────────────────────────────
-  function renderCommonStep() {
-    var section = document.getElementById("prov-step-common");
-    var container = document.getElementById("prov-common-fields");
-    if (!container) return;
+  // ── ⑤ 플랫폼별 추가 설정 렌더링 ──────────────────────────────────────────
+  function renderProviderStep(container, kind, platforms) {
+    container.innerHTML = "";
+
+    if (kind === "cdn") {
+      container.appendChild(el(
+        "div",
+        { class: "rounded-xl border border-dashed border-border bg-muted p-4 text-sm text-muted-foreground" },
+        "CDN은 클라우드별 설정 체계 차이가 커서 상세 입력 폼은 준비 중입니다."
+      ));
+      return;
+    }
+
+    if (kind === "compute") {
+      platforms.forEach(function (p) {
+        if (!COMPUTE_IMAGES[p]) return; // GCP 등 이미지 필드 미노출
+        var box = el("div", { class: "rounded-xl bg-muted p-3" });
+        var opts = COMPUTE_IMAGES[p].map(function (o) { return "<option>" + o + "</option>"; }).join("");
+        var html = '<p class="mb-2 text-sm font-medium">' + PLATFORM_LABEL[p] + " 이미지</p>" +
+          '<select data-ps-platform="' + p + '" data-ps="image"' + (p === "aws" ? " data-image-select" : "") +
+          ' class="' + FIELD_INPUT + '">' + opts + "</select>";
+        if (p === "aws") {
+          html += '<div data-ami-wrap hidden class="mt-2">' + labelHtml("AMI ID", true) +
+            '<input type="text" data-ps-platform="aws" data-ps="amiId" placeholder="ami-xxxxxxxx" class="' + FIELD_INPUT + '" /></div>';
+        }
+        box.innerHTML = html;
+        container.appendChild(box);
+      });
+      if (platforms.indexOf("gcp") >= 0) {
+        container.appendChild(el("div", { class: "text-xs text-muted-foreground" },
+          "GCP는 이미지 설정이 별도 입력 없이 기본값으로 처리됩니다."));
+      }
+      return;
+    }
+
+    if (kind === "storage_object") {
+      if (platforms.indexOf("gcp") >= 0) {
+        var opts2 = STORAGE_CLASSES.map(function (o) { return "<option>" + o + "</option>"; }).join("");
+        var box2 = el("div", { class: "rounded-xl bg-muted p-3" },
+          '<p class="mb-2 text-sm font-medium">GCP 스토리지 등급</p>' +
+          '<select data-ps-platform="gcp" data-ps="storageClass" class="' + FIELD_INPUT + '">' + opts2 + "</select>");
+        container.appendChild(box2);
+      } else {
+        container.appendChild(el("div", { class: "text-xs text-muted-foreground" },
+          "선택한 플랫폼에는 추가 입력이 없습니다(서버 기본값 사용)."));
+      }
+      return;
+    }
+
+    if (kind === "db") {
+      container.appendChild(el("div", { class: "text-xs text-muted-foreground" },
+        "추가 입력 없이 서버 기본값으로 생성됩니다."));
+    }
+  }
+
+  // AWS 이미지가 '직접 AMI ID 입력'일 때만 AMI ID 입력 노출
+  function toggleAmi(sel) {
+    var wrap = sel.parentElement.querySelector("[data-ami-wrap]");
+    if (!wrap) return;
+    var custom = sel.value === AMI_CUSTOM;
+    wrap.hidden = !custom;
+    if (!custom) {
+      var inp = wrap.querySelector('[data-ps="amiId"]');
+      if (inp) inp.value = "";
+    }
+  }
+
+  // 생성하기 활성/비활성 (단위 3: CDN이면 비활성. 필수필드 전체 검증은 단위 4에서 확장)
+  function updateSubmitState() {
+    var btn = document.getElementById("prov-submit-btn");
+    if (!btn) return;
+    var ok = state.resourceKind !== "cdn";
+    btn.disabled = !ok;
+    btn.classList.toggle("opacity-50", !ok);
+    btn.classList.toggle("cursor-not-allowed", !ok);
+  }
+
+  // ── 스텝 렌더 진입점 (④ 공통 + ⑤ 추가) ──────────────────────────────────
+  function renderSteps() {
+    var commonSection = document.getElementById("prov-step-common");
+    var commonC = document.getElementById("prov-common-fields");
+    var providerC = document.getElementById("prov-provider-fields");
+    if (!commonC) return;
     state.resourceKind = readResourceKind();
     state.platforms = readPlatforms();
+    var kind = state.resourceKind;
 
-    if (state.resourceKind === "compute") {
-      if (section) section.hidden = false;
-      renderComputeCommon(container, state.platforms);
-    } else if (state.resourceKind === "db") {
-      if (section) section.hidden = false;
-      renderDbCommon(container, state.platforms);
-    } else if (state.resourceKind === "storage_object") {
-      if (section) section.hidden = false;
-      renderStorageCommon(container, state.platforms);
+    // ④ 공통 설정 (CDN은 공통 필드가 없어 스텝 자체를 건너뛰어 숨긴다)
+    if (kind === "compute") {
+      if (commonSection) commonSection.hidden = false;
+      renderComputeCommon(commonC, state.platforms);
+    } else if (kind === "db") {
+      if (commonSection) commonSection.hidden = false;
+      renderDbCommon(commonC, state.platforms);
+    } else if (kind === "storage_object") {
+      if (commonSection) commonSection.hidden = false;
+      renderStorageCommon(commonC, state.platforms);
     } else {
-      // CDN 스텝 건너뛰기(④ 숨김) + ⑤ 준비중 안내는 단위 3에서 처리.
-      container.innerHTML = "";
-      collect();
+      if (commonSection) commonSection.hidden = true; // CDN: ④ 건너뛰기
+      commonC.innerHTML = "";
     }
+
+    // ⑤ 플랫폼별 추가 설정
+    if (providerC) renderProviderStep(providerC, kind, state.platforms);
+
+    collect();
+    updateSubmitState();
   }
 
   // ── 이벤트 배선 ──────────────────────────────────────────────────────────
   function init() {
     var container = document.getElementById("prov-common-fields");
     if (!container) return; // provisioning 화면이 아니면 무시
+    var providerC = document.getElementById("prov-provider-fields");
 
-    // 입력 변화 → 상태 수집(공통 필드 컨테이너 내부)
-    container.addEventListener("input", collect);
-    container.addEventListener("change", collect);
+    // ④ 공통 필드: 입력 변화 → 상태 수집 + 제출 상태 갱신
+    function onFieldChange() { collect(); updateSubmitState(); }
+    container.addEventListener("input", onFieldChange);
+    container.addEventListener("change", onFieldChange);
     // 동적 행 삭제(위임) — 컨테이너에 1회만 배선(재렌더 시 누적 방지)
     container.addEventListener("click", function (e) {
       var del = e.target.closest("[data-row-del]");
-      if (del) { del.parentElement.remove(); collect(); }
+      if (del) { del.parentElement.remove(); onFieldChange(); }
     });
+
+    // ⑤ 추가 필드: 입력 변화 + AWS 이미지 토글
+    if (providerC) {
+      providerC.addEventListener("input", onFieldChange);
+      providerC.addEventListener("change", function (e) {
+        var sel = e.target.closest("[data-image-select]");
+        if (sel) toggleAmi(sel);
+        onFieldChange();
+      });
+    }
 
     // 플랫폼/리소스 종류 변경 → 재렌더(관련 필드가 바뀌므로)
     document.querySelectorAll("[data-prov-platform]").forEach(function (cb) {
-      cb.addEventListener("change", renderCommonStep);
+      cb.addEventListener("change", renderSteps);
     });
     document.querySelectorAll("[data-prov-kind]").forEach(function (rb) {
-      rb.addEventListener("change", renderCommonStep);
+      rb.addEventListener("change", renderSteps);
     });
     document.querySelectorAll("[data-prov-account]").forEach(function (cb) {
-      cb.addEventListener("change", collect);
+      cb.addEventListener("change", onFieldChange);
     });
 
-    renderCommonStep();
+    renderSteps();
   }
 
   // 후속 단위에서 재사용할 수 있도록 최소 API 노출
-  window.PROV = { state: state, collect: collect, render: renderCommonStep, SPEC_TIERS: SPEC_TIERS, REGIONS: REGIONS };
+  window.PROV = { state: state, collect: collect, render: renderSteps, SPEC_TIERS: SPEC_TIERS, REGIONS: REGIONS };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);
