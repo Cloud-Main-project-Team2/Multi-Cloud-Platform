@@ -205,10 +205,10 @@ API 연동 없이 JS만으로 완성 가능한 나머지 데모 기능들. 서�
   리다이렉트(본문 렌더 전). 사이드바 이메일 표시를 세션 값으로 교체, 사이드바/마이페이지 로그아웃
   버튼(`.sidebar__logout`, `[data-logout]`)은 세션 삭제 후 `login.html`로 이동. login/signup/
   password-reset/main/INTRO는 가드 대상 아님. → API 연동 시 이 파일을 실제 인증(JWT 등)으로 교체.
-- **상단 유틸바 플로팅화**: COMM-01의 흰 전체폭 유틸바(`.topbar`)를 제거하고, 테마·언어·알림 세
-  컨트롤을 `position:fixed`(top:16px, right:24px)로 **우상단에 떠 있는 개별 캡슐**(`--surface` 배경 +
-  옅은 그림자, `border-radius:999px`)로 재구성(shell.css). 본문이 최상단까지 올라오고, z-index는
-  모달(50)보다 낮다. 프로비저닝 과금 배너 sticky는 `top-0`으로 조정.
+- **유틸 컨트롤을 사이드바 하단으로**: COMM-01의 흰 전체폭 유틸바(`.topbar`)를 제거하고, 테마·언어·
+  알림 세 컨트롤을 **사이드바 하단(footer 위) `.sidebar__utils`**에 개별 캡슐(`border-radius:999px`,
+  다크 네이비에 맞춘 은은한 톤)로 배치(shell.css + 4개 화면 마크업). 우상단 플로팅은 다른 콘텐츠와
+  겹쳐 사이드바 하단으로 옮김. 본문이 최상단까지 올라오고, 프로비저닝 과금 배너 sticky는 `top-0`.
 
 ## Pointer — where the planning docs live
 

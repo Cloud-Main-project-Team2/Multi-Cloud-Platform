@@ -37,6 +37,12 @@
         <span class="nav-item disabled">💰 비용 관리 <span class="badge">확장</span></span>
         <span class="nav-item disabled">🛡️ 보안 점검 <span class="badge">확장</span></span>
       </nav>
+      <div class="sidebar__utils">
+        <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="topbar__btn" aria-label="테마 전환">🌙</button>
+        <div class="lang-toggle"><span class="active">KOR</span><span>EN</span></div>
+        <span class="bell topbar__btn" role="button" aria-label="알림">🔔<span class="bell__badge">3</span></span>
+      </div>
+
       <div class="sidebar__foot">
         <div class="sidebar__email">name@company.com</div>
         <button type="button" class="sidebar__logout">로그아웃</button>
@@ -44,11 +50,6 @@
     </aside>
 
     <div class="main-area">
-      <div class="topbar">
-        <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="topbar__btn" aria-label="테마 전환">🌙</button>
-        <div class="lang-toggle"><span class="active">KOR</span><span>EN</span></div>
-        <span class="bell topbar__btn" role="button" aria-label="알림">🔔<span class="bell__badge">3</span></span>
-      </div>
 
       <div class="content">
         <h1 class="text-2xl font-bold">마이페이지</h1>

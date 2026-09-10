@@ -32,29 +32,25 @@
 /* 본문 영역 */
 .main-area{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
 
-/* 상단 유틸 컨트롤 — 흰 전체폭 바 없이 우상단에 떠 있는 개별 캡슐 스위치들.
-   position:fixed로 스크롤해도 유지, 사이드바(좌측 220px)와 겹치지 않는 우측에 위치.
-   z-index는 모달(50)보다 낮게 두어 모달이 열리면 그 아래에 있게 한다. */
-.topbar{
-  position:fixed; top:16px; right:24px; z-index:20;
-  display:flex; align-items:center; gap:.5rem;
+/* 상단 유틸 컨트롤 — 다른 콘텐츠와 겹치지 않도록 사이드바 하단(footer 위)에 배치.
+   개별 캡슐 스위치 형태를 유지하되, 다크 네이비 사이드바에 맞춘 은은한 톤으로. */
+.sidebar__utils{
+  display:flex; align-items:center; gap:.4rem;
+  padding:.5rem 1rem .25rem;
 }
-/* 개별 캡슐: --surface 배경 + 옅은 그림자(라이트/다크 토큰 자동 대응) */
-.topbar__btn{
-  display:grid; place-items:center; height:36px; min-width:36px; padding:0 .5rem;
-  border-radius:999px; background:var(--surface); border:1px solid var(--border);
-  box-shadow:0 2px 8px rgba(0,0,0,.10);
-  cursor:pointer; font-size:1.05rem; color:var(--foreground);
+.sidebar__utils .topbar__btn{
+  display:grid; place-items:center; height:34px; min-width:34px; padding:0 .5rem;
+  border-radius:999px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.12);
+  color:#c3d2e0; cursor:pointer; font-size:1rem;
 }
-.topbar__btn:hover{ background:var(--muted); }
-.lang-toggle{
-  display:inline-flex; overflow:hidden; font-size:.75rem;
-  border:1px solid var(--border); border-radius:999px;
-  background:var(--surface); box-shadow:0 2px 8px rgba(0,0,0,.10);
+.sidebar__utils .topbar__btn:hover{ background:rgba(255,255,255,.12); color:#fff; }
+.sidebar__utils .lang-toggle{
+  display:inline-flex; overflow:hidden; font-size:.72rem;
+  border:1px solid rgba(255,255,255,.12); border-radius:999px; background:rgba(255,255,255,.06);
 }
-.lang-toggle span{ padding:.35rem .6rem; color:var(--muted-foreground); cursor:pointer; }
-.lang-toggle span.active{ background:var(--muted); color:var(--foreground); font-weight:600; }
-.bell{ position:relative; }
+.sidebar__utils .lang-toggle span{ padding:.3rem .55rem; color:#8098af; cursor:pointer; }
+.sidebar__utils .lang-toggle span.active{ background:rgba(255,255,255,.14); color:#fff; font-weight:600; }
+.sidebar__utils .bell{ position:relative; }
 .bell__badge{ position:absolute; top:2px; right:2px; min-width:15px; height:15px; padding:0 3px; border-radius:9999px; background:var(--yellow); color:var(--cta-text); font-size:.62rem; font-weight:700; display:grid; place-items:center; }
 
 /* 콘텐츠: 최대 1180px, 본문 영역(사이드바 제외) 가운데 정렬 */
