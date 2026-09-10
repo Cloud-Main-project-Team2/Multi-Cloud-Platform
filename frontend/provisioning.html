@@ -183,21 +183,7 @@
     <div class="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-xl">
       <h3 class="text-lg font-semibold">리소스를 생성하고 있습니다</h3>
       <p class="mt-1 text-sm text-muted-foreground">생성에는 몇 분이 걸릴 수 있습니다. 이 창을 닫아도 작업은 계속됩니다.</p>
-      <div class="mt-5 space-y-4">
-        <div>
-          <div class="flex justify-between text-sm"><span>AWS · mcp-a1b2-vm</span><span class="text-primary">완료 100%</span></div>
-          <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full bg-primary" style="width:100%"></div></div>
-        </div>
-        <div>
-          <div class="flex justify-between text-sm"><span>Azure · mcp-c3d4-vm</span><span class="text-muted-foreground">진행중 72%</span></div>
-          <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full bg-sky" style="width:72%"></div></div>
-        </div>
-        <div>
-          <div class="flex justify-between text-sm"><span>GCP · mcp-g7h8-vm</span><span class="text-white"><span class="rounded px-1.5 py-0.5 text-xs" style="background:#c0392b">실패</span></span></div>
-          <div class="mt-1 h-2 rounded-full bg-muted"><div class="h-2 rounded-full" style="width:40%;background:#c0392b"></div></div>
-          <p class="mt-1 text-xs" style="color:#c0392b">할당량 초과 — 해당 리전의 vCPU 한도를 넘었습니다.</p>
-        </div>
-      </div>
+      <div id="prov-progress-list" class="mt-5 space-y-4"></div>
       <div class="mt-6 flex items-center justify-end gap-2">
         <a href="inventory.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">인벤토리로 이동하기</a>
         <button id="prov-to-mini" type="button" class="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-muted">닫기</button>
@@ -207,12 +193,7 @@
 
   <!-- 생성 진행률 축소형 카드 (우측 하단 고정) — 클릭 시 기본형으로 복귀 -->
   <div id="prov-progress-mini" class="hidden fixed bottom-4 right-4 z-40 w-64 cursor-pointer rounded-xl border border-border bg-surface p-4 shadow-lg" role="button" aria-label="진행률 모달 열기">
-    <div class="flex items-center justify-between"><span class="text-sm font-semibold">생성 중 2/3 ▴</span></div>
-    <div class="mt-2 flex gap-3 text-xs text-muted-foreground">
-      <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-primary"></span>완료 1</span>
-      <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-sky"></span>진행 1</span>
-      <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" style="background:#c0392b"></span>실패 1</span>
-    </div>
+    <div id="prov-mini-body"><div class="text-sm font-semibold">생성 중 ▴</div></div>
   </div>
 
   <script src="assets/js/ui.js"></script>

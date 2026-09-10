@@ -187,8 +187,10 @@ PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫�
     enableCdn·Cache Mode·Compression·HTTPS 강제 리다이렉트·Health Probe(**백엔드 서비스일 때만**
     노출, 기본 10). Path routing은 기본 매핑 자동 생성이라 입력 없음.
   - 필수 충족(AWS Origin / Azure Origin·RG·SKU / GCP Backend·LB stack 동의) 시 생성하기 활성화.
-- **진행률 모달 값**: PROV-02 진행률 모달의 성공/진행중/실패 3-상태는 **정적 예시 그대로** 재사용하며,
-  실제 job 상태 반영은 BE 연동 이후로 미룬다(이번 범위 아님).
+- **생성 흐름 + 진행률 애니메이션**: 생성하기 → 생성 확인 모달 → 진행률 모달로 연결. 진행률은 실제
+  API 없이 **클라이언트 시뮬레이션**(`startProvisioningSim`)으로, 선택한 대상(플랫폼×계정)별 진행바를
+  0→100% 애니메이션하며 대기→진행중→완료/실패로 전환한다. 실패는 **매 실행 랜덤**(데모). 축소형
+  카드도 진행 카운트와 연동. 실제 job 상태 폴링은 BE 연동 이후 이 시뮬레이션을 대체한다.
 
 ## Pointer — where the planning docs live
 

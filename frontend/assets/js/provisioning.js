@@ -785,6 +785,88 @@
     }
   }
 
+  // ── 진행률 시뮬레이션 (실제 API 없이 진행바를 애니메이션) ──────────────────
+  var KIND_SUFFIX = { compute: "vm", db: "db", storage_object: "obj", cdn: "cdn" };
+  var simTimer = null;
+
+  function updateMini(targets) {
+    var mini = document.getElementById("prov-mini-body");
+    if (!mini) return;
+    var done = 0, failed = 0;
+    targets.forEach(function (t) { if (t.status === "done") done++; else if (t.status === "failed") failed++; });
+    var running = targets.length - done - failed;
+    mini.innerHTML =
+      '<div class="text-sm font-semibold">생성 ' + (done + failed) + "/" + targets.length + " ▴</div>" +
+      '<div class="mt-2 flex gap-3 text-xs text-muted-foreground">' +
+      '<span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-primary"></span>완료 ' + done + "</span>" +
+      '<span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full bg-sky"></span>진행 ' + running + "</span>" +
+      '<span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" style="background:#c0392b"></span>실패 ' + failed + "</span></div>";
+  }
+
+  function startProvisioningSim() {
+    var list = document.getElementById("prov-progress-list");
+    if (!list) return;
+
+    // 선택한 대상(플랫폼×계정)별 타겟 생성. 실패 시점(failAt)은 랜덤(매 실행 다름).
+    var suffix = KIND_SUFFIX[state.resourceKind] || "res";
+    var targets = state.platforms.map(function (p) {
+      var account = state.selectedAccounts[p] || (PLATFORM_LABEL[p] + " 계정");
+      var name = "mcp-" + Math.random().toString(36).slice(2, 6) + "-" + suffix;
+      var willFail = Math.random() < 0.25;
+      return {
+        platform: p, account: account, name: name, progress: 0, status: "pending",
+        failAt: willFail ? 35 + Math.floor(Math.random() * 45) : null,
+      };
+    });
+
+    list.innerHTML = targets.map(function (t, i) {
+      return '<div data-sim-row="' + i + '">' +
+        '<div class="flex justify-between text-sm"><span>' + PLATFORM_LABEL[t.platform] + " · " + t.account + " · " + t.name +
+        '</span><span data-sim-status class="text-muted-foreground">대기</span></div>' +
+        '<div class="mt-1 h-2 rounded-full bg-muted"><div data-sim-bar class="h-2 rounded-full bg-sky" style="width:0%"></div></div>' +
+        '<p data-sim-msg class="mt-1 text-xs" hidden></p></div>';
+    }).join("");
+
+    if (simTimer) clearInterval(simTimer);
+    updateMini(targets);
+    simTimer = setInterval(function () {
+      var allDone = true;
+      targets.forEach(function (t, i) {
+        if (t.status === "done" || t.status === "failed") return;
+        allDone = false;
+        t.status = "running";
+        t.progress += 4 + Math.floor(Math.random() * 9);
+        if (t.failAt != null && t.progress >= t.failAt) { t.progress = t.failAt; t.status = "failed"; }
+        else if (t.progress >= 100) { t.progress = 100; t.status = "done"; }
+
+        var row = list.querySelector('[data-sim-row="' + i + '"]');
+        if (!row) return;
+        var bar = row.querySelector("[data-sim-bar]");
+        var st = row.querySelector("[data-sim-status]");
+        var msg = row.querySelector("[data-sim-msg]");
+        bar.style.width = t.progress + "%";
+        if (t.status === "failed") {
+          bar.className = "h-2 rounded-full";
+          bar.style.background = "#c0392b";
+          st.textContent = "실패";
+          st.className = "rounded px-1.5 py-0.5 text-xs text-white";
+          st.style.background = "#c0392b";
+          msg.hidden = false;
+          msg.style.color = "#c0392b";
+          msg.textContent = "할당량 초과 — 해당 리전의 한도를 넘었습니다.";
+        } else if (t.status === "done") {
+          bar.className = "h-2 rounded-full bg-primary";
+          st.textContent = "완료 100%";
+          st.className = "text-sm text-primary";
+        } else {
+          st.textContent = "진행중 " + t.progress + "%";
+        }
+      });
+      updateMini(targets);
+      if (allDone) { clearInterval(simTimer); simTimer = null; }
+    }, 450);
+  }
+
   // ── 이벤트 배선 ──────────────────────────────────────────────────────────
   function init() {
     var container = document.getElementById("prov-common-fields");
