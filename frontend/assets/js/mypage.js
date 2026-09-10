@@ -1,43 +1,370 @@
-/* 마이페이지(MY-01) — 연결된 클라우드 계정 표 행 드래그 순서 변경 (순수 프론트엔드).
+/* 마이페이지(MY-01) — 키 & 플랫폼 IAM 계정 관리 폼 + 연결된 클라우드 계정 표.
  *
- * 포인터(마우스) 이벤트 기반 정렬 — 표 행에서 불안정한 HTML5 Drag&Drop 대신
- * pointerdown/move/up + elementFromPoint로 직접 재배치한다(브라우저 호환 안정적).
- * 바뀐 순서는 localStorage(mcp_account_order, 행 이름을 키)에 저장해 새로고침 후 유지.
- * 서버 통신 없음. 기존 필터(행 hidden 토글)와 공존한다.
- *
- * API 연동 후에는 이 순서를 서버(계정 display_order 등)에 저장하도록 교체한다.
+ * 이제 실데이터: assets/js/api.js(MCPApi)로 백엔드 credentials API(§6)를 직접 호출한다.
+ * - 플랫폼 선택에 따라 필요한 입력 필드를 동적으로 렌더링(AWS 2개/Azure 4개/GCP는 서비스
+ *   계정 JSON 붙여넣기 1개 — GCP는 JSON 안에 project_id가 있어 계정 식별자를 따로 받지 않는다).
+ * - "저장 및 검증" → POST /credentials/{provider} (검증 실패해도 저장되고 표에 반영된다).
+ * - 표는 GET /cloud-accounts + 계정별 GET /cloud-accounts/{id}/credentials로 채운다.
+ *   "연결 리소스" 열은 리소스 조회 API가 아직 없어 "—"로 고정한다(추후 연동).
+ * - 행 드래그 순서 변경은 PUT /credentials/order로 저장한다(더 이상 localStorage 아님).
+ * - 회원가입/비밀번호 재설정 등 인증 기능은 이 작업 범위가 아니다.
  */
 (function () {
   "use strict";
-  var ORDER_KEY = "mcp_account_order";
+
   var tbody = document.getElementById("accounts-tbody");
-  if (!tbody) return;
+  var form = document.getElementById("credential-form");
+  if (!tbody || !form) return;
 
-  function rowKey(tr) {
-    var cell = tr.children[1]; // 이름 셀
-    return cell ? (cell.textContent || "").trim() : "";
+  var loadingRow = document.getElementById("accounts-loading-row");
+  var emptyRow = document.getElementById("accounts-empty-row");
+  var providerSelect = document.getElementById("cred-provider");
+  var accountIdField = document.getElementById("cred-account-id-field");
+  var accountIdLabel = document.getElementById("cred-account-id-label");
+  var accountIdInput = document.getElementById("cred-external-account-id");
+  var fieldsContainer = document.getElementById("cred-provider-fields");
+  var submitBtn = document.getElementById("cred-submit");
+  var resultEl = document.getElementById("cred-result");
+
+  var PROVIDER_LABELS = { aws: "AWS", azure: "Azure", gcp: "GCP" };
+
+  function val(id) {
+    var el = document.getElementById(id);
+    return el ? el.value.trim() : "";
   }
-  function getRows() {
-    return Array.prototype.slice.call(tbody.querySelectorAll("tr"));
+  function nonEmpty(id) {
+    return val(id).length > 0;
   }
 
-  function applySavedOrder() {
-    var saved;
-    try { saved = JSON.parse(localStorage.getItem(ORDER_KEY) || "null"); } catch (e) { saved = null; }
-    if (!saved || !saved.length) return;
-    var byKey = {};
-    getRows().forEach(function (tr) { byKey[rowKey(tr)] = tr; });
-    saved.forEach(function (key) { if (byKey[key]) tbody.appendChild(byKey[key]); });
+  function parseGcpJson() {
+    var raw = val("cred-gcp-json");
+    if (!raw) return null;
+    var data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      return null;
+    }
+    if (!data || data.type !== "service_account") return null;
+    if (!data.client_email || !data.private_key_id || !data.private_key || !data.project_id) return null;
+    return data;
   }
-  function saveOrder() {
-    try { localStorage.setItem(ORDER_KEY, JSON.stringify(getRows().map(rowKey))); } catch (e) {}
+
+  // --- 플랫폼별 입력 템플릿 -------------------------------------------------------------
+
+  var PROVIDER_TEMPLATES = {
+    aws: {
+      accountIdLabel: "AWS 계정 ID",
+      accountIdPlaceholder: "123456789012",
+      showAccountId: true,
+      fieldsHtml:
+        '<div>' +
+          '<label for="cred-aws-access-key-id" class="mb-1 block text-sm font-medium">Access Key ID</label>' +
+          '<input id="cred-aws-access-key-id" type="text" placeholder="AKIA..." class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />' +
+        '</div>' +
+        '<div>' +
+          '<label for="cred-aws-secret-access-key" class="mb-1 block text-sm font-medium">Secret Access Key</label>' +
+          '<div class="relative">' +
+            '<input id="cred-aws-secret-access-key" type="password" class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary" />' +
+            '<button type="button" onclick="MCUI.togglePassword(\'cred-aws-secret-access-key\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환">👁</button>' +
+          '</div>' +
+        '</div>',
+      isValid: function () {
+        return nonEmpty("cred-aws-access-key-id") && nonEmpty("cred-aws-secret-access-key");
+      },
+      secretPayload: function () {
+        return { access_key_id: val("cred-aws-access-key-id"), secret_access_key: val("cred-aws-secret-access-key") };
+      },
+      publicIdentifier: function () {
+        return val("cred-aws-access-key-id");
+      },
+      externalAccountId: function () {
+        return val("cred-external-account-id");
+      },
+    },
+    azure: {
+      accountIdLabel: "구독 ID",
+      accountIdPlaceholder: "00000000-0000-0000-0000-000000000000",
+      showAccountId: true,
+      fieldsHtml:
+        '<div>' +
+          '<label for="cred-azure-tenant-id" class="mb-1 block text-sm font-medium">테넌트 ID</label>' +
+          '<input id="cred-azure-tenant-id" type="text" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />' +
+        '</div>' +
+        '<div>' +
+          '<label for="cred-azure-client-id" class="mb-1 block text-sm font-medium">클라이언트 ID</label>' +
+          '<input id="cred-azure-client-id" type="text" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />' +
+        '</div>' +
+        '<div>' +
+          '<label for="cred-azure-client-secret" class="mb-1 block text-sm font-medium">클라이언트 Secret</label>' +
+          '<div class="relative">' +
+            '<input id="cred-azure-client-secret" type="password" class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary" />' +
+            '<button type="button" onclick="MCUI.togglePassword(\'cred-azure-client-secret\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환">👁</button>' +
+          '</div>' +
+        '</div>',
+      isValid: function () {
+        return nonEmpty("cred-azure-tenant-id") && nonEmpty("cred-azure-client-id") && nonEmpty("cred-azure-client-secret");
+      },
+      secretPayload: function () {
+        return {
+          tenant_id: val("cred-azure-tenant-id"),
+          client_id: val("cred-azure-client-id"),
+          client_secret: val("cred-azure-client-secret"),
+        };
+      },
+      publicIdentifier: function () {
+        return val("cred-azure-client-id");
+      },
+      externalAccountId: function () {
+        return val("cred-external-account-id");
+      },
+    },
+    gcp: {
+      showAccountId: false,
+      fieldsHtml:
+        '<div>' +
+          '<label for="cred-gcp-json" class="mb-1 block text-sm font-medium">서비스 계정 키 (JSON)</label>' +
+          '<textarea id="cred-gcp-json" rows="6" placeholder=\'{"type":"service_account","project_id":"...","client_email":"...","private_key_id":"...","private_key":"..."}\'' +
+          ' class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary font-mono"></textarea>' +
+          '<p id="cred-gcp-hint" class="mt-1 text-xs text-muted-foreground">GCP 콘솔에서 다운로드한 서비스 계정 키 JSON 파일 내용을 그대로 붙여넣으세요.</p>' +
+        '</div>',
+      isValid: function () {
+        return parseGcpJson() !== null;
+      },
+      secretPayload: function () {
+        var data = parseGcpJson();
+        return data
+          ? { type: data.type, client_email: data.client_email, private_key_id: data.private_key_id, private_key: data.private_key }
+          : null;
+      },
+      publicIdentifier: function () {
+        var data = parseGcpJson();
+        return data ? data.client_email : "";
+      },
+      externalAccountId: function () {
+        var data = parseGcpJson();
+        return data ? data.project_id : "";
+      },
+    },
+  };
+
+  function renderProviderFields() {
+    var tpl = PROVIDER_TEMPLATES[providerSelect.value];
+    fieldsContainer.innerHTML = tpl.fieldsHtml;
+    accountIdField.hidden = !tpl.showAccountId;
+    if (tpl.showAccountId) {
+      accountIdLabel.textContent = tpl.accountIdLabel;
+      accountIdInput.placeholder = tpl.accountIdPlaceholder;
+      accountIdInput.value = "";
+    }
+    hideResult();
+
+    var gcpJson = document.getElementById("cred-gcp-json");
+    var gcpHint = document.getElementById("cred-gcp-hint");
+    if (gcpJson && gcpHint) {
+      gcpJson.addEventListener("input", function () {
+        var data = parseGcpJson();
+        if (!val("cred-gcp-json")) {
+          gcpHint.textContent = "GCP 콘솔에서 다운로드한 서비스 계정 키 JSON 파일 내용을 그대로 붙여넣으세요.";
+        } else if (data) {
+          gcpHint.textContent = "감지된 프로젝트 ID: " + data.project_id;
+        } else {
+          gcpHint.textContent = "JSON 형식 또는 필수 필드(type, project_id, client_email, private_key_id, private_key)를 확인해 주세요.";
+        }
+      });
+    }
   }
+
+  function showResult(message, ok) {
+    resultEl.textContent = message;
+    resultEl.className = "text-sm " + (ok ? "text-primary" : "text-yellow");
+    resultEl.classList.remove("hidden");
+  }
+  function hideResult() {
+    resultEl.classList.add("hidden");
+  }
+
+  var ERROR_MESSAGES = {
+    CREDENTIAL_ALREADY_EXISTS: "같은 이름의 자격 증명이 이미 있습니다. 다른 이름을 사용해 주세요.",
+    VALIDATION_ERROR: "입력값을 다시 확인해 주세요.",
+    AUTHENTICATION_REQUIRED: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
+    INVALID_TOKEN: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
+  };
+  function errorMessage(err) {
+    return ERROR_MESSAGES[err.code] || err.message || "요청 처리 중 오류가 발생했습니다.";
+  }
+
+  providerSelect.addEventListener("change", renderProviderFields);
+  renderProviderFields();
+
+  form.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var provider = providerSelect.value;
+    var tpl = PROVIDER_TEMPLATES[provider];
+    var name = val("cred-name");
+    var externalAccountId = tpl.externalAccountId();
+
+    if (!name || !externalAccountId || !tpl.isValid()) {
+      showResult("필수 입력값을 모두 채워 주세요.", false);
+      return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.classList.add("opacity-50", "cursor-not-allowed");
+
+    MCPApi.request("/credentials/" + provider, {
+      method: "POST",
+      body: {
+        external_account_id: externalAccountId,
+        account_label: name,
+        name: name,
+        public_identifier: tpl.publicIdentifier(),
+        secret_payload: tpl.secretPayload(),
+      },
+    })
+      .then(function (data) {
+        showResult(
+          data.verified
+            ? "저장되었습니다. 검증에 성공했습니다."
+            : "저장되었습니다. 다만 검증에는 실패했습니다 — 아래 표에서 확인해 주세요.",
+          data.verified
+        );
+        form.reset();
+        renderProviderFields();
+        loadAccounts();
+      })
+      .catch(function (err) {
+        showResult(errorMessage(err), false);
+      })
+      .then(function () {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove("opacity-50", "cursor-not-allowed");
+      });
+  });
+
+  // --- 연결된 클라우드 계정 표 ------------------------------------------------------------
+
+  function formatRelative(iso) {
+    var diffMs = Date.now() - new Date(iso).getTime();
+    var minutes = Math.floor(diffMs / 60000);
+    if (minutes < 1) return "방금 전";
+    if (minutes < 60) return minutes + "분 전";
+    var hours = Math.floor(minutes / 60);
+    if (hours < 24) return hours + "시간 전";
+    return Math.floor(hours / 24) + "일 전";
+  }
+
+  function buildRow(account, credential) {
+    var tr = document.createElement("tr");
+    tr.className = "border-b border-border";
+    tr.dataset.credentialId = credential.id;
+    tr.style.userSelect = "none";
+    tr.style.cursor = "grab";
+    tr.style.touchAction = "none";
+
+    function cell(text, className) {
+      var td = document.createElement("td");
+      td.className = className || "px-3 py-3";
+      td.textContent = text;
+      tr.appendChild(td);
+      return td;
+    }
+
+    cell("⋮⋮", "px-3 py-3 cursor-grab text-muted-foreground");
+    cell(credential.name, "px-3 py-3 font-medium");
+    cell(PROVIDER_LABELS[account.provider] || account.provider);
+    cell(account.external_account_id);
+    cell(credential.masked_public_identifier || "—");
+
+    var statusTd = cell("");
+    var badge = document.createElement("span");
+    if (credential.verified) {
+      badge.className = "rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary";
+      badge.textContent = "✓ 검증" + (credential.verified_at ? " · " + formatRelative(credential.verified_at) : "");
+    } else {
+      badge.className = "rounded-full px-2 py-0.5 text-[11px] text-white";
+      badge.style.background = "#c0392b";
+      badge.textContent = "✗ 검증 실패";
+    }
+    statusTd.appendChild(badge);
+
+    cell("—"); // 연결 리소스 — 리소스 조회 API 연동 전까지 자리표시자
+
+    return tr;
+  }
+
+  function getDataRows() {
+    return Array.prototype.slice.call(tbody.querySelectorAll("tr[data-credential-id]"));
+  }
+
+  function loadAccounts() {
+    getDataRows().forEach(function (row) { row.remove(); });
+    emptyRow.hidden = true;
+    loadingRow.hidden = false;
+    loadingRow.querySelector("td").textContent = "불러오는 중…";
+
+    MCPApi.request("/cloud-accounts")
+      .then(function (data) {
+        var accounts = data.items || [];
+        if (!accounts.length) return [];
+        return Promise.all(
+          accounts.map(function (account) {
+            return MCPApi.request("/cloud-accounts/" + account.id + "/credentials").then(function (credData) {
+              return (credData.items || []).map(function (credential) {
+                return { account: account, credential: credential };
+              });
+            });
+          })
+        ).then(function (grouped) {
+          var flat = [];
+          grouped.forEach(function (list) { flat = flat.concat(list); });
+          flat.sort(function (a, b) { return a.credential.display_order - b.credential.display_order; });
+          return flat;
+        });
+      })
+      .then(function (rows) {
+        loadingRow.hidden = true;
+        if (!rows.length) {
+          emptyRow.hidden = false;
+          return;
+        }
+        rows.forEach(function (r) { tbody.appendChild(buildRow(r.account, r.credential)); });
+        applyFilters();
+      })
+      .catch(function (err) {
+        loadingRow.hidden = false;
+        loadingRow.querySelector("td").textContent = "목록을 불러오지 못했습니다: " + errorMessage(err);
+      });
+  }
+
+  // --- 필터 ---------------------------------------------------------------------------
+
+  var platformSelect = document.getElementById("my-f-platform");
+  var nameInput = document.getElementById("my-search-name");
+  var tagSelect = document.getElementById("my-f-tag");
+
+  function applyFilters() {
+    var fPlatform = platformSelect.options[platformSelect.selectedIndex].text;
+    var kw = nameInput.value.trim().toLowerCase();
+    getDataRows().forEach(function (row) {
+      var ok = true;
+      if (!/전체/.test(fPlatform) && row.children[2].textContent.trim() !== fPlatform) ok = false;
+      if (ok && kw && row.children[1].textContent.trim().toLowerCase().indexOf(kw) === -1) ok = false;
+      row.hidden = !ok;
+    });
+  }
+  platformSelect.addEventListener("change", applyFilters);
+  nameInput.addEventListener("input", applyFilters);
+  // 태그 필터는 API에 태그 조회 정책이 아직 없어 '전체'만 유효(연결만 해둠)
+  tagSelect.addEventListener("change", applyFilters);
+
+  // --- 행 드래그 순서 변경 → PUT /credentials/order ----------------------------------------
 
   var dragging = null;
 
   function rowUnder(x, y) {
     var el = document.elementFromPoint(x, y);
-    var tr = el && el.closest ? el.closest("tr") : null;
+    var tr = el && el.closest ? el.closest("tr[data-credential-id]") : null;
     return tr && tr.parentNode === tbody ? tr : null;
   }
 
@@ -47,15 +374,25 @@
     var over = rowUnder(e.clientX, e.clientY);
     if (!over || over === dragging) return;
     var rect = over.getBoundingClientRect();
-    var after = (e.clientY - rect.top) > rect.height / 2;
+    var after = e.clientY - rect.top > rect.height / 2;
     tbody.insertBefore(dragging, after ? over.nextSibling : over);
+  }
+
+  function persistOrder() {
+    var items = getDataRows().map(function (row, idx) {
+      return { credential_id: row.dataset.credentialId, display_order: idx };
+    });
+    MCPApi.request("/credentials/order", { method: "PUT", body: { items: items } }).catch(function (err) {
+      // 순서 저장은 편의 기능이라 실패해도 화면은 막지 않는다.
+      console.error("순서 저장 실패:", errorMessage(err));
+    });
   }
 
   function onUp() {
     if (dragging) {
       dragging.classList.remove("opacity-50");
       dragging.style.cursor = "grab";
-      saveOrder();
+      persistOrder();
     }
     dragging = null;
     document.removeEventListener("pointermove", onMove);
@@ -63,24 +400,18 @@
   }
 
   function onDown(e) {
-    if (e.button !== undefined && e.button !== 0) return; // 좌클릭만
-    var tr = e.target.closest ? e.target.closest("tr") : null;
+    if (e.button !== undefined && e.button !== 0) return;
+    var tr = e.target.closest ? e.target.closest("tr[data-credential-id]") : null;
     if (!tr || tr.parentNode !== tbody) return;
     dragging = tr;
     tr.classList.add("opacity-50");
     tr.style.cursor = "grabbing";
-    if (e.cancelable) e.preventDefault(); // 텍스트 선택 방지
+    if (e.cancelable) e.preventDefault();
     document.addEventListener("pointermove", onMove);
     document.addEventListener("pointerup", onUp);
   }
 
-  getRows().forEach(function (tr) {
-    tr.style.userSelect = "none";
-    tr.style.webkitUserSelect = "none";
-    tr.style.cursor = "grab";
-    tr.style.touchAction = "none";
-  });
   tbody.addEventListener("pointerdown", onDown);
 
-  applySavedOrder();
+  loadAccounts();
 })();
