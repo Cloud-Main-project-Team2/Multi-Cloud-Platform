@@ -84,20 +84,26 @@
               class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
           </div>
 
-          <!-- 소속 (드롭다운 회사/개인 + 소속단체명, 생략 가능) -->
+          <!-- 소속 (드롭다운 회사/개인 + 소속단체명 — 회사 선택 시 단체명 필수) -->
           <div>
-            <label class="mb-1 block text-sm font-medium">소속 <span class="font-normal text-muted-foreground">(생략 가능)</span></label>
+            <label class="mb-1 block text-sm font-medium">소속</label>
             <div class="flex gap-2">
-              <select class="shrink-0 rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary">
-                <option>회사</option>
-                <option>개인</option>
+              <select id="affiliation-type" class="shrink-0 rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary">
+                <option value="company">회사</option>
+                <option value="individual">개인</option>
               </select>
-              <input type="text" placeholder="소속단체명"
+              <input id="affiliation-name" type="text" placeholder="소속단체명"
                 class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
             </div>
           </div>
 
           <button id="signup-btn" type="submit" class="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white hover:opacity-90">가입하기</button>
+
+          <!-- 가입 실패 배너 (기본 숨김 — 서버 오류 시에만 노출) -->
+          <div id="signup-error" class="hidden items-center gap-2 rounded-lg border border-yellow bg-background px-3 py-2.5 text-sm">
+            <span class="text-yellow">⚠</span>
+            <span id="signup-error-text"></span>
+          </div>
         </form>
 
         <p class="mt-6 text-center text-sm text-muted-foreground">
@@ -147,6 +153,7 @@
   <script src="assets/js/modal.js"></script>
   <script src="assets/js/validate.js"></script>
   <script src="assets/js/dropdown.js"></script>
+  <script src="assets/js/api.js"></script>
   <script>
     (function () {
       var email = document.getElementById("email");
@@ -157,9 +164,27 @@
       var cp = document.getElementById("confirm-password");
       var matchMsg = document.getElementById("pw-match-msg");
       var name = document.getElementById("name");
+      var affiliationType = document.getElementById("affiliation-type");
+      var affiliationName = document.getElementById("affiliation-name");
       var btn = document.getElementById("signup-btn");
       var form = document.getElementById("signup-form");
+      var errorBanner = document.getElementById("signup-error");
+      var errorText = document.getElementById("signup-error-text");
       var dupChecked = false;
+
+      function hideError() {
+        errorBanner.classList.add("hidden");
+        errorBanner.classList.remove("flex");
+      }
+      function showError(message) {
+        errorText.textContent = message;
+        errorBanner.classList.remove("hidden");
+        errorBanner.classList.add("flex");
+      }
+
+      function affiliationValid() {
+        return affiliationType.value !== "company" || MCVAL.isNonEmpty(affiliationName.value);
+      }
 
       function refresh() {
         var strong = MCVAL.isStrongPassword(pw.value);
@@ -170,21 +195,24 @@
         matchMsg.classList.toggle("hidden", !mismatch);
 
         var ok = MCVAL.isEmail(email.value) && dupChecked && strong
-          && cp.value === pw.value && cp.value.length > 0 && MCVAL.isNonEmpty(name.value);
+          && cp.value === pw.value && cp.value.length > 0 && MCVAL.isNonEmpty(name.value)
+          && affiliationValid();
         MCVAL.setEnabled(btn, ok);
       }
 
-      // 이메일이 바뀌면 중복 확인을 다시 받아야 함
-      email.addEventListener("input", function () { dupChecked = false; dupMsg.classList.add("hidden"); refresh(); });
+      // 이메일이 바뀌면 중복 확인(형식 확인)을 다시 받아야 함 — 실제 중복 여부는 가입 시 서버가 최종 판단한다.
+      email.addEventListener("input", function () { dupChecked = false; dupMsg.classList.add("hidden"); hideError(); refresh(); });
       pw.addEventListener("input", refresh);
       cp.addEventListener("input", refresh);
       name.addEventListener("input", refresh);
+      affiliationType.addEventListener("change", refresh);
+      affiliationName.addEventListener("input", refresh);
 
       dupBtn.addEventListener("click", function () {
         dupMsg.classList.remove("hidden");
         if (MCVAL.isEmail(email.value)) {
           dupChecked = true;
-          dupMsg.textContent = "사용 가능한 이메일입니다."; // 데모 — 서버 없이 항상 성공
+          dupMsg.textContent = "형식이 올바른 이메일입니다. 가입 시 중복 여부를 다시 확인합니다.";
           dupMsg.style.color = "var(--primary)";
         } else {
           dupChecked = false;
@@ -194,9 +222,42 @@
         refresh();
       });
 
+      var ERROR_MESSAGES = {
+        EMAIL_ALREADY_EXISTS: "이미 사용 중인 이메일입니다. 다른 이메일로 다시 확인해 주세요.",
+        VALIDATION_ERROR: "입력값을 다시 확인해 주세요.",
+      };
+
       form.addEventListener("submit", function (e) {
         e.preventDefault();
-        if (!btn.disabled) MCPModal.open("#signup-done-modal");
+        if (btn.disabled) return;
+        hideError();
+        MCVAL.setEnabled(btn, false);
+
+        MCPApi.request("/auth/sign-up", {
+          method: "POST",
+          body: {
+            email: email.value.trim(),
+            password: pw.value,
+            name: name.value.trim(),
+            affiliation_type: affiliationType.value,
+            affiliation_name: affiliationName.value.trim() || null,
+          },
+        })
+          .then(function () {
+            MCPModal.open("#signup-done-modal");
+          })
+          .catch(function (err) {
+            MCVAL.setEnabled(btn, true);
+            if (err.code === "EMAIL_ALREADY_EXISTS") {
+              dupChecked = false;
+              dupMsg.classList.remove("hidden");
+              dupMsg.textContent = "이미 사용 중인 이메일입니다.";
+              dupMsg.style.color = "#c0392b";
+              MCVAL.setEnabled(btn, false);
+            } else {
+              showError(ERROR_MESSAGES[err.code] || err.message || "가입에 실패했습니다. 잠시 후 다시 시도해 주세요.");
+            }
+          });
       });
 
       refresh();
