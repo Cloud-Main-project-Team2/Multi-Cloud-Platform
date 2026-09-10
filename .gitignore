@@ -22,8 +22,13 @@ yarn-error.log*
 *.tfstate.*
 crash.log
 *.tfvars
+*.tfvars.json
 !*.tfvars.example
 .terraform.lock.hcl
+
+# job별 격리 실행 디렉터리 및 provider plugin 캐시(app/services/provisioning) — 런타임 산출물
+backend/terraform/.runs/
+backend/terraform/.plugin-cache/
 
 # ---- 로그 ----
 logs/
