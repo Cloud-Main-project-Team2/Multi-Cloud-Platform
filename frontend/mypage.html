@@ -76,7 +76,7 @@
 
           <!-- 2. 키 & 플랫폼 IAM 계정 관리 -->
           <section class="rounded-2xl border border-border bg-surface p-5">
-            <p class="font-semibold">키 &amp; 플랫폼 IAM 계정 관리</p>
+            <p id="cred-form-title" class="font-semibold">키 &amp; 플랫폼 IAM 계정 관리</p>
             <form id="credential-form" class="mt-3 grid max-w-2xl gap-3">
               <div class="grid gap-3 sm:grid-cols-2">
                 <div>
@@ -104,6 +104,7 @@
 
               <div class="flex items-center gap-3">
                 <button id="cred-submit" type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">저장 및 검증</button>
+                <button id="cred-cancel-edit" type="button" hidden class="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted">수정 취소</button>
                 <span id="cred-result" class="hidden text-sm"></span>
               </div>
               <p class="text-xs text-muted-foreground">검증에 실패해도 자격 증명은 저장되며, 아래 표에서 검증 실패로 표시됩니다. 언제든 "재검증"할 수 있습니다.</p>
@@ -134,12 +135,13 @@
                     <th class="px-3 py-3 font-medium">키</th>
                     <th class="px-3 py-3 font-medium">검증 상태</th>
                     <th class="px-3 py-3 font-medium">연결 리소스</th>
+                    <th class="px-3 py-3 font-medium">관리</th>
                   </tr>
                 </thead>
                 <tbody id="accounts-tbody">
                   <!-- mypage.js가 GET /cloud-accounts + GET /cloud-accounts/{id}/credentials 결과로 채운다 -->
-                  <tr id="accounts-loading-row"><td colspan="7" class="px-3 py-6 text-center text-muted-foreground">불러오는 중…</td></tr>
-                  <tr id="accounts-empty-row" hidden><td colspan="7" class="px-3 py-6 text-center text-muted-foreground">연결된 클라우드 계정이 없습니다. 위에서 키를 등록해 보세요.</td></tr>
+                  <tr id="accounts-loading-row"><td colspan="8" class="px-3 py-6 text-center text-muted-foreground">불러오는 중…</td></tr>
+                  <tr id="accounts-empty-row" hidden><td colspan="8" class="px-3 py-6 text-center text-muted-foreground">연결된 클라우드 계정이 없습니다. 위에서 키를 등록해 보세요.</td></tr>
                 </tbody>
               </table>
             </div>
