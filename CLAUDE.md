@@ -58,7 +58,8 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 | 페이지 UI 구현 — 확정 화면 12개 정적 UI | `solcho/fe-pages` | 조은솔 | in progress |
 | 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
 | 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | in progress |
-| 키 관리(마이페이지) API — cloud-accounts/credentials 10개 엔드포인트 + 최소 로그인(JWT) | `solcho/be-credentials-api` | 조은솔 | in progress |
+| 키 관리(마이페이지) API — cloud-accounts/credentials 10개 엔드포인트 + 최소 로그인(JWT)·회원가입 | `solcho/be-credentials-api` 외 | 조은솔 | merged |
+| 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -115,6 +116,39 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
   근거: 안전한 읽기 전용 프로빙 API가 provider/권한마다 표준화돼 있지 않고, GCP 비용 수집
   방식·권한은 이미 §19에 미확정 항목으로 남아 있어 이 세션에서 새로 정하지 않았다. 화면의
   자기신고 체크박스(정적 UI, 이번 세션에서 변경 없음)로 나머지를 보완하는 것을 전제로 한다.
+- **resources/action 일괄 요청 원자성(2026-09-10, `solcho/be-resources-api`)**: §19 미확정
+  항목 중 "전체 실패 또는 항목별 부분 성공"을 **항목별 부분 성공**으로 확정(§8.5 예시 응답과
+  같은 방향). 리소스 하나가 실패해도 나머지 리소스는 계속 처리하고, 각 항목은
+  `success | rejected | failed` 중 하나로 결과에 남는다(`rejected`=사전 검사 단계에서 걸러짐,
+  `failed`=CSP 호출까지 갔다가 실패). `app/routers/resources.py`의 `_process_action_item`.
+- **resources/action SDK 어댑터 구현 범위(2026-09-10, `solcho/be-resources-api`)**:
+  `aws_client.py`/`azure_client.py`/`gcp_client.py` 어댑터가 이 저장소에 전혀 없어서(구버전
+  프로토타입 세션이 실행된 적 없음) `app/providers/{aws,azure,gcp}.py`의 `perform_resource_action`
+  으로 새로 구현했다. §0 지시대로 "최소 EC2/RDS/S3"를 채우고, 목업 리소스(mcp-c3d4-vm)가
+  Azure VM이라 Azure VM도, 같은 이유로 GCP Compute Engine도 추가했다.
+  - **지원**: AWS EC2 인스턴스(start/stop/delete) · EBS Volume(delete만) · RDS 인스턴스
+    (start/stop/delete) · S3 버킷(delete만, 비어있지 않으면 `BucketNotEmpty` →
+    `force_empty:true` 재요청 지원) · Azure Virtual Machine(start/stop/delete) · GCP
+    Compute Engine 인스턴스(start/stop/delete).
+  - **미지원(`UNSUPPORTED_OPERATION` 고정)**: Azure SQL Database/Storage Account/CDN, GCP
+    Cloud SQL/Cloud Storage/Cloud CDN, AWS CloudFront — 어댑터가 없어서가 아니라 이번 세션
+    범위 밖으로 의도적으로 뺐다. `app/resource_actions.py`의 `supported_actions()` 참고.
+  - **Azure 리소스 식별 규칑**: `resources.external_resource_id`는 Azure의 경우 ARM 리소스 ID
+    전체(`/subscriptions/.../resourceGroups/.../providers/.../virtualMachines/...`)라고
+    가정한다 — VM 이름만으로는 조작에 필요한 resource group을 알 수 없기 때문. 동기화(9장)
+    구현 시 이 형식으로 저장해야 한다.
+  - **GCP zone 단순화**: GCP Compute 인스턴스는 zone 단위로 존재하는데 스키마에 별도 zone
+    컬럼이 없어 `resources.region` 값을 zone으로 그대로 사용한다(예: `asia-northeast3-a`).
+  - **CSP 호출은 완료를 기다리지 않을 수 있다**: AWS(`start_instances`/`stop_instances`/
+    `start_db_instance`/`stop_db_instance`)는 호출이 accept되면 성공으로 본다(실제 상태 전이
+    완료까지 폴링하지 않음). Azure(`begin_*().result()`)와 GCP(`operation.result()`)는 SDK
+    관용구상 완료까지 기다린다 — provider별 비대칭이 의도적이다.
+  - **credential 권한 검사와 목업 데이터 호환**: 실행 전 `credentials.permission_scope
+    .resource_control`이 있으면 확인하되, **빈 딕셔너리(`{}`)면 검사를 건너뛴다** — 실제
+    `verify_credential()`을 거친 credential은 항상 4개 키를 다 채우므로, 빈 값은 "아직
+    한 번도 검증된 적 없는 값"(예: `seed_mock_data.py`처럼 손으로 넣은 데이터)이라는 뜻이다.
+    이렇게 해야 목업 credential(permission_scope 없음)로도 액션 파이프라인을 테스트할 수
+    있다.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 
