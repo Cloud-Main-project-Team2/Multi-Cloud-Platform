@@ -209,6 +209,13 @@ API 연동 없이 JS만으로 완성 가능한 나머지 데모 기능들. 서�
   알림 세 컨트롤을 **사이드바 하단(footer 위) `.sidebar__utils`**에 개별 캡슐(`border-radius:999px`,
   다크 네이비에 맞춘 은은한 톤)로 배치(shell.css + 4개 화면 마크업). 우상단 플로팅은 다른 콘텐츠와
   겹쳐 사이드바 하단으로 옮김. 본문이 최상단까지 올라오고, 프로비저닝 과금 배너 sticky는 `top-0`.
+- **MY-01 계정 순서 드래그**: 연결된 클라우드 계정 표 행을 HTML5 Drag&Drop으로 재정렬
+  (`assets/js/mypage.js`), 순서는 `localStorage.mcp_account_order`(행 이름을 키)로 저장해 새로고침
+  후 유지. 기존 필터(행 hidden 토글)와 공존. → API 연동 시 서버(계정 display_order 등) 저장으로 교체.
+
+> **진행 순서 메모(2026-09-11)**: 마이페이지 계정 순서까지 완료 후, 나머지 웹 단위(KOR/EN 전환,
+> 알림 드롭다운, 인벤토리 CSV·액션, 프로비저닝 보강)는 **키값(credentials) API 연동이 끝난 뒤** 재개.
+> 키값 저장·검증 API가 팀원들의 프로비저닝 구현·테스트를 언블록하는 우선 작업이기 때문.
 
 ## Pointer — where the planning docs live
 
