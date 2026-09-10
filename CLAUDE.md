@@ -111,6 +111,49 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 - **PROV-02 진행률**: 기본형↔축소형은 실제 진행 상태 반영이 아니라 정적 두 형태의 UI 토글일 뿐(실 폴링은 백엔드 연동 이후).
 - 기존 `MCUI.open/close`(ui.js)로 열리던 모달들도 이 브랜치에서 `MCPModal`/data 속성으로 통일.
 
+### Assumptions — 프로비저닝 설정 폼 (`solcho/fe-provisioning-form`)
+
+PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫폼에 따라 동적 렌더링하고 입력값을
+전역 상태(`window.provisioningSpec`)에 반영하는 작업. 서버 통신은 없음(Network 탭 요청 0건).
+필드명은 이후 BE 연동을 위해 `01_API_명세서_v1.1.md` §10.3의 `common_spec`/`provider_spec`
+구조에 맞춰 잡음(`assets/js/provisioning.js`).
+
+- **사양 등급 → 실제 SKU 매핑**(추상 3등급, `provisioning.js`의 `SPEC_TIERS` 상수):
+
+  | 등급 | AWS | Azure | GCP |
+  |---|---|---|---|
+  | 경량 (1 vCPU · 2GB) | `t3.micro` | `B1s` | `e2-micro` |
+  | 표준 (2 vCPU · 4GB) | `t3.medium` | `B2s` | `e2-medium` |
+  | 고성능 (4 vCPU · 8GB) | `t3.large` | `B4ms` | `e2-standard-4` |
+
+  표준 등급은 가격 비교 모달 예시값과 일치. 사용자는 등급만 고르고 실제 SKU는 코드에서 변환한다.
+- **리전 제한**(서비스 컨텍스트 9절): AWS `ap-northeast-2`/`us-east-1`, Azure
+  `koreacentral`/`eastus`/`koreasouth`/`canadacentral`, GCP `asia-northeast3`/`us-central1`.
+  선택한 플랫폼마다 별도 리전 select.
+- **네트워크**: 오늘은 "새 VPC/Subnet 자동 생성" 고정, "기존 리소스 사용" 토글은 자리만 두고 비활성
+  (실제 VPC/Subnet lookup은 BE 연동 이후).
+- **맵핑 문서 "제외" 필드**(Compute 스토리지·권한, DB 사양·스토리지·네트워크·접근제어·가용성,
+  Storage 접근제어·중복성·버전관리)는 폼에 렌더링하지 않고 `providerSpec`에 서버 기본값 상수로만
+  채운다(사용자 입력 없음).
+- **DB 공통 설정**: 엔진 옵션은 플랫폼별로 다름(AWS 7종, Azure/GCP 3종). Azure는 "MariaDB 25/9/19
+  지원 종료" 경고 상시 노출. 인증은 마스터 사용자명+비밀번호, 단 **GCP는 루트 비밀번호만**. 백업은
+  읽기 전용 안내(자동 백업 고정). `providerSpec[p]`에 `engine`/`region`/`masterUsername`/`masterPassword` 저장.
+- **Storage 공통 설정**: 버킷/계정명(전역 고유, mcp- 프리픽스 없음), 리전(Azure는 'Central' 고정 안내).
+  Azure 선택 시 태그 검색 미지원 경고. "이름(서비스)"는 읽기 전용 라벨.
+- **리소스 종류 선택 가능화**: 정적 UI의 "권한 없음" 데모로 비활성이던 Database/Storage 라디오를 이
+  브랜치에서 활성화(동적 폼이 실제로 동작해야 하므로). CDN만 비활성 유지.
+- **⑤ 플랫폼별 추가 설정**: Compute 이미지는 **AWS/Azure만**(AWS는 "직접 AMI ID 입력" 선택 시
+  AMI ID 입력칸 노출, GCP는 미노출), Storage 스토리지 등급은 **GCP만**(Standard/Nearline/Coldline/
+  Archive), DB는 추가 입력 없음(서버 기본값). "제외" 필드는 `SERVER_DEFAULTS` 상수로 `providerSpec`에만
+  채운다(사용자 입력 없음).
+- **CDN**: 3사 공통 입력 스펙 미확정 → 선택은 가능하되 ④(공통)를 **건너뛰어 숨기고** ⑤에 "준비 중"
+  안내만 표시, "생성하기"는 **비활성**. (CDN 라디오는 이 브랜치에서 선택 가능하게 활성화함.)
+- **생성하기 활성화**: 선택된 각 플랫폼에 대해 리소스 종류의 공통 필수 + 해당 플랫폼 추가 필수
+  필드가 전부 채워졌을 때만 버튼 활성화(`provisioning.js`의 `validate()`, 상태 기반). 미충족/CDN/
+  플랫폼 미선택 시 비활성. 초기 로드 시에도 필수값 비어 있으면 비활성으로 시작한다.
+- **진행 단위**: 이 브랜치는 (1)Compute 공통 폼 → (2)DB/Storage 공통 폼 → (3)⑤추가 설정+CDN
+  → (4)생성하기 활성화 검증 순으로 커밋을 쪼갠다.
+
 ## Pointer — where the planning docs live
 
 The functional spec (기능명세서), screen design (화면설계서), WBS, and the
