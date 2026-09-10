@@ -10,10 +10,11 @@ from sqlalchemy.exc import SQLAlchemyError
 from app.db import engine
 from app.errors import ApiError
 from app.logging_config import log_access
-from app.routers import auth
+from app.routers import auth, credentials
 
 app = FastAPI(title="Multi-Cloud Platform API")
 app.include_router(auth.router)
+app.include_router(credentials.router)
 
 
 @app.middleware("http")
