@@ -62,6 +62,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 | 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | merged |
 | 리소스 동기화 API — 실제 CSP 리소스 탐색 + `/sync-jobs` 4개 엔드포인트 | `solcho/be-sync-api` | 조은솔 | merged |
 | 인벤토리(INV-01/INV-02) 실API 연동 — 조회·동기화·시작/중지/삭제 | `solcho/fe-inventory-integration` | 조은솔 | in progress |
+| GCP 프로비저닝 API — `/provisioning/{provider}/{service}` 등 4개 엔드포인트, GCP Compute Engine만 Terraform으로 실제 생성 | `kwonhyeong/be-gcp-provisioning` | 안권형 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -206,6 +207,48 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
     (에러 아님 — 단순히 아직 미지원).
   - **audit_events에 동기화를 기록하지 않는다**: §14 기본 기록 대상 표에 `resource.sync`류
     action이 없어 이번 세션에서 새로 만들지 않았다(표에 없는 action을 임의로 추가하지 않음).
+- **GCP 프로비저닝 API 구현 범위(2026-09-11, `kwonhyeong/be-gcp-provisioning`)**: 이 세션 시작
+  시점에 스키마(`app/schemas/provisioning.py`)·러너 레지스트리(`app/provisioning.py`)·GCP
+  Terraform 러너(`app/gcp_provisioning.py`)·provider 무관 subprocess 오케스트레이션
+  (`app/terraform_runner.py`)·Terraform 모듈(`terraform/gcp/compute_vm/`)까지는 이미 있었고,
+  실제 HTTP 라우터(`app/routers/provisioning.py`)와 컨테이너에 terraform CLI 자체가 없어 이
+  세션에서 마저 연결했다. §10 엔드포인트 중 job 생성·조회·취소 4개(`POST
+  /provisioning/{provider}/{service}`, `GET /provisioning/jobs`,
+  `GET /provisioning/jobs/{job_id}`, `POST /provisioning/jobs/{job_id}/cancel`)만 구현했다 —
+  `POST /provisioning/price-comparisons`·`GET /provisioning/options`·`GET /service-catalog`는
+  job 실행 파이프라인과 무관한 순수 조회/추정이라 범위 밖으로 뺐다. `app/provisioning.py`
+  레지스트리엔 GCP Compute Engine 러너 하나만 있어 나머지 11개 provisionable 조합은
+  `501 PROVISIONING_NOT_IMPLEMENTED`로 응답한다(어댑터가 없어서가 아니라 의도적 축소, §0
+  "GCP 프로비저닝" 지시 범위에 맞춤).
+  - **멱등성은 별도 컬럼 없이 `spec_json` 비교로 구현**: `provisioning_jobs`엔 §2.5가 요구하는
+    `(user_id, idempotency_key)` unique constraint만 있고 "지난번에 보낸 canonical payload"를
+    저장하는 컬럼이 없다. 같은 키로 재요청이 오면 기존 job의 `spec_json.{common_spec,
+    provider_spec}`과 `credential_id`를 새 요청과 직접 dict 비교해 같으면 기존 job을 그대로
+    반환하고, 다르면 `409 IDEMPOTENCY_KEY_REUSED`로 거부한다. `spec_json`은 이제
+    `{"common_spec": {...}, "provider_spec": {...}}` 형태로 저장한다 — `seed_mock_data.py`가
+    심어 둔 예전 flat 형태(`{"vm_size": ..., "region": ...}`)와 다르다(그 시딩 job들은 대시보드
+    최근 활동 카드용이라 `GET /provisioning/jobs/{id}` 상세 조회 대상이 아니었기 때문에 그대로
+    둬도 문제없다 — 조회 시 `common_spec`/`provider_spec`이 빈 dict로만 보일 뿐이다).
+  - **`workspace_name`은 job insert 후 2단계로 채운다**: §10.5 예시(`user-12-job-1301`)처럼
+    자기 자신의 job id를 포함해야 하는데 NOT NULL + UNIQUE라 insert 전엔 알 수 없다. 먼저
+    `pending-{idempotency_key}`(사용자당 유일)로 insert해 id를 받고, 곧바로 실제 이름으로
+    덮어써서 커밋한다.
+  - **credential 검증/권한 확인은 요청 시점이 아니라 백그라운드 실행 시점에 한다**:
+    `resources/action`(§8.5, `app/routers/resources.py`)처럼 배치 항목별 결과가 아니라 job
+    하나가 전부이므로, `sync_jobs.py`의 `_process_sync_item`과 같은 패턴을 따라 unverified거나
+    `permission_scope.provision=false`면 job을 바로 `queued→failed`(`CLOUD_PERMISSION_DENIED`)
+    처리한다. `permission_scope`가 빈 딕셔너리면(목업 credential 등 아직 프로빙된 적 없음)
+    검사를 건너뛴다 — `resources.py`의 `resource_control` 검사와 동일한 정책.
+  - **성공한 job은 `resources`에 즉시 행을 만든다**: 다음 `POST /sync-jobs` 없이도 INV-01에
+    바로 보이도록 terraform output(`instance_name`/`zone` 등)으로 Resource를 upsert한다
+    (`_create_resource_from_job`). 이 매핑은 현재 GCP Compute Engine 전용이다 — `outputs.tf`의
+    키 이름에 직접 의존한다. 다른 러너를 추가할 때 이 함수도 함께 확장해야 한다.
+  - **컨테이너에 Terraform CLI가 없었다**: `backend/Dockerfile`이 `libpq5`만 설치했고
+    `app/terraform_runner.py`가 subprocess로 부르는 `terraform`은 어디에도 없었다. HashiCorp
+    공식 zip(버전 고정, 현재 1.9.8)을 받아 `/usr/local/bin`에 풀고 `curl`/`unzip`은 설치 직후
+    다시 지운다. 워크스페이스·plugin cache 디렉터리는 `docker-compose.yml`에 named volume
+    (`terraform_workspaces`/`terraform_plugin_cache`)으로 붙여 컨테이너 재시작 후에도 유지되게
+    했다(로컬/비-Docker 개발은 `.env.example`의 `/tmp` 기본값을 그대로 쓴다).
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 
