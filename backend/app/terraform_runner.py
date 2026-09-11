@@ -1,4 +1,5 @@
 """Terraform subprocess 오케스트레이션 (§10 프로비저닝).
+"""Terraform subprocess 오케스트레이션 — provider 무관 (§10 프로비저닝).
 
 이 서버엔 별도 워커/큐 프로세스가 없다(`app/resource_sync.py`/`app/routers/sync_jobs.py`와 같은
 전제) — 프로비저닝 job도 FastAPI `BackgroundTasks` 안에서 같은 프로세스가 terraform CLI를
@@ -15,6 +16,18 @@ state는 워크스페이스 디렉터리 안 로컬 backend에만 남는다 — 
 `.tfvars.json`/Terraform 변수에는 secret을 절대 넣지 않는다(§18 "복호화 범위 최소화"). AWS는
 `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_SESSION_TOKEN` 환경변수를 provider가 자동으로
 읽으므로, GCP처럼 워크스페이스 안에 파일을 써서 경로를 가리킬 필요가 없다.
+(sync_jobs처럼 같은 사용자 동시성만 막지 job 간 전역 락은 없다) `.terraform/environment` 선택
+포인터가 레이스될 수 있어 배제했다. 대신 `TF_PLUGIN_CACHE_DIR`(공유 볼륨)로 provider 플러그인
+재다운로드 비용만 줄인다.
+
+state는 워크스페이스 디렉터리 안 로컬 backend에만 남는다 — 원격 backend(GCS 등)는 구성하지 않는다
+(단일 호스트/단일 프로세스 전제, CLAUDE.md에 한계로 기록). `provisioning_jobs.terraform_state_ref`에는
+이 워크스페이스 경로만 저장하고 state 본문은 절대 DB에 넣지 않는다.
+
+크리덴셜은 이 모듈 안에서만 파일로 만든다 — 호출부가 복호화한 dict를 넘기면 워크스페이스 안에
+0600 임시 파일로 써서 `GOOGLE_APPLICATION_CREDENTIALS` 환경변수로 그 subprocess 호출에만 노출하고,
+`finally`에서 즉시 지운다(§18 "복호화 범위 최소화"). `.tfvars.json`/Terraform 변수에는 secret을
+절대 넣지 않는다.
 """
 
 from __future__ import annotations
@@ -23,6 +36,9 @@ import json
 import os
 import shutil
 import subprocess
+import stat
+import subprocess
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -43,6 +59,20 @@ _PERMISSION_DENIED_PATTERNS = (
     "unauthorizedoperation",
     "accessdenied",
     "is not authorized to perform",
+    "invalid_grant",
+    "invalid_client",
+    "could not find default credentials",
+    "failed to find default credentials",
+    "error 401",
+    "oauth2: cannot fetch token",
+    "invalid authentication credentials",
+)
+_PERMISSION_DENIED_PATTERNS = (
+    "permission_denied",
+    "permission denied",
+    "insufficient authentication scopes",
+    "does not have permission",
+    "caller does not have permission",
     "403",
 )
 
@@ -77,6 +107,19 @@ def prepare_workspace(workspace_dir: Path, module_source_dir: Path) -> None:
             shutil.copy2(item, workspace_dir / item.name)
 
 
+def _write_credentials_file(workspace_dir: Path, credentials_json: dict) -> Path:
+    fd, raw_path = tempfile.mkstemp(dir=workspace_dir, prefix=".gcp-credentials-", suffix=".json")
+    path = Path(raw_path)
+    try:
+        os.chmod(path, stat.S_IRUSR | stat.S_IWUSR)
+        with os.fdopen(fd, "w") as f:
+            json.dump(credentials_json, f)
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
+    return path
+
+
 def _run(cmd: list[str], *, cwd: Path, env: dict, timeout: int) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=str(cwd), env=env, capture_output=True, text=True, timeout=timeout)
 
@@ -86,6 +129,7 @@ def run_apply(
     module_source_dir: Path,
     tfvars: dict,
     credential_env: dict[str, str],
+    credentials_json: dict,
     *,
     cancel_check: Callable[[], bool] = lambda: False,
     timeout_seconds: int | None = None,
@@ -101,12 +145,14 @@ def run_apply(
 
     (workspace_dir / "terraform.tfvars.json").write_text(json.dumps(tfvars))
 
+    credentials_path = _write_credentials_file(workspace_dir, credentials_json)
     plugin_cache_dir = Path(settings.terraform_plugin_cache_dir)
     plugin_cache_dir.mkdir(parents=True, exist_ok=True)
 
     env = {
         **os.environ,
         **credential_env,
+        "GOOGLE_APPLICATION_CREDENTIALS": str(credentials_path),
         "TF_PLUGIN_CACHE_DIR": str(plugin_cache_dir),
         "TF_IN_AUTOMATION": "1",
         "TF_INPUT": "0",
@@ -218,3 +264,8 @@ def run_destroy(
             success=False, error_code=_classify_error(destroy.stderr), error_message=_safe_error_message(destroy.stderr)
         )
     return TerraformResult(success=True, outputs={})
+                "않습니다 — GCP 콘솔에서 확인한 뒤 재시도하세요."
+            ),
+        )
+    finally:
+        credentials_path.unlink(missing_ok=True)
