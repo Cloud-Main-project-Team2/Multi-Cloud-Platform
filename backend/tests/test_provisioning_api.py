@@ -436,7 +436,10 @@ def test_process_job_fails_without_verified_credential(db_session, make_user):
     assert job.error_code == "CLOUD_PERMISSION_DENIED"
 
 
-def test_process_job_fails_when_provision_scope_denied(db_session, make_user):
+def test_process_job_proceeds_despite_provision_scope_false(db_session, make_user, monkeypatch):
+    # permission_scope.provision은 iam:SimulatePrincipalPolicy 기반이라 EC2 권한만 있는 키 등에서
+    # false negative가 잦다 — 사전 차단하지 않고 러너(Terraform)로 진행한다. 진짜 권한이 없으면
+    # apply가 CLOUD_PERMISSION_DENIED로 실패한다.
     user = make_user()
     account = _make_account(db_session, user, "gcp", "proj-1")
     credential = _make_credential(db_session, account, verified=True, permission_scope={
@@ -446,10 +449,19 @@ def test_process_job_fails_when_provision_scope_denied(db_session, make_user):
     job = _pending_job(db_session, user, credential, service)
     db_session.commit()
 
+    monkeypatch.setattr(
+        provisioning_router,
+        "get_runner",
+        lambda provider, code: type("R", (), {
+            "run": staticmethod(lambda **kwargs: TerraformResult(
+                success=True, outputs={"instance_name": "mcp-web-01", "zone": "asia-northeast3-a"}
+            ))
+        })(),
+    )
+
     provisioning_router._execute_job(db_session, job)
 
-    assert job.status == "failed"
-    assert job.error_code == "CLOUD_PERMISSION_DENIED"
+    assert job.status == "success"
 
 
 def test_process_job_success_creates_resource_and_notification(db_session, make_user, monkeypatch):
