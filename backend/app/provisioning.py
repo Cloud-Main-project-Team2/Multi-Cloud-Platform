@@ -18,11 +18,12 @@ from __future__ import annotations
 
 from types import ModuleType
 
-from app import aws_provisioning, aws_s3_provisioning, azure_provisioning, gcp_provisioning
+from app import aws_cloudfront_provisioning, aws_provisioning, aws_s3_provisioning, azure_provisioning, gcp_provisioning
 
 _RUNNERS: dict[tuple[str, str], ModuleType] = {
     ("aws", "ec2"): aws_provisioning,
     ("aws", "s3"): aws_s3_provisioning,
+    ("aws", "cloudfront"): aws_cloudfront_provisioning,
     ("azure", "vm"): azure_provisioning,
     ("gcp", "compute_engine"): gcp_provisioning,
 }

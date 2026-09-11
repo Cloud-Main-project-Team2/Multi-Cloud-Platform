@@ -155,6 +155,12 @@ def _resource_attrs(
         # 리전을 조회하지 않는다) — 다음 동기화 때 같은 Resource 행으로 합쳐지도록 맞춘다.
         bucket_name = outputs.get("bucket_name")
         return bucket_name, "S3 Bucket", None, bucket_name
+    if provider == "aws" and service_code == "cloudfront":
+        # CloudFront도 S3처럼 전역 서비스라 region=None. discover_resources()에 아직 CloudFront가
+        # 없어(app/providers/aws.py) 강제할 기존 관례는 없지만, "{Service} {유형}" 표기(S3
+        # Bucket/RDS Instance)를 그대로 따른다.
+        distribution_id = outputs.get("distribution_id")
+        return distribution_id, "CloudFront Distribution", None, common_spec.get("name")
     if provider == "aws":
         return outputs.get("instance_id"), "AWS::EC2::Instance", provider_spec.get("region"), common_spec.get("name")
     if provider == "gcp":
@@ -177,6 +183,10 @@ def _initial_resource_status(provider: str, service_code: str) -> str:
     """
     if provider == "aws" and service_code == "s3":
         return "AVAILABLE"
+    if provider == "aws" and service_code == "cloudfront":
+        # aws_cloudfront_distribution은 기본값(wait_for_deployment=true)이라 apply가 배포
+        # 완료(Deployed)까지 기다린 뒤 반환한다 — app/aws_cloudfront_provisioning.py 참고.
+        return "DEPLOYED"
     return "RUNNING"
 
 
