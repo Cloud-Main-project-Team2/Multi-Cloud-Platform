@@ -1,13 +1,7 @@
-"""POST /provisioning/{provider}/{service} 요청 body.
-
-common_spec/provider_spec의 provider별 필드 전체 목록은 아직 정책 확정 전이라
-(docs/01_API_명세서_v1.1.md 1.2절) 여기서는 최소 계약만 강제하고, provider·service별
-세부 검증은 각 실행기(app/services/provisioning/*)가 맡는다.
-"""
-
 from __future__ import annotations
 
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Any
 
 
 class ProvisioningCreateRequest(BaseModel):
@@ -16,3 +10,57 @@ class ProvisioningCreateRequest(BaseModel):
     credential_id: int
     common_spec: dict = Field(default_factory=dict)
     provider_spec: dict = Field(default_factory=dict)
+
+
+class CreateProvisioningJobRequest(BaseModel):
+    credential_id: str
+    common_spec: dict[str, Any] = Field(default_factory=dict)
+    provider_spec: dict[str, Any] = Field(default_factory=dict)
+
+
+class ProvisioningJobCreateData(BaseModel):
+    id: str
+    status: str
+    created_at: str
+    status_url: str
+
+
+class ProvisioningJobCreateResponse(BaseModel):
+    data: ProvisioningJobCreateData
+
+
+class ProvisioningJobError(BaseModel):
+    code: str
+    message: str | None = None
+
+
+class ProvisioningJobOut(BaseModel):
+    id: str
+    credential_id: str
+    service_catalog_id: str
+    workspace_name: str
+    common_spec: dict[str, Any]
+    provider_spec: dict[str, Any]
+    status: str
+    progress_percent: int
+    created_resource_count: int
+    result: dict[str, Any] | None
+    error: ProvisioningJobError | None
+    created_at: str
+    started_at: str | None
+    finished_at: str | None
+
+
+class ProvisioningJobResponse(BaseModel):
+    data: ProvisioningJobOut
+
+
+class ProvisioningJobListData(BaseModel):
+    items: list[ProvisioningJobOut]
+    total: int
+    pagination: None = None
+
+
+class ProvisioningJobListResponse(BaseModel):
+    data: ProvisioningJobListData
+

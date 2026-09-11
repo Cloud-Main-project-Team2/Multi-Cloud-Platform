@@ -14,15 +14,11 @@ class Settings(BaseSettings):
     jwt_algorithm: str = Field(default="HS256", alias="JWT_ALGORITHM")
     jwt_access_token_expires_seconds: int = Field(default=3600, alias="JWT_ACCESS_TOKEN_EXPIRES_SECONDS")
 
-    # 프로비저닝(Terraform 실행) 설정. MVP: 로컬 backend + FastAPI BackgroundTasks.
-    # terraform/README.md "알려진 한계" 참고.
-    terraform_modules_dir: str = Field(default="terraform", alias="TERRAFORM_MODULES_DIR")
-    terraform_runs_dir: str = Field(default="terraform/.runs", alias="TERRAFORM_RUNS_DIR")
-    terraform_timeout_seconds: int = Field(default=900, alias="TERRAFORM_TIMEOUT_SECONDS")
-    # job마다 격리된 workspace에서 매번 `terraform init`을 새로 하므로, provider plugin
-    # (azurerm 등)을 공유 캐시 없이 매 job마다 registry에서 재다운로드하게 된다. 이 디렉터리를
-    # TF_PLUGIN_CACHE_DIR로 지정해 job 간에 재사용한다.
-    terraform_plugin_cache_dir: str = Field(default="terraform/.plugin-cache", alias="TERRAFORM_PLUGIN_CACHE_DIR")
+    # app/terraform_runner.py — 프로비저닝 job마다 독립된 워크스페이스 디렉터리를 이 경로 아래에 둔다.
+    terraform_binary_path: str = Field(default="terraform", alias="TERRAFORM_BINARY_PATH")
+    terraform_workspaces_dir: str = Field(default="/tmp/terraform-workspaces", alias="TERRAFORM_WORKSPACES_DIR")
+    terraform_plugin_cache_dir: str = Field(default="/tmp/terraform-plugin-cache", alias="TERRAFORM_PLUGIN_CACHE_DIR")
+    terraform_apply_timeout_seconds: int = Field(default=900, alias="TERRAFORM_APPLY_TIMEOUT_SECONDS")
 
 
 @lru_cache
