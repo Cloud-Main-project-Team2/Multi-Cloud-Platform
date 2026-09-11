@@ -24,3 +24,12 @@ variable "tags" {
   default     = {}
   description = "추가 태그"
 }
+
+variable "inbound_rules" {
+  type = list(object({
+    port = number
+    cidr = string
+  }))
+  default     = []
+  description = "인바운드 규칙(공통 설정 항목). 비어 있으면 인바운드를 아무것도 열지 않는다(호출자가 명시적으로 넘긴 규칙만 신뢰)."
+}

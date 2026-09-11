@@ -68,6 +68,50 @@ def test_run_apply_success_parses_outputs(monkeypatch, tmp_path):
     assert (workspace_dir / "terraform.tfvars.json").exists()
 
 
+def test_run_apply_serializes_init_across_concurrent_calls(monkeypatch, tmp_path):
+    # 실제로 재현된 버그: RDS job의 긴 apply(수 분) 도중 다른 job의 init이 겹치면 둘 다
+    # 공유 TF_PLUGIN_CACHE_DIR에 동시에 provider를 설치하려다 "text file busy"로 실패했다.
+    # init만 _INIT_LOCK으로 직렬화하는지 — 두 run_apply를 스레드로 동시에 돌려 init 실행 구간이
+    # 절대 겹치지 않는지 확인한다(plan/apply/output은 겹쳐도 무방하므로 검사하지 않는다).
+    import threading
+    import time
+
+    module_dir = _module_dir(tmp_path)
+    active_inits = []
+    max_concurrent = []
+    lock = threading.Lock()
+
+    def fake_run(cmd, *, cwd, env, timeout):
+        if cmd[1] == "init":
+            with lock:
+                active_inits.append(1)
+                max_concurrent.append(len(active_inits))
+            time.sleep(0.05)  # 겹칠 기회를 준다 — 락이 없으면 max_concurrent에 2가 찍힌다
+            with lock:
+                active_inits.pop()
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+        if cmd[1] == "output":
+            return subprocess.CompletedProcess(cmd, 0, stdout=json.dumps({}), stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(tr, "_run", fake_run)
+
+    results = []
+
+    def worker(n):
+        ws = tmp_path / ("ws-" + str(n))
+        results.append(tr.run_apply(ws, module_dir, {}, {}))
+
+    threads = [threading.Thread(target=worker, args=(i,)) for i in range(3)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert all(r.success for r in results)
+    assert max(max_concurrent) == 1
+
+
 def test_run_apply_init_failure_classifies_auth_error(monkeypatch, tmp_path):
     module_dir = _module_dir(tmp_path)
     workspace_dir = tmp_path / "ws"

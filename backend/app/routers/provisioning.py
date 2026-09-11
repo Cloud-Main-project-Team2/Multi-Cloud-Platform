@@ -142,13 +142,31 @@ def _serialize_job(job: ProvisioningJob) -> ProvisioningJobOut:
 
 
 def _resource_attrs(
-    provider: str, outputs: dict, common_spec: dict, provider_spec: dict
+    provider: str, service_code: str, outputs: dict, common_spec: dict, provider_spec: dict
 ) -> tuple[str | None, str, str | None, str | None]:
     """terraform outputs → `(external_resource_id, original_resource_type, region, name)`.
 
-    provider마다 output 키·리소스 유형·region 파생 방식이 다르다. external_resource_id가 없으면
-    (output 누락) 첫 원소가 None이고, 라우터는 리소스행을 만들지 않는다.
+    provider(+service_code)마다 output 키·리소스 유형·region 파생 방식이 다르다.
+    external_resource_id가 없으면(output 누락) 첫 원소가 None이고, 라우터는 리소스행을 만들지 않는다.
     """
+    if provider == "aws" and service_code == "s3":
+        # app/providers/aws.py의 discover_resources()/perform_resource_action()과 같은 관례
+        # (original_resource_type="S3 Bucket", region=None — S3는 전역 서비스라 동기화 시
+        # 리전을 조회하지 않는다) — 다음 동기화 때 같은 Resource 행으로 합쳐지도록 맞춘다.
+        bucket_name = outputs.get("bucket_name")
+        return bucket_name, "S3 Bucket", None, bucket_name
+    if provider == "aws" and service_code == "cloudfront":
+        # CloudFront도 S3처럼 전역 서비스라 region=None. discover_resources()에 아직 CloudFront가
+        # 없어(app/providers/aws.py) 강제할 기존 관례는 없지만, "{Service} {유형}" 표기(S3
+        # Bucket/RDS Instance)를 그대로 따른다.
+        distribution_id = outputs.get("distribution_id")
+        return distribution_id, "CloudFront Distribution", None, common_spec.get("name")
+    if provider == "aws" and service_code == "rds":
+        # app/providers/aws.py의 discover_resources()/perform_resource_action()과 같은 관례
+        # (original_resource_type="RDS Instance", name=DBInstanceIdentifier — RDS는 Name 태그
+        # 개념이 없어 discover도 식별자를 그대로 표시 이름으로 쓴다).
+        db_instance_id = outputs.get("db_instance_id")
+        return db_instance_id, "RDS Instance", provider_spec.get("region"), db_instance_id
     if provider == "aws":
         return outputs.get("instance_id"), "AWS::EC2::Instance", provider_spec.get("region"), common_spec.get("name")
     if provider == "gcp":
@@ -160,6 +178,25 @@ def _resource_attrs(
         # resource_actions.py는 Azure external_resource_id를 ARM 리소스 ID 전체로 가정한다.
         return outputs.get("vm_id"), "Microsoft.Compute/virtualMachines", provider_spec.get("region"), common_spec.get("name")
     return None, provider, provider_spec.get("region"), common_spec.get("name")
+
+
+def _initial_resource_status(provider: str, service_code: str) -> str:
+    """provisioning 직후(다음 동기화 전) resources 행에 채울 상태값.
+
+    다음 실제 동기화가 `app/providers/{provider}.py`의 discover 결과로 곧 덮어쓰므로 정확한 실시간
+    상태일 필요는 없지만, provider마다 상태 어휘가 달라(EC2 인스턴스 "RUNNING" vs S3 버킷은
+    시작/중지 개념이 없어 "AVAILABLE") 서비스와 무관하게 "RUNNING"을 쓰면 어색하다.
+    """
+    if provider == "aws" and service_code == "s3":
+        return "AVAILABLE"
+    if provider == "aws" and service_code == "cloudfront":
+        # aws_cloudfront_distribution은 기본값(wait_for_deployment=true)이라 apply가 배포
+        # 완료(Deployed)까지 기다린 뒤 반환한다 — app/aws_cloudfront_provisioning.py 참고.
+        return "DEPLOYED"
+    if provider == "aws" and service_code == "rds":
+        # aws_db_instance도 apply가 인스턴스 생성 완료(available)까지 기다린 뒤 반환한다.
+        return "AVAILABLE"
+    return "RUNNING"
 
 
 def _create_resource_from_job(
@@ -174,7 +211,9 @@ def _create_resource_from_job(
 ) -> str | None:
     """성공한 job에서 `resources` 행을 upsert한다 — 다음 동기화 없이도 INV-01에 바로 보이도록.
     생성된 리소스의 표시 이름을 반환한다(알림 문구용)."""
-    external_id, resource_type, region, name = _resource_attrs(service.provider, outputs, common_spec, provider_spec)
+    external_id, resource_type, region, name = _resource_attrs(
+        service.provider, service.service_code, outputs, common_spec, provider_spec
+    )
     if not external_id:
         return name
 
@@ -197,7 +236,7 @@ def _create_resource_from_job(
                 original_resource_type=resource_type,
                 name=name,
                 region=region,
-                status="RUNNING",
+                status=_initial_resource_status(service.provider, service.service_code),
                 tags={"managed-by": "multi-cloud-platform", "job-id": str(job.id)},
                 raw_metadata=outputs,
                 first_seen_at=now,
@@ -207,7 +246,7 @@ def _create_resource_from_job(
         )
     else:
         existing.last_collected_by_credential_id = credential.id
-        existing.status = "RUNNING"
+        existing.status = _initial_resource_status(service.provider, service.service_code)
         existing.last_seen_at = now
         existing.last_synced_at = now
         existing.is_stale = False
@@ -304,14 +343,6 @@ def _execute_job(
     # negative — 실제 Full Access 키에서 확인됨). 따라서 실제 권한 게이트는 Terraform apply로 둔다:
     # 진짜 권한이 없으면 apply가 AccessDenied로 실패하고 terraform_runner._classify_error가
     # CLOUD_PERMISSION_DENIED로 분류한다.
-    if credential.permission_scope and not credential.permission_scope.get("provision", False):
-        job.status = "failed"
-        job.error_code = "CLOUD_PERMISSION_DENIED"
-        job.error_message = "이 자격 증명에는 프로비저닝 권한이 없습니다."
-        _finalize_job(db, job, service)
-        return
-
-
     runner = get_runner(service.provider, service.service_code)
     if runner is None:
         # 요청 시점에 501로 걸렀어야 하지만 방어적으로 한 번 더 막는다.
