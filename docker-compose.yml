@@ -27,6 +27,11 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-jwt-secret-change-me}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_ACCESS_TOKEN_EXPIRES_SECONDS: ${JWT_ACCESS_TOKEN_EXPIRES_SECONDS:-3600}
+      TERRAFORM_WORKSPACES_DIR: /app/terraform_workspaces
+      TERRAFORM_PLUGIN_CACHE_DIR: /app/terraform_plugin_cache
+    volumes:
+      - terraform_workspaces:/app/terraform_workspaces
+      - terraform_plugin_cache:/app/terraform_plugin_cache
     depends_on:
       db:
         condition: service_healthy
@@ -46,3 +51,5 @@ services:
 
 volumes:
   db_data:
+  terraform_workspaces:
+  terraform_plugin_cache:
