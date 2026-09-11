@@ -2,7 +2,7 @@
 
 `test_sync_jobs_api.py`와 같은 이유로 HTTP 계층 테스트는 백그라운드 실행 함수
 (`_run_provisioning_job`)를 monkeypatch로 no-op화해서 API 계약(202/404/422/409/428, 멱등성,
-소유권)만 결정적으로 검증한다. 실제 job 처리 로직(`_process_provisioning_job`)은
+소유권)만 결정적으로 검증한다. 실제 job 처리 로직(`_execute_job`)은
 `app.provisioning.get_runner()`를 monkeypatch해서 `db_session`으로 직접 호출해 검증한다.
 """
 
@@ -53,7 +53,7 @@ def _make_credential(db_session, account, name="cred", verified=True, permission
 
 @pytest.fixture(autouse=True)
 def _noop_background_job(monkeypatch):
-    monkeypatch.setattr(provisioning_router, "_run_provisioning_job", lambda job_id: None)
+    monkeypatch.setattr(provisioning_router, "_run_provisioning_job", lambda *a, **k: None)
 
 
 @pytest.fixture(autouse=True)
@@ -103,7 +103,7 @@ def test_create_job_requires_idempotency_key(client, make_user, auth_header, db_
         headers={**auth_header(user), "X-Action-Confirmed": "true"},
     )
 
-    assert resp.status_code == 422
+    assert resp.status_code == 400
     assert resp.json()["error"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
 
 
@@ -141,11 +141,13 @@ def test_create_job_returns_501_when_no_runner_registered(client, make_user, aut
     user = make_user()
     account = _make_account(db_session, user, "aws", "111122223333")
     credential = _make_credential(db_session, account)
-    _make_service(db_session, "aws", "ec2")
+    # provisionable하지만 러너가 등록되지 않은 조합(aws/rds) — ec2/vm/compute_engine 세 조합은
+    # 통합 후 모두 러너가 있으므로 러너 없는 서비스로 검증한다.
+    _make_service(db_session, "aws", "rds")
     db_session.commit()
 
     resp = client.post(
-        "/api/v1/provisioning/aws/ec2",
+        "/api/v1/provisioning/aws/rds",
         json={"credential_id": str(credential.id), "common_spec": {"name": "web-01"}, "provider_spec": {}},
         headers={**auth_header(user), **_HEADERS},
     )
@@ -201,7 +203,9 @@ def test_create_job_rejects_credential_provider_mismatch(client, make_user, auth
         headers={**auth_header(user), **_HEADERS},
     )
 
-    assert resp.status_code == 422
+    # 소유 credential이지만 provider가 달라 존재를 드러내지 않고 404로 처리한다(통합 계약).
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "CREDENTIAL_NOT_FOUND"
 
 
 def test_create_job_rejects_invalid_spec(client, make_user, auth_header, db_session):
@@ -426,7 +430,7 @@ def test_process_job_fails_without_verified_credential(db_session, make_user):
     job = _pending_job(db_session, user, credential, service)
     db_session.commit()
 
-    provisioning_router._process_provisioning_job(db_session, job)
+    provisioning_router._execute_job(db_session, job)
 
     assert job.status == "failed"
     assert job.error_code == "CLOUD_PERMISSION_DENIED"
@@ -442,7 +446,7 @@ def test_process_job_fails_when_provision_scope_denied(db_session, make_user):
     job = _pending_job(db_session, user, credential, service)
     db_session.commit()
 
-    provisioning_router._process_provisioning_job(db_session, job)
+    provisioning_router._execute_job(db_session, job)
 
     assert job.status == "failed"
     assert job.error_code == "CLOUD_PERMISSION_DENIED"
@@ -465,7 +469,7 @@ def test_process_job_success_creates_resource_and_notification(db_session, make_
         })(),
     )
 
-    provisioning_router._process_provisioning_job(db_session, job)
+    provisioning_router._execute_job(db_session, job)
 
     assert job.status == "success"
     assert job.progress_percent == 100
@@ -499,7 +503,7 @@ def test_process_job_failure_records_error_and_notification(db_session, make_use
         })(),
     )
 
-    provisioning_router._process_provisioning_job(db_session, job)
+    provisioning_router._execute_job(db_session, job)
 
     assert job.status == "failed"
     assert job.error_code == "QUOTA_EXCEEDED"

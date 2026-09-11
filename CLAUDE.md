@@ -57,15 +57,16 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 |---|---|---|---|
 | 페이지 UI 구현 — 확정 화면 12개 정적 UI | `solcho/fe-pages` | 조은솔 | in progress |
 | 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
-| 프로비저닝 — Azure VM 생성 (`POST /provisioning/azure/vm`) | `seunghyunlee/azure` | 이승현 | in progress (PR 대기) |
+| 프로비저닝 — Azure VM 생성 (`POST /provisioning/azure/vm`) | `seunghyunlee/azure` | 이승현 | merged → 통합됨(`solcho/be-provisioning-merge`) |
 | 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | in progress |
 | 키 관리(마이페이지) API — cloud-accounts/credentials 10개 엔드포인트 + 최소 로그인(JWT)·회원가입 | `solcho/be-credentials-api` 외 | 조은솔 | merged |
 | 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | merged |
 | 리소스 동기화 API — 실제 CSP 리소스 탐색 + `/sync-jobs` 4개 엔드포인트 | `solcho/be-sync-api` | 조은솔 | merged |
 | 인벤토리(INV-01/INV-02) 실API 연동 — 조회·동기화·시작/중지/삭제 | `solcho/fe-inventory-integration` | 조은솔 | in progress |
 
-| AWS 프로비저닝 API — `/provisioning/{provider}/{service}` 등 4개 엔드포인트, AWS EC2만 Terraform으로 실제 생성 | `jongkuk/aws-provisioning` | 김종국 | in progress |
-| GCP 프로비저닝 API — `/provisioning/{provider}/{service}` 등 4개 엔드포인트, GCP Compute Engine만 Terraform으로 실제 생성 | `kwonhyeong/be-gcp-provisioning` | 안권형 | in progress |
+| AWS 프로비저닝 API — `/provisioning/{provider}/{service}` 등 4개 엔드포인트, AWS EC2만 Terraform으로 실제 생성 | `jongkuk/aws-provisioning` | 김종국 | merged → 통합됨(`solcho/be-provisioning-merge`) |
+| GCP 프로비저닝 API — `/provisioning/{provider}/{service}` 등 4개 엔드포인트, GCP Compute Engine만 Terraform으로 실제 생성 | `kwonhyeong/be-gcp-provisioning` | 안권형 | merged → 통합됨(`solcho/be-provisioning-merge`) |
+| 프로비저닝 3사 통합 — flat 아키텍처로 AWS/GCP/Azure 러너·terraform_runner·라우터 단일화 | `solcho/be-provisioning-merge` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -310,6 +311,33 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
     다시 지운다. 워크스페이스·plugin cache 디렉터리는 `docker-compose.yml`에 named volume
     (`terraform_workspaces`/`terraform_plugin_cache`)으로 붙여 컨테이너 재시작 후에도 유지되게
     했다(로컬/비-Docker 개발은 `.env.example`의 `/tmp` 기본값을 그대로 쓴다).
+- **프로비저닝 3사 코드 통합(2026-09-11, `solcho/be-provisioning-merge`)**: AWS(`jongkuk/aws-provisioning`)·
+  GCP(`kwonhyeong/be-gcp-provisioning`)·Azure(`seunghyunlee/azure`)를 회사별로 동시에 구현·병합하다
+  충돌을 `accept both`로 합쳐 `app/routers/provisioning.py`가 문법 오류로 **import조차 안 되고**
+  컨테이너가 크래시 루프에 빠졌던 것을 하나의 방식으로 재통합했다. AWS/GCP의 **flat 아키텍처**를
+  기준으로 채택(사용자 확인):
+  - **단일 계약**: 러너는 `app/provisioning.py` 레지스트리가 `(provider, service_code)`로 반환하는
+    얇은 모듈이고 `validate_spec()`(동기, 요청 중 raise) + `run(...) -> TerraformResult`(비동기,
+    raise 안 함) + `SENSITIVE_PROVIDER_SPEC_FIELDS` 상수만 노출한다. job 생명주기(상태 전이·감사·
+    알림·리소스행 생성·취소)는 **전부 라우터가 중앙에서** 처리한다. Azure는 자기 DB 세션을 열고
+    생명주기를 스스로 관리하던 package 방식(`app/services/provisioning/`)이었는데, 이를 flat 계약의
+    `app/azure_provisioning.py`로 재작성하고 **`app/services/` 패키지·별도 terraform_runner는 삭제**했다.
+  - **terraform_runner 통합**: `run_apply(ws, module, tfvars, credential_env, *, credentials_file=None,
+    secrets=None, cancel_check=…)` 하나가 3사를 모두 지원한다 — AWS는 `credential_env`(AWS_*),
+    Azure는 `credential_env`(ARM_* + `TF_VAR_admin_password`) + redact `secrets`, GCP는
+    `credentials_file`(서비스 계정 JSON을 0600 임시 파일로 써서 `GOOGLE_APPLICATION_CREDENTIALS`).
+    `TerraformResult(success=…)` 한 종류로 통일(Azure의 `ok=…`는 폐기).
+  - **admin_password는 메모리로만 실행에 전달**: 라우터가 `spec_json`(DB) 저장 전 러너의
+    `SENSITIVE_PROVIDER_SPEC_FIELDS`를 제거하고, 원본 provider_spec은 `background_tasks`로 넘겨
+    Azure만 `TF_VAR_admin_password`로 쓴다. secret-필드 금지 검사도 이 필드는 예외 통과.
+  - **상충하던 계약 확정**(세 브랜치 테스트가 서로 달랐음): 멱등성 키 누락 → **400**, credential
+    provider 불일치 → **404 CREDENTIAL_NOT_FOUND**, 러너 없는 provisionable 조합 → **501**,
+    알림 `type=provisioning_(succeeded|failed)`·`message_key=notif.provisioning.(succeeded|failed)`
+    (실패 시 `message_params.reason`), 생성 리소스 `status="RUNNING"`, 백그라운드 진입점
+    `_run_provisioning_job`·실행 핵심 `_execute_job(db, job)`으로 이름 통일. `_create_resource_from_job`은
+    provider별 output 키(aws `instance_id`, gcp `instance_name`/`zone`, azure `vm_id`)를 한곳에서 매핑.
+  - **검증**: 전체 backend 테스트 202개 통과, `docker compose build api` 후 컨테이너 정상 기동
+    (`/health` 200, `POST /provisioning/aws/ec2` 무인증 401). 세 러너 모두 레지스트리에 연결됨.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 

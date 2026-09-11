@@ -25,6 +25,10 @@ from app.terraform_runner import TerraformResult, run_apply
 
 MODULE_DIR = Path(__file__).resolve().parent.parent / "terraform" / "gcp" / "compute_vm"
 
+# 라우터의 secret-필드 금지 검사 예외 필드(§10.3). GCP Compute는 리소스 자체의 비밀값을 받지
+# 않으므로 비어 있다(Azure의 admin_password 참고).
+SENSITIVE_PROVIDER_SPEC_FIELDS: frozenset[str] = frozenset()
+
 ALLOWED_MACHINE_TYPES = ("e2-micro", "e2-medium", "e2-standard-4")
 ALLOWED_REGIONS = ("asia-northeast3", "us-central1")
 _ZONE_SUFFIX = "-a"
@@ -92,4 +96,8 @@ def run(
         return TerraformResult(success=False, error_code=exc.code, error_message=exc.message)
 
     tfvars = build_tfvars(job_id, project_id, instance_name, region, machine_type)
-    return run_apply(workspace_dir, MODULE_DIR, tfvars, secret_payload, cancel_check=cancel_check)
+    # GCP는 secret_payload(서비스 계정 키 JSON)를 환경변수가 아니라 파일로 넘긴다 —
+    # terraform_runner가 0600 임시 파일로 써서 GOOGLE_APPLICATION_CREDENTIALS로만 노출한다.
+    return run_apply(
+        workspace_dir, MODULE_DIR, tfvars, {}, credentials_file=secret_payload, cancel_check=cancel_check
+    )

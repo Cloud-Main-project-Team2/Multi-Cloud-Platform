@@ -1,20 +1,8 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
-
-
-class CreateProvisioningJobRequest(BaseModel):
-    credential_id: str
-from pydantic import BaseModel, ConfigDict, Field
 from typing import Any
 
-
-class ProvisioningCreateRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    credential_id: int
-    common_spec: dict = Field(default_factory=dict)
-    provider_spec: dict = Field(default_factory=dict)
+from pydantic import BaseModel, Field
 
 
 class CreateProvisioningJobRequest(BaseModel):
@@ -44,12 +32,6 @@ class ProvisioningJobOut(BaseModel):
     credential_id: str
     service_catalog_id: str
     workspace_name: str
-    common_spec: dict
-    provider_spec: dict
-    status: str
-    progress_percent: int
-    created_resource_count: int
-    result: dict | None
     common_spec: dict[str, Any]
     provider_spec: dict[str, Any]
     status: str
@@ -74,4 +56,3 @@ class ProvisioningJobListData(BaseModel):
 
 class ProvisioningJobListResponse(BaseModel):
     data: ProvisioningJobListData
-

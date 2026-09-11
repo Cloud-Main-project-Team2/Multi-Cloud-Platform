@@ -181,13 +181,13 @@ def test_run_destroy_failure_classifies_error(monkeypatch, tmp_path):
 
     assert result.success is False
     assert result.error_code == "CLOUD_PERMISSION_DENIED"
-from app.services import terraform_runner
+# redact는 통합 후 flat terraform_runner(app/terraform_runner.py)로 옮겼다 — Azure 러너가 쓴다.
 
 
 def test_redact_removes_all_secret_occurrences():
     text = "error: authenticating client_id=abcd1234 client_secret=topsecret1 failed"
 
-    redacted = terraform_runner.redact(text, ["topsecret1", "abcd1234"])
+    redacted = tr.redact(text, ["topsecret1", "abcd1234"])
 
     assert "topsecret1" not in redacted
     assert "abcd1234" not in redacted
@@ -197,7 +197,7 @@ def test_redact_removes_all_secret_occurrences():
 def test_redact_ignores_empty_secret_values():
     text = "no secrets in this message"
 
-    assert terraform_runner.redact(text, [""]) == text
+    assert tr.redact(text, [""]) == text
 
 
 def test_redact_ignores_too_short_values_to_avoid_mangling_message():
@@ -205,6 +205,6 @@ def test_redact_ignores_too_short_values_to_avoid_mangling_message():
     # 흔한 단어의 "T"까지 지워져 메시지 전체가 알아볼 수 없게 뭉개진다.
     text = "AADSTS900023: Trace ID: abc123"
 
-    redacted = terraform_runner.redact(text, ["t", "c"])
+    redacted = tr.redact(text, ["t", "c"])
 
     assert redacted == text

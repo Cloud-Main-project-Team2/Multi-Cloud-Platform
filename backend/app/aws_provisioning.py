@@ -21,6 +21,10 @@ from app.terraform_runner import TerraformResult, run_apply
 
 MODULE_DIR = Path(__file__).resolve().parent.parent / "terraform" / "aws" / "ec2"
 
+# 라우터가 secret-필드 금지 검사에서 예외로 둘 provider_spec 필드(§10.3). AWS EC2는 CSP 계정
+# 자격증명이 아닌 리소스 자체의 비밀값을 받지 않으므로 비어 있다(Azure의 admin_password 참고).
+SENSITIVE_PROVIDER_SPEC_FIELDS: frozenset[str] = frozenset()
+
 ALLOWED_INSTANCE_TYPES = ("t3.micro", "t3.small", "t3.medium")
 ALLOWED_REGIONS = ("ap-northeast-2", "us-east-1")
 
@@ -96,6 +100,7 @@ def run(
     common_spec: dict,
     provider_spec: dict,
     secret_payload: dict,
+    project_id: str | None = None,  # 라우터가 모든 러너에 동일 시그니처로 넘긴다 — AWS는 안 씀
     cancel_check: Callable[[], bool] = lambda: False,
 ) -> TerraformResult:
     """백그라운드 job에서 호출된다 — 이미 `validate_spec()`을 통과한 입력이지만, raise 대신

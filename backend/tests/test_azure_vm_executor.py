@@ -1,29 +1,21 @@
-"""app.services.provisioning.azure_vm.run 단위 테스트.
+"""app.azure_provisioning 단위 테스트(통합 flat 계약).
 
-실제 terraform 바이너리는 호출하지 않는다 — terraform_runner.apply/output_json을
-가짜로 바꿔치기해 성공/실패 분기만 검증한다.
-
-이 파일은 conftest.py의 `db_session`(롤백 전용) 대신 직접 commit하는 세션을 쓴다.
-`run()`이 background task로서 자기 자신의 `SessionLocal()`을 새로 여는데, `db_session`은
-아직 commit되지 않은 별도 connection/transaction이라 그 세션에서는 보이지 않기 때문이다.
+통합 후 Azure 러너는 `validate_spec()` + `run(...) -> TerraformResult` 두 함수만 제공하고
+DB·감사·상태 전이는 라우터가 처리한다. 여기서는 실제 terraform 대신 `run_apply`를 가짜로
+바꿔치기해 (1) tfvars에 admin_password가 없고 (2) env로만 넘어가며 (3) 검증/성공/실패 분기가
+맞는지만 검증한다. DB를 거치는 종단 흐름은 test_provisioning_azure_vm.py에서 다룬다.
 """
 
-import base64
-import json
-import os
+from __future__ import annotations
+
+from pathlib import Path
 
 import pytest
-from sqlalchemy.orm import sessionmaker
 
-from app.config import get_settings
-from app.models import AuditEvent, CloudAccount, Credential, ProvisioningJob, ServiceCatalog, User
-from app.security import credential_crypto as cc
-from app.services import terraform_runner
-from app.services.provisioning import azure_vm
+from app import azure_provisioning as azure
+from app.errors import ApiError
+from app.terraform_runner import TerraformResult
 
-VALID_KEY = base64.b64encode(os.urandom(32)).decode()
-
-# run()이 실제로 인자로 받는 common_spec/provider_spec(=admin_password 포함, DB에는 저장 안 됨).
 COMMON_SPEC = {
     "name": "web-01",
     "tags": {"env": "test"},
@@ -36,216 +28,121 @@ PROVIDER_SPEC = {
     "admin_password": "S3curePassw0rd!",
     "image": "Ubuntu 22.04",
 }
+SECRET_PAYLOAD = {
+    "tenant_id": "tenant-1234",
+    "client_id": "client-1234",
+    "client_secret": "s3cr3t-value-long",
+    "subscription_id": "subscription-1234",
+}
 
 
-@pytest.fixture(autouse=True)
-def _encryption_key(monkeypatch):
-    monkeypatch.setenv("CREDENTIAL_ENCRYPTION_KEY", VALID_KEY)
-    cc.get_settings.cache_clear()
-    yield
-    cc.get_settings.cache_clear()
+def test_run_success_passes_credentials_via_env_not_tfvars(monkeypatch, tmp_path):
+    captured = {}
 
+    def fake_run_apply(workspace_dir, module_dir, tfvars, credential_env, *, secrets=None, cancel_check=None, **_):
+        captured["tfvars"] = tfvars
+        captured["credential_env"] = credential_env
+        captured["secrets"] = secrets
+        return TerraformResult(success=True, outputs={"vm_id": "fake-vm-id", "public_ip_address": "1.2.3.4"})
 
-@pytest.fixture(autouse=True)
-def _terraform_paths(monkeypatch, tmp_path):
-    monkeypatch.setenv("TERRAFORM_RUNS_DIR", str(tmp_path / "runs"))
-    monkeypatch.setenv("TERRAFORM_PLUGIN_CACHE_DIR", str(tmp_path / "plugin-cache"))
-    get_settings.cache_clear()
-    yield
-    get_settings.cache_clear()
+    monkeypatch.setattr(azure, "run_apply", fake_run_apply)
 
-
-@pytest.fixture()
-def session_factory(engine):
-    return sessionmaker(bind=engine, future=True)
-
-
-def _make_job(session, *, secret_payload=None):
-    secret_payload = secret_payload or {
-        "tenant_id": "t",
-        "client_id": "c",
-        "client_secret": "s3cr3t",
-        "subscription_id": "sub",
-    }
-
-    user = User(email="exec@example.com", normalized_email="exec@example.com", name="Exec", affiliation_type="individual")
-    session.add(user)
-    session.flush()
-
-    account = CloudAccount(user_id=user.id, provider="azure", external_account_id="sub-1")
-    session.add(account)
-    session.flush()
-
-    ciphertext, nonce = cc.encrypt_credential_json(secret_payload)
-    credential = Credential(
-        cloud_account_id=account.id,
-        name="provisioner",
-        encrypted_payload=ciphertext,
-        encryption_nonce=nonce,
-        encryption_key_version="v1",
+    result = azure.run(
+        job_id=1,
+        workspace_dir=tmp_path / "ws",
+        common_spec=COMMON_SPEC,
+        provider_spec=PROVIDER_SPEC,
+        secret_payload=SECRET_PAYLOAD,
     )
-    session.add(credential)
 
-    catalog = ServiceCatalog(
-        provider="azure", service_code="vm", category="compute", display_name="Virtual Machine", provisionable=True
-    )
-    session.add(catalog)
-    session.flush()
+    assert result.success is True
+    assert result.outputs["vm_id"] == "fake-vm-id"
 
-    # job.spec_json은 라우터가 실제로 저장하는 "sanitize된"(admin_password 없는) 버전을
-    # 흉내낸다 — run()은 이걸 안 읽고 아래 테스트에서 별도로 넘기는 COMMON_SPEC/PROVIDER_SPEC을 쓴다.
-    job = ProvisioningJob(
-        user_id=user.id,
-        credential_id=credential.id,
-        service_catalog_id=catalog.id,
-        workspace_name=f"test-workspace-{os.urandom(4).hex()}",
-        idempotency_key=f"key-{os.urandom(4).hex()}",
-        spec_json={
-            "common_spec": {k: v for k, v in COMMON_SPEC.items()},
-            "provider_spec": {k: v for k, v in PROVIDER_SPEC.items() if k != "admin_password"},
-        },
-        status="queued",
-    )
-    session.add(job)
-    session.commit()
-    return job.id
+    tfvars = captured["tfvars"]
+    assert "admin_password" not in tfvars  # tfvars 파일(디스크)엔 절대 안 쓴다
+    assert tfvars["vm_size"] == "Standard_B1s"  # "B1s" -> Standard_ 접두사 자동 보정
+    assert tfvars["inbound_rules"] == [{"port": 22, "cidr": "0.0.0.0/0"}]
+    assert tfvars["tags"]["env"] == "test"
+
+    env = captured["credential_env"]
+    assert env["ARM_CLIENT_SECRET"] == "s3cr3t-value-long"
+    assert env["ARM_SUBSCRIPTION_ID"] == "subscription-1234"
+    assert env["TF_VAR_admin_password"] == "S3curePassw0rd!"
+    # 실패 메시지 redact 대상에 client_secret과 admin_password가 포함돼야 한다.
+    assert "s3cr3t-value-long" in captured["secrets"]
+    assert "S3curePassw0rd!" in captured["secrets"]
 
 
-@pytest.fixture()
-def job_id(session_factory, monkeypatch):
-    monkeypatch.setattr(azure_vm, "SessionLocal", session_factory)
-    session = session_factory()
-    try:
-        jid = _make_job(session)
-    finally:
-        session.close()
-
-    yield jid
-
-    with session_factory() as cleanup:
-        cleanup.query(AuditEvent).delete()
-        cleanup.query(ProvisioningJob).delete()
-        cleanup.query(Credential).delete()
-        cleanup.query(CloudAccount).delete()
-        cleanup.query(ServiceCatalog).delete()
-        cleanup.query(User).delete()
-        cleanup.commit()
-
-
-def test_run_success_updates_job_and_records_audit_event(job_id, session_factory, monkeypatch):
-    def fake_apply(workspace_dir, env, secrets, timeout):
-        assert env["ARM_CLIENT_SECRET"] == "s3cr3t"
-        assert env["TF_VAR_admin_password"] == "S3curePassw0rd!"
-        tfvars = json.loads((workspace_dir / "terraform.tfvars.json").read_text())
-        # admin_password는 절대 tfvars 파일(디스크)에 쓰지 않는다.
-        assert "admin_password" not in tfvars
-        assert tfvars["vm_size"] == "Standard_B1s"  # instance_type "B1s" -> Standard_ 접두사
-        assert tfvars["inbound_rules"] == [{"port": 22, "cidr": "0.0.0.0/0"}]
-        assert tfvars["tags"]["env"] == "test"
-        return terraform_runner.TerraformResult(ok=True, stdout="", stderr="", returncode=0)
-
-    def fake_output_json(workspace_dir, env, secrets, timeout):
-        return json.dumps(
-            {
-                "vm_id": {"value": "fake-vm-id"},
-                "resource_group_name": {"value": "rg-test"},
-                "private_ip_address": {"value": "10.0.1.4"},
-                "public_ip_address": {"value": "1.2.3.4"},
-            }
-        )
-
-    monkeypatch.setattr(terraform_runner, "apply", fake_apply)
-    monkeypatch.setattr(terraform_runner, "output_json", fake_output_json)
-
-    azure_vm.run(job_id, COMMON_SPEC, PROVIDER_SPEC)
-
-    with session_factory() as session:
-        job = session.get(ProvisioningJob, job_id)
-        assert job.status == "success"
-        assert job.progress_percent == 100
-        assert job.created_resource_count == 1
-        assert job.result_json["vm_id"] == "fake-vm-id"
-        assert job.result_json["public_ip_address"] == "1.2.3.4"
-        assert job.terraform_state_ref is not None and job.terraform_state_ref.endswith("terraform.tfstate")
-        assert job.started_at is not None and job.finished_at is not None
-        # spec_json(=DB에 저장된 것)에는 애초에 admin_password가 없었어야 한다(라우터 책임이지만
-        # run()이 job.spec_json을 다시 쓰지 않는지도 같이 확인).
-        assert "admin_password" not in job.spec_json.get("provider_spec", {})
-
-        events = session.query(AuditEvent).filter_by(target_id=str(job_id)).all()
-        assert any(e.action == "provisioning.complete" and e.result == "success" for e in events)
-
-
-def test_run_failure_marks_job_failed_with_redacted_message(job_id, session_factory, monkeypatch):
-    def fake_apply(workspace_dir, env, secrets, timeout):
-        return terraform_runner.TerraformResult(
-            ok=False, stdout="", stderr="authorization failed for client_secret=s3cr3t", returncode=1
-        )
-
-    monkeypatch.setattr(terraform_runner, "apply", fake_apply)
-
-    azure_vm.run(job_id, COMMON_SPEC, PROVIDER_SPEC)
-
-    with session_factory() as session:
-        job = session.get(ProvisioningJob, job_id)
-        assert job.status == "failed"
-        assert job.error_code == "TERRAFORM_ERROR"
-        assert job.finished_at is not None
-        # terraform_runner.apply가 이미 redact했어야 하므로 fake 구현이 직접 반환한 원문이
-        # 그대로 저장되는 건 이 테스트의 의도가 아니다 — 여기서는 실패 상태 반영만 확인한다.
-        assert job.error_message
-
-        events = session.query(AuditEvent).filter_by(target_id=str(job_id)).all()
-        assert any(e.action == "provisioning.complete" and e.result == "failure" for e in events)
-
-
-def test_run_missing_credential_secret_field_fails_without_calling_terraform(session_factory, monkeypatch):
-    monkeypatch.setattr(azure_vm, "SessionLocal", session_factory)
-    session = session_factory()
-    try:
-        jid = _make_job(session, secret_payload={"tenant_id": "t", "client_id": "c", "subscription_id": "sub"})
-    finally:
-        session.close()
-
-    def _unexpected_apply(*args, **kwargs):
+def test_run_missing_secret_field_fails_without_calling_terraform(monkeypatch, tmp_path):
+    def _unexpected(*args, **kwargs):
         raise AssertionError("credential이 불완전하면 terraform을 호출해서는 안 된다")
 
-    monkeypatch.setattr(terraform_runner, "apply", _unexpected_apply)
+    monkeypatch.setattr(azure, "run_apply", _unexpected)
 
-    try:
-        azure_vm.run(jid, COMMON_SPEC, PROVIDER_SPEC)
+    result = azure.run(
+        job_id=1,
+        workspace_dir=tmp_path / "ws",
+        common_spec=COMMON_SPEC,
+        provider_spec=PROVIDER_SPEC,
+        secret_payload={"tenant_id": "t-long-enough", "client_id": "c", "subscription_id": "sub"},
+    )
 
-        with session_factory() as session:
-            job = session.get(ProvisioningJob, jid)
-            assert job.status == "failed"
-            assert job.error_code == "PROVIDER_AUTHENTICATION_FAILED"
-    finally:
-        with session_factory() as cleanup:
-            cleanup.query(AuditEvent).delete()
-            cleanup.query(ProvisioningJob).delete()
-            cleanup.query(Credential).delete()
-            cleanup.query(CloudAccount).delete()
-            cleanup.query(ServiceCatalog).delete()
-            cleanup.query(User).delete()
-            cleanup.commit()
+    assert result.success is False
+    assert result.error_code == "PROVIDER_AUTHENTICATION_FAILED"
 
 
-def test_short_admin_password_rejected(job_id, session_factory, monkeypatch):
-    def _unexpected_apply(*args, **kwargs):
-        raise AssertionError("provider_spec 검증에 실패하면 terraform을 호출해서는 안 된다")
+def test_run_propagates_terraform_failure(monkeypatch, tmp_path):
+    def fake_run_apply(*args, **kwargs):
+        return TerraformResult(success=False, error_code="CLOUD_PERMISSION_DENIED", error_message="denied")
 
-    monkeypatch.setattr(terraform_runner, "apply", _unexpected_apply)
+    monkeypatch.setattr(azure, "run_apply", fake_run_apply)
 
-    azure_vm.run(job_id, COMMON_SPEC, {**PROVIDER_SPEC, "admin_password": "short"})
+    result = azure.run(
+        job_id=1,
+        workspace_dir=tmp_path / "ws",
+        common_spec=COMMON_SPEC,
+        provider_spec=PROVIDER_SPEC,
+        secret_payload=SECRET_PAYLOAD,
+    )
 
-    with session_factory() as session:
-        job = session.get(ProvisioningJob, job_id)
-        assert job.status == "failed"
+    assert result.success is False
+    assert result.error_code == "CLOUD_PERMISSION_DENIED"
+
+
+def test_validate_spec_rejects_short_admin_password():
+    with pytest.raises(ApiError) as exc:
+        azure.validate_spec(COMMON_SPEC, {**PROVIDER_SPEC, "admin_password": "short"})
+    assert exc.value.code == "VALIDATION_ERROR"
+
+
+def test_validate_spec_rejects_missing_common_name():
+    with pytest.raises(ApiError) as exc:
+        azure.validate_spec({}, PROVIDER_SPEC)
+    assert exc.value.code == "VALIDATION_ERROR"
 
 
 def test_instance_type_without_standard_prefix_is_normalized():
-    spec = azure_vm.ProviderSpec.model_validate({**PROVIDER_SPEC, "instance_type": "B2s"})
+    spec = azure.ProviderSpec.model_validate({**PROVIDER_SPEC, "instance_type": "B2s"})
     assert spec.instance_type == "Standard_B2s"
 
-    already_prefixed = azure_vm.ProviderSpec.model_validate({**PROVIDER_SPEC, "instance_type": "Standard_B2s"})
+    already_prefixed = azure.ProviderSpec.model_validate({**PROVIDER_SPEC, "instance_type": "Standard_B2s"})
     assert already_prefixed.instance_type == "Standard_B2s"
+
+
+def test_run_uses_workspace_name_for_resource_group(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run_apply(workspace_dir, module_dir, tfvars, credential_env, **_):
+        captured["rg"] = tfvars["resource_group_name"]
+        return TerraformResult(success=True, outputs={})
+
+    monkeypatch.setattr(azure, "run_apply", fake_run_apply)
+
+    azure.run(
+        job_id=7,
+        workspace_dir=Path(tmp_path) / "user-1-job-7",
+        common_spec=COMMON_SPEC,
+        provider_spec=PROVIDER_SPEC,
+        secret_payload=SECRET_PAYLOAD,
+    )
+    assert captured["rg"] == "rg-user-1-job-7"

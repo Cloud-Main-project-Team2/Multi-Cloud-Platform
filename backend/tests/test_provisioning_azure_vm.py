@@ -1,13 +1,12 @@
-"""POST /provisioning/azure/vm, GET /provisioning/jobs/{id} 통합 테스트.
+"""POST /provisioning/azure/vm, GET /provisioning/jobs/{id} 통합 테스트(통합 라우터).
 
-실제 terraform은 절대 호출하지 않는다 — app.services.provisioning.azure_vm.run을
-가짜 구현으로 바꿔치기해서 라우터의 검증·소유권·멱등성·오류 코드만 검증한다.
-azure_vm.run 자체의 내부 로직은 test_azure_vm_executor.py에서 다룬다.
+실제 terraform은 절대 호출하지 않는다 — 백그라운드 실행 함수(`_run_provisioning_job`)를
+가짜로 바꿔치기해서 라우터의 검증·소유권·멱등성·오류 코드만 검증한다. Azure 러너 자체의 내부
+로직은 test_azure_vm_executor.py에서 다룬다.
 
-conftest.py의 `db_session`(롤백 전용) 대신 실제로 commit하는 세션을 쓴다 — 라우터가
-요청 처리 중 commit하고, TestClient가 실행하는 BackgroundTasks는 별도 커넥션을 여는
-`get_db` override로 그 commit된 데이터를 봐야 하기 때문이다. 테스트가 끝나면 모든 테이블을
-직접 비운다.
+conftest.py의 `db_session`(롤백 전용) 대신 실제로 commit하는 세션을 쓴다 — 라우터가 요청 처리
+중 commit하고, TestClient가 실행하는 BackgroundTasks는 별도 커넥션을 여는 `get_db` override로
+그 commit된 데이터를 봐야 하기 때문이다. 테스트가 끝나면 모든 테이블을 직접 비운다.
 """
 
 import base64
@@ -17,12 +16,12 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import sessionmaker
 
+import app.routers.provisioning as provisioning_router
 from app.db import Base, get_db
 from app.main import app
 from app.models import CloudAccount, Credential, ProvisioningJob, ServiceCatalog, User
 from app.security import credential_crypto as cc
 from app.security.jwt_tokens import create_access_token
-from app.services.provisioning import azure_vm
 
 VALID_KEY = base64.b64encode(os.urandom(32)).decode()
 
@@ -44,17 +43,10 @@ def _encryption_key(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
-def _fake_executor(monkeypatch):
-    """기본값: 백그라운드 실행을 즉시 success로 종결시키는 가짜.
-
-    개별 테스트가 다른 동작을 보고 싶으면 `monkeypatch.setattr(azure_vm, "run", ...)`로
-    다시 덮어쓰면 된다.
-    """
-
-    def _fake_run(job_id, common_spec, provider_spec):
-        pass  # 기본값: 아무 것도 안 함(= status가 "queued"로 남는지 확인하는 테스트용)
-
-    monkeypatch.setattr(azure_vm, "run", _fake_run)
+def _noop_background(monkeypatch):
+    """기본값: 백그라운드 실행을 no-op으로 막는다(job이 "queued"로 남는지 확인하는 테스트용).
+    개별 테스트가 다른 동작을 보고 싶으면 다시 덮어쓴다."""
+    monkeypatch.setattr(provisioning_router, "_run_provisioning_job", lambda *a, **k: None)
 
 
 @pytest.fixture()
@@ -126,7 +118,11 @@ def azure_fixture(session_factory):
     ec2_catalog = ServiceCatalog(
         provider="aws", service_code="ec2", category="compute", display_name="EC2", provisionable=True
     )
-    session.add_all([vm_catalog, ec2_catalog])
+    # provisionable이지만 러너가 없는 조합(§10 미구현) — 501 검증용.
+    sql_catalog = ServiceCatalog(
+        provider="azure", service_code="sql", category="database", display_name="Azure SQL", provisionable=True
+    )
+    session.add_all([vm_catalog, ec2_catalog, sql_catalog])
     session.commit()
 
     data = {
@@ -150,7 +146,7 @@ def _headers(idempotency_key="key-1") -> dict:
 
 def _body(credential_id, provider_spec=None, name="web-01") -> dict:
     return {
-        "credential_id": credential_id,
+        "credential_id": str(credential_id),
         "common_spec": {"name": name},
         "provider_spec": provider_spec if provider_spec is not None else VALID_PROVIDER_SPEC,
     }
@@ -197,14 +193,15 @@ def test_unknown_service_returns_404(client, azure_fixture):
     assert resp.json()["error"]["code"] == "SERVICE_NOT_FOUND"
 
 
-def test_provisionable_service_without_executor_returns_422(client, azure_fixture):
+def test_provisionable_service_without_runner_returns_501(client, azure_fixture):
+    """provisionable하지만 러너가 등록되지 않은 조합은 501 PROVISIONING_NOT_IMPLEMENTED(통합 계약)."""
     resp = client.post(
-        "/api/v1/provisioning/aws/ec2",
-        json=_body(azure_fixture["aws_credential_id"], provider_spec={}),
+        "/api/v1/provisioning/azure/sql",
+        json=_body(azure_fixture["credential_id"]),
         headers={**_auth(azure_fixture["user_id"]), **_headers()},
     )
-    assert resp.status_code == 422
-    assert resp.json()["error"]["code"] == "RESOURCE_NOT_PROVISIONABLE"
+    assert resp.status_code == 501
+    assert resp.json()["error"]["code"] == "PROVISIONING_NOT_IMPLEMENTED"
 
 
 def test_credential_owned_by_other_user_returns_404(client, azure_fixture):
@@ -217,21 +214,22 @@ def test_credential_owned_by_other_user_returns_404(client, azure_fixture):
     assert resp.json()["error"]["code"] == "CREDENTIAL_NOT_FOUND"
 
 
-def test_credential_provider_mismatch_returns_422(client, azure_fixture):
+def test_credential_provider_mismatch_returns_404(client, azure_fixture):
+    """소유 credential이지만 provider가 달라 존재를 드러내지 않고 404로 처리한다(통합 계약)."""
     resp = client.post(
         "/api/v1/provisioning/azure/vm",
         json=_body(azure_fixture["aws_credential_id"]),
         headers={**_auth(azure_fixture["user_id"]), **_headers()},
     )
-    assert resp.status_code == 422
-    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+    assert resp.status_code == 404
+    assert resp.json()["error"]["code"] == "CREDENTIAL_NOT_FOUND"
 
 
 def test_missing_common_spec_name_returns_422(client, azure_fixture):
     resp = client.post(
         "/api/v1/provisioning/azure/vm",
         json={
-            "credential_id": azure_fixture["credential_id"],
+            "credential_id": str(azure_fixture["credential_id"]),
             "common_spec": {},
             "provider_spec": VALID_PROVIDER_SPEC,
         },
@@ -279,11 +277,9 @@ def test_admin_password_allowed_and_never_persisted_or_returned(client, azure_fi
 def test_create_job_returns_202_queued_then_get_reflects_background_result(
     client, azure_fixture, monkeypatch, session_factory
 ):
-    # 실제 terraform 대신 성공 상태로 직접 종결시킨다. client fixture와 같은 test engine을
-    # 보도록 azure_vm.SessionLocal을 session_factory로 바꿔치기한다.
-    monkeypatch.setattr(azure_vm, "SessionLocal", session_factory)
-
-    def fake_run(job_id, common_spec, provider_spec):
+    # 실제 terraform 대신 백그라운드 실행을 성공 상태로 직접 종결시킨다. client fixture와 같은
+    # test engine을 보도록 session_factory로 job을 갱신한다.
+    def fake_background(job_id, *args, **kwargs):
         session = session_factory()
         try:
             job = session.get(ProvisioningJob, job_id)
@@ -295,7 +291,7 @@ def test_create_job_returns_202_queued_then_get_reflects_background_result(
         finally:
             session.close()
 
-    monkeypatch.setattr(azure_vm, "run", fake_run)
+    monkeypatch.setattr(provisioning_router, "_run_provisioning_job", fake_background)
 
     resp = client.post(
         "/api/v1/provisioning/azure/vm",
@@ -308,8 +304,7 @@ def test_create_job_returns_202_queued_then_get_reflects_background_result(
     job_id = body["id"]
     assert body["status_url"] == f"/api/v1/provisioning/jobs/{job_id}"
 
-    # BackgroundTasks는 TestClient가 응답을 반환하기 전에 실행되므로, 이 시점에는 이미
-    # fake_run이 끝나 있다.
+    # BackgroundTasks는 TestClient가 응답을 반환하기 전에 실행되므로 이 시점엔 이미 끝나 있다.
     get_resp = client.get(f"/api/v1/provisioning/jobs/{job_id}", headers=_auth(azure_fixture["user_id"]))
     assert get_resp.status_code == 200
     job_data = get_resp.json()["data"]
