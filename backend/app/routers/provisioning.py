@@ -161,6 +161,12 @@ def _resource_attrs(
         # Bucket/RDS Instance)를 그대로 따른다.
         distribution_id = outputs.get("distribution_id")
         return distribution_id, "CloudFront Distribution", None, common_spec.get("name")
+    if provider == "aws" and service_code == "rds":
+        # app/providers/aws.py의 discover_resources()/perform_resource_action()과 같은 관례
+        # (original_resource_type="RDS Instance", name=DBInstanceIdentifier — RDS는 Name 태그
+        # 개념이 없어 discover도 식별자를 그대로 표시 이름으로 쓴다).
+        db_instance_id = outputs.get("db_instance_id")
+        return db_instance_id, "RDS Instance", provider_spec.get("region"), db_instance_id
     if provider == "aws":
         return outputs.get("instance_id"), "AWS::EC2::Instance", provider_spec.get("region"), common_spec.get("name")
     if provider == "gcp":
@@ -187,6 +193,9 @@ def _initial_resource_status(provider: str, service_code: str) -> str:
         # aws_cloudfront_distribution은 기본값(wait_for_deployment=true)이라 apply가 배포
         # 완료(Deployed)까지 기다린 뒤 반환한다 — app/aws_cloudfront_provisioning.py 참고.
         return "DEPLOYED"
+    if provider == "aws" and service_code == "rds":
+        # aws_db_instance도 apply가 인스턴스 생성 완료(available)까지 기다린 뒤 반환한다.
+        return "AVAILABLE"
     return "RUNNING"
 
 
