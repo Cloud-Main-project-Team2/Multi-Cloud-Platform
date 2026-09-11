@@ -288,6 +288,7 @@ def _execute_job(
     job.started_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
 
+    # 자격 증명이 최소한 인증(STS 등)에 성공했는지만 확인한다.
     # 검증된 credential + provision 권한 확인 — resources.py의 resource_control 검사와 같은 정책:
     # permission_scope가 비어 있으면(아직 프로빙 안 된 목업 등) 건너뛴다.
     if credential is None or account is None or not credential.verified:
@@ -296,12 +297,20 @@ def _execute_job(
         job.error_message = "검증된 자격 증명이 없습니다."
         _finalize_job(db, job, service)
         return
+
+    # provision 권한은 여기서 사전 차단하지 않는다 — `permission_scope.provision`은 AWS의 경우
+    # `iam:SimulatePrincipalPolicy`로 프로빙하는데, EC2 권한만 있는 키(예: AmazonEC2FullAccess)는
+    # IAM 시뮬레이션 권한이 없어 실제로는 생성 가능한데도 provision=false로 잘못 기록된다(false
+    # negative — 실제 Full Access 키에서 확인됨). 따라서 실제 권한 게이트는 Terraform apply로 둔다:
+    # 진짜 권한이 없으면 apply가 AccessDenied로 실패하고 terraform_runner._classify_error가
+    # CLOUD_PERMISSION_DENIED로 분류한다.
     if credential.permission_scope and not credential.permission_scope.get("provision", False):
         job.status = "failed"
         job.error_code = "CLOUD_PERMISSION_DENIED"
         job.error_message = "이 자격 증명에는 프로비저닝 권한이 없습니다."
         _finalize_job(db, job, service)
         return
+
 
     runner = get_runner(service.provider, service.service_code)
     if runner is None:

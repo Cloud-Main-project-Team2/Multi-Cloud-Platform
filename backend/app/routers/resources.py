@@ -321,11 +321,11 @@ def _process_action_item(
     )
     if credential is None:
         return _deny("CLOUD_PERMISSION_DENIED")
-    # permission_scope가 비어 있으면(예: 목업 데이터처럼 실제 검증을 거치지 않은 credential)
-    # 아직 프로빙된 적이 없다는 뜻이라 이 검사를 건너뛴다 — 실제로 검증돼 채워진 경우에만
-    # resource_control이 명시적으로 false면 거부한다.
-    if credential.permission_scope and not credential.permission_scope.get("resource_control", False):
-        return _deny("CLOUD_PERMISSION_DENIED")
+    # resource_control 권한은 여기서 사전 차단하지 않는다 — `permission_scope.resource_control`은
+    # AWS의 경우 iam:SimulatePrincipalPolicy로 프로빙하는데, EC2 권한만 있는 키(IAM 권한 없음)는
+    # 시뮬레이션 자체가 실패해 실제로는 제어 가능한데도 false로 잘못 기록된다(false negative).
+    # 실제 권한 게이트는 아래 perform_action의 CSP SDK 호출로 둔다 — 진짜 권한이 없으면 그 호출이
+    # 실패하고 PROVIDER_API_ERROR로 반환된다(프로비저닝의 Terraform apply 게이트와 같은 정책).
 
     # 3) stale/deleted 상태가 동작을 허용하는가
     if resource.deleted_at is not None:

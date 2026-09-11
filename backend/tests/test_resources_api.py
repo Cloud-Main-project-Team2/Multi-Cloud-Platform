@@ -293,7 +293,12 @@ def test_action_rejects_when_no_verified_credential(client, make_user, auth_head
     assert result["error"]["code"] == "CLOUD_PERMISSION_DENIED"
 
 
-def test_action_rejects_when_permission_scope_denies_resource_control(client, make_user, auth_header, db_session):
+def test_action_proceeds_despite_resource_control_false(client, make_user, auth_header, db_session, monkeypatch):
+    # permission_scope.resource_control은 iam:SimulatePrincipalPolicy 기반이라 EC2 전용 키에서
+    # false negative가 잦다 — 사전 차단하지 않고 실제 CSP SDK 호출로 게이트한다.
+    import app.routers.resources as resources_router
+
+    monkeypatch.setattr(resources_router, "perform_action", lambda **kwargs: None)
     user = make_user()
     _, _, _, resource = _setup_aws_ec2(
         db_session, user, permission_scope={"inventory_read": True, "resource_control": False, "provision": False, "cost_read": False}
@@ -307,8 +312,7 @@ def test_action_rejects_when_permission_scope_denies_resource_control(client, ma
     )
 
     result = resp.json()["data"]["results"][0]
-    assert result["status"] == "rejected"
-    assert result["error"]["code"] == "CLOUD_PERMISSION_DENIED"
+    assert result["status"] == "success"
 
 
 def test_action_allows_when_permission_scope_is_empty_like_seed_data(client, make_user, auth_header, db_session, monkeypatch):

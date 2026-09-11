@@ -467,7 +467,9 @@ def test_execute_job_rejects_unverified_credential_without_calling_runner(monkey
     assert db_session.query(Notification).filter_by(user_id=user.id).count() == 1
 
 
-def test_execute_job_rejects_credential_without_provision_scope(monkeypatch, make_user, db_session):
+def test_execute_job_proceeds_despite_provision_scope_false(monkeypatch, make_user, db_session):
+    # provision=false는 사전 차단하지 않는다 — iam:SimulatePrincipalPolicy 프로빙은 EC2 전용 키에서
+    # false negative가 잦아, 실제 권한 게이트는 Terraform apply로 둔다.
     user = make_user()
     service, _account, credential = _setup(db_session, user)
     credential.permission_scope = {"provision": False, "inventory_read": True}
@@ -475,15 +477,19 @@ def test_execute_job_rejects_credential_without_provision_scope(monkeypatch, mak
     job = _create_queued_job(db_session, user, credential, service)
 
     called = {"run": False}
+
+    def _run(**kwargs):
+        called["run"] = True
+        return TerraformResult(success=True, outputs={"instance_id": "i-abc123"})
+
     monkeypatch.setattr(
         provisioning_router,
         "get_runner",
-        lambda provider, service_code: type("R", (), {"run": staticmethod(lambda **kwargs: called.__setitem__("run", True))}),
+        lambda provider, service_code: type("R", (), {"run": staticmethod(_run)}),
     )
 
     provisioning_router._execute_job(db_session, job)
 
     db_session.refresh(job)
-    assert job.status == "failed"
-    assert job.error_code == "CLOUD_PERMISSION_DENIED"
-    assert called["run"] is False
+    assert called["run"] is True
+    assert job.status == "success"
