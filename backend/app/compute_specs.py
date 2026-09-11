@@ -1,9 +1,8 @@
-"""여러 provider의 compute 실행기가 공유하는 `common_spec` 조각.
+"""여러 provider의 compute 러너가 공유하는 `common_spec` 조각.
 
 `docs/멀티클라우드 3사 기능 맵핑 — 설정값 입력 범위 (2026-09-10).md` 1절 기준으로
-Compute(EC2/Virtual Machines/Compute Engine)의 공통 설정 7개 중, provider마다
-다르게 해석해야 하는 이름·리전·사양·인증을 뺀 나머지(태그, 인바운드 규칙)는 AWS/GCP
-compute 실행기가 생기면 그대로 재사용할 수 있게 여기 모아둔다.
+Compute(EC2/Virtual Machines/Compute Engine)의 공통 설정 중, provider마다 다르게 해석해야
+하는 이름·리전·사양·인증을 뺀 나머지(태그, 인바운드 규칙)를 여기 모아 재사용한다.
 """
 
 from __future__ import annotations
@@ -19,8 +18,8 @@ class InboundRule(BaseModel):
 
 
 class ComputeCommonSpec(BaseModel):
-    """Compute 공통 설정. `network`/`specTier` 등 이 실행기가 아직 안 쓰는 필드는
-    frontend가 계속 보내더라도 깨지지 않도록 `extra="allow"`로 통과시킨다."""
+    """Compute 공통 설정. `network`/`specTier` 등 이 러너가 아직 안 쓰는 필드는 frontend가
+    계속 보내더라도 깨지지 않도록 `extra="allow"`로 통과시킨다."""
 
     model_config = ConfigDict(extra="allow")
 

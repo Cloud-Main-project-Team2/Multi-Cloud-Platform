@@ -58,7 +58,7 @@ def _make_credential(db_session, account, name="cred", payload=None, verified=Tr
 @pytest.fixture(autouse=True)
 def _noop_background_provisioning(monkeypatch):
     """HTTP 계층 테스트에서는 실제 백그라운드 job이 절대 돌지 않게 막는다(위 모듈 설명 참고)."""
-    monkeypatch.setattr(provisioning_router, "_run_provisioning_job", lambda job_id: None)
+    monkeypatch.setattr(provisioning_router, "_run_provisioning_job", lambda *a, **k: None)
 
 
 def _setup(db_session, user, provider="aws", service_code="ec2"):
@@ -158,13 +158,15 @@ def test_create_job_not_provisionable_service_is_422(client, make_user, auth_hea
 
 def test_create_job_without_runner_is_501(client, make_user, auth_header, db_session):
     user = make_user()
-    _make_service(db_session, "gcp", "compute_engine", provisionable=True)
+    # provisionable하지만 러너가 등록되지 않은 조합(gcp/cloud_storage). ec2/vm/compute_engine
+    # 세 조합은 통합 후 모두 러너가 있으므로 러너 없는 서비스로 검증한다.
+    _make_service(db_session, "gcp", "cloud_storage", provisionable=True)
     account = _make_account(db_session, user, "gcp", "proj-1")
     credential = _make_credential(db_session, account)
     db_session.commit()
 
     resp = client.post(
-        "/api/v1/provisioning/gcp/compute_engine",
+        "/api/v1/provisioning/gcp/cloud_storage",
         json={"credential_id": str(credential.id), "common_spec": VALID_COMMON_SPEC, "provider_spec": VALID_PROVIDER_SPEC},
         headers={**auth_header(user), **HEADERS_BASE},
     )
@@ -392,7 +394,8 @@ def test_execute_job_success_creates_resource_and_notification(monkeypatch, make
     assert resource.provider_resource_key == "aws:ec2:i-abc123"
 
     notification = db_session.query(Notification).filter_by(user_id=user.id).one()
-    assert notification.message_key == "provisioning.success"
+    assert notification.type == "provisioning_succeeded"
+    assert notification.message_key == "notif.provisioning.succeeded"
 
 
 def test_execute_job_failure_records_error_without_resource(monkeypatch, make_user, db_session):
