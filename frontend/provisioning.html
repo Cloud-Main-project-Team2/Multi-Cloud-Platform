@@ -77,8 +77,8 @@
           <section data-step="1" class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">①</span> 플랫폼 선택 <span class="font-normal text-muted-foreground">(중복 선택 가능)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="aws" checked /> AWS</label>
-              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="azure" checked /> Azure</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="aws" /> AWS</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="azure" /> Azure</label>
               <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="gcp" /> GCP</label>
             </div>
           </section>
@@ -86,19 +86,18 @@
           <!-- ② 계정 선택 -->
           <section data-step="2" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">②</span> 계정 선택 <span class="font-normal text-muted-foreground">(다중 선택 가능)</span></p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <label data-select-chip class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted text-muted-foreground px-3 py-2 text-sm"><input type="checkbox" data-prov-account="aws" value="prod-aws-01" checked /> prod-aws-01</label>
-              <label data-select-chip class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted text-muted-foreground px-3 py-2 text-sm"><input type="checkbox" data-prov-account="azure" value="prod-az-01" checked /> prod-az-01</label>
-              <span id="prov-account-count" class="self-center text-sm text-muted-foreground">(2개 선택)</span>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <div id="prov-account-list" class="flex flex-wrap gap-2"><span class="text-xs text-muted-foreground">먼저 ① 플랫폼을 선택하세요.</span></div>
+              <span id="prov-account-count" class="self-center text-sm text-muted-foreground">(0개 선택)</span>
             </div>
-            <p class="mt-2 text-xs text-muted-foreground">같은 설정으로 선택한 계정 수만큼 생성됩니다.</p>
+            <p class="mt-2 text-xs text-muted-foreground">마이페이지에 등록된 자격 증명이 표시됩니다. 같은 설정으로 선택한 계정 수만큼 생성됩니다.</p>
           </section>
 
           <!-- ③ 리소스 종류 -->
           <section data-step="3" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">③</span> 리소스 종류 <span class="font-normal text-muted-foreground">(단일 선택)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="compute" checked /> Compute</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="compute" /> Compute</label>
               <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="db" /> Database</label>
               <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="storage_object" /> Storage</label>
               <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="cdn" /> CDN</label>
@@ -131,89 +130,6 @@
         </div>
 
         <!-- PROV-02 진행률: 실제 오버레이 모달(#prov-progress-modal) + 우측 하단 축소형 카드(#prov-progress-mini)로 아래에 구현. 생성하기로 열림. -->
-
-        <!-- ===== AWS EC2 실 API 테스트 (위 마법사와 완전히 독립적, 커밋 전 수동 확인용) =====
-             위 PROV-01 마법사는 assets/js/provisioning.js 상단 주석대로 아직 서버 통신이 없는
-             시뮬레이션이다. 이 섹션만 실제 backend/app/routers/provisioning.py(AWS EC2 전용
-             러너)와 통신한다. 로그인 세션(JWT)이 있어야 하고, 마이페이지에서 AWS 자격 증명을
-             먼저 등록해야 계정 select에 뜬다. -->
-        <div class="mx-auto mt-8 max-w-2xl">
-          <div class="rounded-2xl border-2 border-dashed border-primary bg-surface p-5">
-            <p class="text-sm font-semibold text-primary">🧪 AWS EC2 실 API 테스트 (백엔드 검증용, 위 마법사와 별개)</p>
-            <p class="mt-1 text-xs text-muted-foreground">
-              실제 <code>POST /provisioning/aws/ec2</code>를 호출합니다 — 실제 AWS 리소스가 생성되며 과금이 발생할 수 있습니다.
-              먼저 <a href="mypage.html" class="text-primary underline">마이페이지</a>에서 AWS 자격 증명을 등록하세요.
-            </p>
-
-            <div class="mt-4 grid gap-3 sm:grid-cols-2">
-              <div>
-                <label class="mb-1 block text-sm font-medium">AWS 자격 증명</label>
-                <select id="aws-ec2-credential" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                  <option value="">불러오는 중...</option>
-                </select>
-              </div>
-              <div>
-                <label class="mb-1 block text-sm font-medium">이름</label>
-                <div class="flex items-stretch rounded-lg border border-border bg-background focus-within:border-primary">
-                  <span class="flex items-center px-3 text-sm text-muted-foreground">mcp-</span>
-                  <input id="aws-ec2-name" type="text" placeholder="web-01" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" />
-                </div>
-              </div>
-              <div>
-                <label class="mb-1 block text-sm font-medium">리전</label>
-                <select id="aws-ec2-region" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                  <option value="ap-northeast-2">ap-northeast-2</option>
-                  <option value="us-east-1">us-east-1</option>
-                </select>
-              </div>
-              <div>
-                <label class="mb-1 block text-sm font-medium">인스턴스 타입</label>
-                <select id="aws-ec2-instance-type" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                  <option value="t3.micro">t3.micro (프리티어, 권장)</option>
-                  <option value="t3.small">t3.small</option>
-                  <option value="t3.medium">t3.medium</option>
-                </select>
-              </div>
-              <div class="sm:col-span-2">
-                <label class="mb-1 block text-sm font-medium">AMI ID (선택, 비우면 최신 Amazon Linux 2023 자동)</label>
-                <input id="aws-ec2-ami" type="text" placeholder="ami-xxxxxxxxxxxxxxxxx" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />
-              </div>
-            </div>
-
-            <div class="mt-4 flex justify-end">
-              <button id="aws-ec2-create-btn" type="button" class="rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white hover:opacity-90">실제 생성하기</button>
-            </div>
-
-            <p id="aws-ec2-result" hidden class="mt-3 rounded-lg border border-border bg-background p-3 text-sm"></p>
-
-            <div class="mt-5">
-              <div class="flex items-center justify-between">
-                <p class="text-sm font-semibold">내 AWS 프로비저닝 job</p>
-                <button id="aws-ec2-refresh-btn" type="button" class="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted">새로고침</button>
-              </div>
-              <div class="mt-2 overflow-x-auto">
-                <table class="w-full text-left text-sm">
-                  <thead class="border-b border-border text-xs text-muted-foreground">
-                    <tr>
-                      <th class="py-2 pr-3 font-medium">ID</th>
-                      <th class="py-2 pr-3 font-medium">이름/사양</th>
-                      <th class="py-2 pr-3 font-medium">상태</th>
-                      <th class="py-2 pr-3 font-medium">결과</th>
-                      <th class="py-2 pr-3 font-medium">액션</th>
-                    </tr>
-                  </thead>
-                  <tbody id="aws-ec2-jobs-tbody">
-                    <tr><td colspan="5" class="py-3 text-xs text-muted-foreground">불러오는 중...</td></tr>
-                  </tbody>
-                </table>
-              </div>
-              <p class="mt-2 text-xs text-muted-foreground">
-                실제로 생성된(success) 인스턴스 삭제는 아직 API로 없습니다 — CLI로만 정리합니다:
-                <code>docker compose run --rm api python -m app.dev_destroy_job &lt;job_id&gt;</code>
-              </p>
-            </div>
-          </div>
-        </div>
 
       </div>
     </div>
@@ -280,7 +196,6 @@
   <script src="assets/js/modal.js"></script>
   <script src="assets/js/dropdown.js"></script>
   <script src="assets/js/provisioning.js"></script>
-  <script src="assets/js/aws-ec2-provisioning.js"></script>
   <script>
     (function () {
       var mini = document.getElementById("prov-progress-mini");
