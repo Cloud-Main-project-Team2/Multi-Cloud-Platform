@@ -42,6 +42,33 @@
 
   var PLATFORM_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
 
+  // 실 API 연동: Compute만 백엔드에 러너가 있다(§10 — aws/ec2, azure/vm, gcp/compute_engine).
+  // DB/Storage/CDN은 미지원(501)이라 기존 시뮬레이션을 그대로 쓴다.
+  var SERVICE_CODE = { aws: "ec2", azure: "vm", gcp: "compute_engine" };
+  var PROV_ERROR_MESSAGES = {
+    IDEMPOTENCY_KEY_REQUIRED: "요청 식별 키가 없습니다(내부 오류).",
+    CONFIRMATION_REQUIRED: "확인이 필요한 작업입니다.",
+    VALIDATION_ERROR: "입력값을 다시 확인해 주세요(이름 형식·리전·사양·인증).",
+    SECRET_FIELD_NOT_ALLOWED: "입력값에 자격 증명으로 보이는 필드가 있습니다.",
+    CREDENTIAL_NOT_FOUND: "자격 증명을 찾을 수 없습니다.",
+    CLOUD_PERMISSION_DENIED: "이 자격 증명은 검증되지 않았거나 프로비저닝 권한이 없습니다 — 마이페이지에서 검증하세요.",
+    PROVISIONING_NOT_IMPLEMENTED: "아직 지원하지 않는 조합입니다.",
+    PROVIDER_AUTHENTICATION_FAILED: "클라우드 인증에 실패했습니다 — 자격 증명을 확인하세요.",
+    AUTHENTICATION_REQUIRED: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
+    INVALID_TOKEN: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
+  };
+  function provErrorMessage(err) {
+    return (err && (PROV_ERROR_MESSAGES[err.code] || err.message)) || "요청 처리 중 오류가 발생했습니다.";
+  }
+  function escHtml(s) {
+    return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function newIdemKey() {
+    return "prov-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
+  }
+
   // DB 엔진 옵션(플랫폼별로 다름).
   var DB_ENGINES = {
     aws: ["MySQL", "PostgreSQL", "MariaDB", "SQL Server", "Oracle", "DB2", "Aurora"],
@@ -87,7 +114,8 @@
   var state = {
     resourceKind: null, // 'compute' | 'db' | 'storage_object' | 'cdn'
     platforms: [], // ['aws','azure']
-    selectedAccounts: {}, // { aws: 'prod-aws-01', ... }
+    selectedAccounts: {}, // { aws: 'label', ... } — 검토/검증 표시용(플랫폼당 대표 1개)
+    selectedCredentials: [], // [{ provider, credentialId, label }] — 실제 job 생성 단위
     commonSpec: {}, // 공통 설정 필드
     providerSpec: { aws: {}, azure: {}, gcp: {} }, // 플랫폼별 추가/구분 필드
   };
@@ -117,10 +145,66 @@
   }
   function readSelectedAccounts() {
     var acc = {};
-    document.querySelectorAll("[data-prov-account]").forEach(function (cb) {
-      if (cb.checked) acc[cb.getAttribute("data-prov-account")] = cb.value || cb.getAttribute("data-prov-account-label");
+    var creds = [];
+    document.querySelectorAll("#prov-account-list [data-prov-account]").forEach(function (cb) {
+      if (!cb.checked) return;
+      var p = cb.getAttribute("data-prov-account");
+      var label = cb.value || cb.getAttribute("data-prov-account-label") || p;
+      acc[p] = label; // 플랫폼당 대표 1개(검토/검증 표시용)
+      creds.push({ provider: p, credentialId: cb.getAttribute("data-credential-id"), label: label });
     });
+    state.selectedCredentials = creds;
     return acc;
+  }
+
+  // ── 실 계정/자격 증명 로딩 + ② 계정 칩 렌더링 ─────────────────────────────
+  // 마이페이지에 등록된 실제 cloud-account + credential을 불러와 ② 계정 스텝을 채운다.
+  var allCredentials = []; // [{ id, provider, label, verified }]
+
+  function loadAccountCredentials() {
+    if (!window.MCPApi) return Promise.resolve();
+    return MCPApi.request("/cloud-accounts")
+      .then(function (data) {
+        var accounts = (data && data.items) || [];
+        return Promise.all(accounts.map(function (a) {
+          return MCPApi.request("/cloud-accounts/" + a.id + "/credentials").then(function (cd) {
+            return ((cd && cd.items) || []).map(function (c) {
+              return {
+                id: String(c.id),
+                provider: a.provider,
+                label: (a.account_label || a.external_account_id) + " · " + c.name + (c.verified ? "" : " (미검증)"),
+                verified: !!c.verified,
+              };
+            });
+          }).catch(function () { return []; });
+        }));
+      })
+      .then(function (groups) {
+        allCredentials = [];
+        groups.forEach(function (g) { allCredentials = allCredentials.concat(g); });
+      })
+      .catch(function () { allCredentials = []; });
+  }
+
+  function renderAccounts() {
+    var list = document.getElementById("prov-account-list");
+    if (!list) return;
+    var platforms = readPlatforms();
+    if (!platforms.length) {
+      list.innerHTML = '<span class="text-xs text-muted-foreground">먼저 ① 플랫폼을 선택하세요.</span>';
+      return;
+    }
+    var creds = allCredentials.filter(function (c) { return platforms.indexOf(c.provider) >= 0; });
+    if (!creds.length) {
+      list.innerHTML = '<span class="text-xs text-muted-foreground">선택한 플랫폼에 등록된 자격 증명이 없습니다 — ' +
+        '<a href="mypage.html" class="text-primary underline">마이페이지</a>에서 먼저 등록하세요.</span>';
+      return;
+    }
+    list.innerHTML = creds.map(function (c) {
+      return '<label data-select-chip class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted text-muted-foreground px-3 py-2 text-sm">' +
+        '<input type="checkbox" data-prov-account="' + c.provider + '" data-credential-id="' + c.id + '" value="' + escHtml(c.label) + '" /> ' +
+        escHtml(PLATFORM_LABEL[c.provider] + " · " + c.label) + "</label>";
+    }).join("");
   }
   function readResourceKind() {
     var checked = document.querySelector("[data-prov-kind]:checked");
@@ -142,7 +226,7 @@
 
     // 3) 사양(추상 등급) — providerSpec의 실제 SKU는 collect 시 매핑
     var specField = el("div");
-    var specOpts = SPEC_TIERS.map(function (t) {
+    var specOpts = '<option value="">선택하세요</option>' + SPEC_TIERS.map(function (t) {
       return '<option value="' + t.key + '">' + t.label + "</option>";
     }).join("");
     specField.innerHTML = labelHtml("사양", true) +
@@ -187,7 +271,8 @@
   // 국가 단일 select(공통). 선택 국가는 collect()에서 각 플랫폼 리전으로 매핑된다.
   function countryFieldEl() {
     var f = el("div");
-    var opts = Object.keys(COUNTRY_REGION).map(function (c) { return "<option>" + c + "</option>"; }).join("");
+    var opts = '<option value="">선택하세요</option>' +
+      Object.keys(COUNTRY_REGION).map(function (c) { return "<option>" + c + "</option>"; }).join("");
     f.innerHTML = labelHtml("리전(국가)", true) +
       '<select data-cs="country" class="' + FIELD_INPUT + '">' + opts + "</select>" +
       '<p class="mt-1 text-xs text-muted-foreground">국가를 고르면 각 플랫폼에 맞는 리전이 자동 설정됩니다.</p>';
@@ -206,7 +291,7 @@
   function inboundFieldEl() {
     var f = el("div", { class: "sm:col-span-2" });
     var presetHtml = INBOUND_PRESETS.map(function (r) {
-      var checked = r.port === 22 ? " checked" : "";
+      var checked = ""; // 기본 선택 없음 — 사용자가 직접 골라야 한다
       return '<label class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-sm">' +
         '<input type="checkbox" data-inbound-preset="' + r.port + '"' + checked + " /> " + r.label + "</label>";
     }).join("");
@@ -242,7 +327,8 @@
   // DB 엔진+인증(⑤로 이동) — 플랫폼별 박스.
   function dbBoxEl(p) {
     var box = el("div", { class: "sm:col-span-2 space-y-3 rounded-xl bg-muted p-3" });
-    var engineOpts = DB_ENGINES[p].map(function (e) { return "<option>" + e + "</option>"; }).join("");
+    var engineOpts = '<option value="">선택하세요</option>' +
+      DB_ENGINES[p].map(function (e) { return "<option>" + e + "</option>"; }).join("");
     var html = '<p class="text-sm font-medium">' + PLATFORM_LABEL[p] + "</p>";
     html += "<div>" + labelHtml("엔진", true) +
       '<select data-ps-platform="' + p + '" data-ps="engine" class="' + FIELD_INPUT + '">' + engineOpts + "</select>";
@@ -512,7 +598,8 @@
       platforms.forEach(function (p) {
         if (!COMPUTE_IMAGES[p]) return; // GCP 등 이미지 필드 미노출
         var box = el("div", { class: "rounded-xl bg-muted p-3" });
-        var opts = COMPUTE_IMAGES[p].map(function (o) { return "<option>" + o + "</option>"; }).join("");
+        var opts = '<option value="">선택하세요</option>' +
+          COMPUTE_IMAGES[p].map(function (o) { return "<option>" + o + "</option>"; }).join("");
         var html = '<p class="mb-2 text-sm font-medium">' + PLATFORM_LABEL[p] + " 이미지</p>" +
           '<select data-ps-platform="' + p + '" data-ps="image"' + (p === "aws" ? " data-image-select" : "") +
           ' class="' + FIELD_INPUT + '">' + opts + "</select>";
@@ -536,7 +623,8 @@
 
     if (kind === "storage_object") {
       if (platforms.indexOf("gcp") >= 0) {
-        var opts2 = STORAGE_CLASSES.map(function (o) { return "<option>" + o + "</option>"; }).join("");
+        var opts2 = '<option value="">선택하세요</option>' +
+          STORAGE_CLASSES.map(function (o) { return "<option>" + o + "</option>"; }).join("");
         var box2 = el("div", { class: "rounded-xl bg-muted p-3" },
           '<p class="mb-2 text-sm font-medium">GCP 스토리지 등급</p>' +
           '<select data-ps-platform="gcp" data-ps="storageClass" class="' + FIELD_INPUT + '">' + opts2 + "</select>");
@@ -591,6 +679,7 @@
 
     if (kind === "compute") {
       if (!cs.name || cs.name === "mcp-") return false; // 이름(프리픽스만이면 미입력)
+      if (!cs.specTier) return false; // 사양 등급(기본 선택 없음 — 직접 골라야 함)
       if (!cs.inboundRules || !cs.inboundRules.length) return false; // 인바운드 최소 1개
       return state.platforms.every(function (p) {
         var ps = state.providerSpec[p] || {};
@@ -844,6 +933,114 @@
     }, 450);
   }
 
+  // ── 실 API 프로비저닝 (Compute 전용) ──────────────────────────────────────
+  // 백엔드 §10: POST /provisioning/{provider}/{service} 로 job을 만들고, 202(queued) 응답의
+  // job id를 GET /provisioning/jobs/{id}로 폴링해 진행바를 갱신한다. Compute만 지원(러너 존재).
+  function buildCommonSpec() {
+    var cs = state.commonSpec || {};
+    var rawName = (cs.name || "").replace(/^mcp-/, ""); // 백엔드가 mcp- 접두사를 다시 붙인다
+    return {
+      name: rawName,
+      tags: cs.tags || {},
+      inbound_rules: (cs.inboundRules || []).map(function (r) { return { port: r.port, cidr: r.cidr }; }),
+    };
+  }
+  function buildProviderSpec(p) {
+    var ps = state.providerSpec[p] || {};
+    if (p === "aws") {
+      var aws = { region: ps.region, instance_type: ps.instanceType };
+      if (ps.image === AMI_CUSTOM && ps.amiId) aws.ami_id = ps.amiId; // 직접 입력한 AMI만 전송
+      return aws;
+    }
+    if (p === "gcp") return { region: ps.region, instance_type: ps.instanceType };
+    if (p === "azure") {
+      // Azure provider_spec은 extra="forbid" — 정확히 이 필드만 보낸다. image는 값이 있을 때만
+      // (빈 값이면 백엔드 기본값 Ubuntu 22.04).
+      var az = {
+        region: ps.region,
+        instance_type: ps.instanceType,
+        admin_username: ps.adminUsername,
+        admin_password: ps.adminPassword,
+        create_public_ip: true,
+      };
+      if (ps.image) az.image = ps.image;
+      return az;
+    }
+    return {};
+  }
+
+  function startProvisioningReal() {
+    var list = document.getElementById("prov-progress-list");
+    if (!list) return;
+    var creds = (state.selectedCredentials || []).filter(function (c) {
+      return state.platforms.indexOf(c.provider) >= 0 && c.credentialId;
+    });
+    if (!creds.length) {
+      list.innerHTML = '<p class="text-sm" style="color:#c0392b">선택된 자격 증명이 없습니다 — ② 계정에서 선택하세요.</p>';
+      return;
+    }
+
+    var common = buildCommonSpec();
+    var targets = creds.map(function (c, i) {
+      return { idx: i, platform: c.provider, account: c.label, credentialId: c.credentialId, progress: 0, status: "pending" };
+    });
+
+    function rowHtml(t) {
+      return '<div data-real-row="' + t.idx + '">' +
+        '<div class="flex justify-between text-sm"><span>' + PLATFORM_LABEL[t.platform] + " · " + escHtml(t.account) +
+        '</span><span data-real-status class="text-muted-foreground">대기</span></div>' +
+        '<div class="mt-1 h-2 rounded-full bg-muted"><div data-real-bar class="h-2 rounded-full bg-sky" style="width:0%"></div></div>' +
+        '<p data-real-msg class="mt-1 text-xs" hidden></p></div>';
+    }
+    list.innerHTML = targets.map(rowHtml).join("");
+    updateMini(targets);
+
+    function setRow(t, status, progress, msg) {
+      t.status = status;
+      t.progress = progress;
+      var row = list.querySelector('[data-real-row="' + t.idx + '"]');
+      if (row) {
+        var bar = row.querySelector("[data-real-bar]");
+        var st = row.querySelector("[data-real-status]");
+        var m = row.querySelector("[data-real-msg]");
+        bar.style.width = progress + "%";
+        if (status === "failed") {
+          bar.className = "h-2 rounded-full"; bar.style.background = "#c0392b";
+          st.textContent = "실패"; st.className = "rounded px-1.5 py-0.5 text-xs text-white"; st.style.background = "#c0392b";
+          m.hidden = false; m.style.color = "#c0392b"; m.textContent = msg || "실패";
+        } else if (status === "done") {
+          bar.className = "h-2 rounded-full bg-primary"; st.textContent = "완료 100%"; st.className = "text-sm text-primary";
+        } else {
+          st.textContent = "진행중 " + progress + "%";
+        }
+      }
+      updateMini(targets);
+    }
+
+    function pollTarget(t, jobId) {
+      MCPApi.request("/provisioning/jobs/" + jobId)
+        .then(function (job) {
+          if (job.status === "success") { setRow(t, "done", 100, null); return; }
+          if (job.status === "failed") { setRow(t, "failed", t.progress, (job.error && job.error.message) || "생성에 실패했습니다."); return; }
+          if (job.status === "cancelled") { setRow(t, "failed", t.progress, "취소되었습니다."); return; }
+          setRow(t, "running", Math.min(90, (t.progress || 8) + 7)); // queued/running — 창가 진행 연출
+          setTimeout(function () { pollTarget(t, jobId); }, 2000);
+        })
+        .catch(function (err) { setRow(t, "failed", t.progress, provErrorMessage(err)); });
+    }
+
+    targets.forEach(function (t) {
+      setRow(t, "running", 8);
+      MCPApi.request("/provisioning/" + t.platform + "/" + SERVICE_CODE[t.platform], {
+        method: "POST",
+        headers: { "Idempotency-Key": newIdemKey(), "X-Action-Confirmed": "true" },
+        body: { credential_id: t.credentialId, common_spec: common, provider_spec: buildProviderSpec(t.platform) },
+      })
+        .then(function (data) { pollTarget(t, data.id); })
+        .catch(function (err) { setRow(t, "failed", t.progress, provErrorMessage(err)); });
+    });
+  }
+
   // ── 이벤트 배선 ──────────────────────────────────────────────────────────
   function init() {
     var container = document.getElementById("prov-common-fields");
@@ -878,13 +1075,11 @@
 
     // 플랫폼/리소스 종류 변경 → 재렌더 + 선택 시각 피드백 + 다음 단계 노출
     document.querySelectorAll("[data-prov-platform]").forEach(function (cb) {
-      cb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); revealSteps(); });
+      // 플랫폼이 바뀌면 ② 계정 칩(해당 플랫폼 자격 증명)도 다시 그린다.
+      cb.addEventListener("change", function () { renderAccounts(); renderSteps(); syncSelectionUI(); revealSteps(); });
     });
     document.querySelectorAll("[data-prov-kind]").forEach(function (rb) {
       rb.addEventListener("change", function () { renderSteps(); syncSelectionUI(); revealSteps(); });
-    });
-    document.querySelectorAll("[data-prov-account]").forEach(function (cb) {
-      cb.addEventListener("change", function () { onFieldChange(); syncSelectionUI(); });
     });
 
     // 생성 확인 모달의 "생성 확인" → 확인 모달 닫고 진행률 모달 열기(+시뮬레이션은 단위 6)
@@ -895,13 +1090,25 @@
           MCPModal.close("#prov-confirm-modal");
           MCPModal.open("#prov-progress-modal");
         }
-        if (typeof startProvisioningSim === "function") startProvisioningSim();
+        // Compute만 실제 백엔드 러너가 있다 — 실 API 연동. 나머지(DB/Storage/CDN)는 미지원(501)
+        // 이라 기존 시뮬레이션으로 화면 흐름만 보여준다.
+        if (state.resourceKind === "compute" && window.MCPApi) startProvisioningReal();
+        else startProvisioningSim();
       });
+    }
+
+    // ② 계정 칩은 동적 렌더라 컨테이너에 위임 배선한다(정적 바인딩 불가).
+    var accList = document.getElementById("prov-account-list");
+    if (accList) {
+      accList.addEventListener("change", function () { onFieldChange(); syncSelectionUI(); revealSteps(); });
     }
 
     renderSteps();
     syncSelectionUI();
     revealSteps();
+
+    // 실제 등록된 자격 증명을 불러와 ② 계정 스텝을 채운다(로그인 세션 필요 — auth-guard가 보장).
+    loadAccountCredentials().then(function () { renderAccounts(); syncSelectionUI(); revealSteps(); });
   }
 
   // 후속 단위에서 재사용할 수 있도록 최소 API 노출

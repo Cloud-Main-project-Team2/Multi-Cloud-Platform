@@ -77,8 +77,8 @@
           <section data-step="1" class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">①</span> 플랫폼 선택 <span class="font-normal text-muted-foreground">(중복 선택 가능)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="aws" checked /> AWS</label>
-              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="azure" checked /> Azure</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="aws" /> AWS</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="azure" /> Azure</label>
               <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="checkbox" data-prov-platform="gcp" /> GCP</label>
             </div>
           </section>
@@ -86,19 +86,18 @@
           <!-- ② 계정 선택 -->
           <section data-step="2" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">②</span> 계정 선택 <span class="font-normal text-muted-foreground">(다중 선택 가능)</span></p>
-            <div class="mt-3 flex flex-wrap gap-2">
-              <label data-select-chip class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted text-muted-foreground px-3 py-2 text-sm"><input type="checkbox" data-prov-account="aws" value="prod-aws-01" checked /> prod-aws-01</label>
-              <label data-select-chip class="flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-muted text-muted-foreground px-3 py-2 text-sm"><input type="checkbox" data-prov-account="azure" value="prod-az-01" checked /> prod-az-01</label>
-              <span id="prov-account-count" class="self-center text-sm text-muted-foreground">(2개 선택)</span>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <div id="prov-account-list" class="flex flex-wrap gap-2"><span class="text-xs text-muted-foreground">먼저 ① 플랫폼을 선택하세요.</span></div>
+              <span id="prov-account-count" class="self-center text-sm text-muted-foreground">(0개 선택)</span>
             </div>
-            <p class="mt-2 text-xs text-muted-foreground">같은 설정으로 선택한 계정 수만큼 생성됩니다.</p>
+            <p class="mt-2 text-xs text-muted-foreground">마이페이지에 등록된 자격 증명이 표시됩니다. 같은 설정으로 선택한 계정 수만큼 생성됩니다.</p>
           </section>
 
           <!-- ③ 리소스 종류 -->
           <section data-step="3" hidden class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm font-semibold"><span class="mr-1 text-primary">③</span> 리소스 종류 <span class="font-normal text-muted-foreground">(단일 선택)</span></p>
             <div class="mt-3 flex flex-wrap gap-2">
-              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="compute" checked /> Compute</label>
+              <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="compute" /> Compute</label>
               <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="db" /> Database</label>
               <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="storage_object" /> Storage</label>
               <label data-select-card class="flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm"><input type="radio" name="restype" data-prov-kind="cdn" /> CDN</label>
