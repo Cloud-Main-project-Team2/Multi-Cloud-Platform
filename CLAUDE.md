@@ -63,6 +63,8 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 | 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | merged |
 | 리소스 동기화 API — 실제 CSP 리소스 탐색 + `/sync-jobs` 4개 엔드포인트 | `solcho/be-sync-api` | 조은솔 | merged |
 | 인벤토리(INV-01/INV-02) 실API 연동 — 조회·동기화·시작/중지/삭제 | `solcho/fe-inventory-integration` | 조은솔 | in progress |
+
+| AWS 프로비저닝 API — `/provisioning/{provider}/{service}` 등 4개 엔드포인트, AWS EC2만 Terraform으로 실제 생성 | `jongkuk/aws-provisioning` | 김종국 | in progress |
 | GCP 프로비저닝 API — `/provisioning/{provider}/{service}` 등 4개 엔드포인트, GCP Compute Engine만 Terraform으로 실제 생성 | `kwonhyeong/be-gcp-provisioning` | 안권형 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
@@ -224,6 +226,48 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
     (에러 아님 — 단순히 아직 미지원).
   - **audit_events에 동기화를 기록하지 않는다**: §14 기본 기록 대상 표에 `resource.sync`류
     action이 없어 이번 세션에서 새로 만들지 않았다(표에 없는 action을 임의로 추가하지 않음).
+- **AWS 프로비저닝 API 구현 범위(2026-09-11, `jongkuk/aws-provisioning`)**: 이 세션 시작 시점엔
+  프로비저닝 관련 코드가 전혀 없어(스키마·라우터·러너·terraform 모듈 전부 무) 처음부터 만들었다.
+  §10 엔드포인트 중 job 생성·조회·취소 4개(`POST /provisioning/{provider}/{service}`,
+  `GET /provisioning/jobs`, `GET /provisioning/jobs/{job_id}`,
+  `POST /provisioning/jobs/{job_id}/cancel`)만 구현했다 — `POST
+  /provisioning/price-comparisons`·`GET /provisioning/options`·`GET /service-catalog`는 job
+  실행 파이프라인과 무관한 순수 조회/추정이라 범위 밖으로 뺐다. `app/provisioning.py`
+  레지스트리(`(provider, service) -> 러너`)엔 AWS EC2 러너(`app/aws_provisioning.py`) 하나만
+  있어 나머지 11개 provisionable 조합은 `501 PROVISIONING_NOT_IMPLEMENTED`로 응답한다.
+  - **GCP 프로비저닝(`angwon/gcp`, 별도 미병합 브랜치)과 독립적으로 구현했다**: 그 브랜치가
+    같은 §10을 이미 구현해 뒀지만(`app/routers/provisioning.py`/`app/provisioning.py`/
+    `app/terraform_runner.py`/`app/gcp_provisioning.py`), 사용자 지시로 그 브랜치는 건드리지
+    않고 같은 파일 이름·같은 구조(레지스트리 패턴, `validate_spec()`/`run()` 두 함수 계약,
+    `_CANCEL_REQUESTED` best-effort 취소, `_finish_job()`의 감사·알림 공통화)를 참고해 AWS용
+    코드를 독립적으로 새로 작성했다 — **두 브랜치가 main에 합쳐질 때 조율이 필요하다**
+    (특히 `app/terraform_runner.py`: GCP 쪽은 서비스 계정 JSON 파일 +
+    `GOOGLE_APPLICATION_CREDENTIALS`로 자격 증명을 넘기고, 이 브랜치는 `credential_env`
+    dict를 그대로 환경변수에 병합하는 방식이라 시그니처가 다르다 — 병합 시 두 방식을 모두
+    지원하도록 합치거나, GCP 쪽을 이 방식으로 옮겨야 한다).
+  - **instance_type/region 허용 목록(2026-09-11 결정)**: 실제 AWS 과금이 발생하는 리소스를
+    만드는 기능이라 임의 값을 그대로 Terraform에 넘기지 않는다 — `t3.micro`/`t3.small`/
+    `t3.medium`, `ap-northeast-2`/`us-east-1`만 허용한다(`app/aws_provisioning.py`). AMI는
+    허용 목록에 넣지 않았다: 비워두면 `backend/terraform/aws/ec2/main.tf`가 `data
+    "aws_ami"`로 최신 Amazon Linux 2023을 자동으로 찾으므로, 틀린 AMI ID를 넣을 여지 자체가
+    적다(직접 지정도 허용은 함, `ami-` 형식 검증만 함).
+  - **credential 검증/권한 확인은 요청 시점이 아니라 백그라운드 실행 시점에 한다**:
+    `sync_jobs.py`의 `_process_sync_item`·`resources.py`의 `resource_control` 검사와 같은
+    패턴 — `credential.verified`가 false거나 `permission_scope.provision`이 명시적으로
+    false면 job을 바로 `CLOUD_PERMISSION_DENIED`로 실패 처리한다. `permission_scope`가 빈
+    딕셔너리면(아직 프로빙 안 된 credential) 이 검사를 건너뛴다.
+  - **성공한 job은 `resources`에 즉시 행을 만든다**: 다음 `POST /sync-jobs` 없이도 INV-01에
+    바로 보이도록 terraform output(`instance_id`)으로 Resource를 upsert한다
+    (`_create_resource_from_job`). 이 매핑은 현재 AWS EC2 전용이다 — `outputs.tf`의 키
+    이름에 직접 의존한다.
+  - **컨테이너에 Terraform CLI를 설치했다**: `backend/Dockerfile`이 HashiCorp 공식 zip(버전
+    고정, 현재 1.9.8)을 받아 `/usr/local/bin`에 풀고 `curl`/`unzip`은 설치 직후 다시 지운다.
+    워크스페이스·plugin cache 디렉터리는 `docker-compose.yml`에 named volume
+    (`terraform_workspaces`/`terraform_plugin_cache`)으로 붙였다.
+  - **로컬 환경 주의**: 이 프로젝트의 두 로컬 클론(OneDrive 경로의 비-git 사본과
+    `C:\project`의 실제 git clone)이 폴더명이 같아 `docker compose` 기본 프로젝트명이
+    겹친다 — DB 볼륨이 섞이는 사고가 실제로 났다. `C:\project`에서 작업할 땐
+    `COMPOSE_PROJECT_NAME=mcp-aws-provisioning`(또는 다른 고유한 이름)을 지정해서 쓴다.
 - **GCP 프로비저닝 API 구현 범위(2026-09-11, `kwonhyeong/be-gcp-provisioning`)**: 이 세션 시작
   시점에 스키마(`app/schemas/provisioning.py`)·러너 레지스트리(`app/provisioning.py`)·GCP
   Terraform 러너(`app/gcp_provisioning.py`)·provider 무관 subprocess 오케스트레이션
