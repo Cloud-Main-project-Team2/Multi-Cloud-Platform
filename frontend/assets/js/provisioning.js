@@ -42,9 +42,19 @@
 
   var PLATFORM_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
 
-  // 실 API 연동: Compute만 백엔드에 러너가 있다(§10 — aws/ec2, azure/vm, gcp/compute_engine).
-  // DB/Storage/CDN은 미지원(501)이라 기존 시뮬레이션을 그대로 쓴다.
-  var SERVICE_CODE = { aws: "ec2", azure: "vm", gcp: "compute_engine" };
+  // 실 API 연동: (리소스 종류, 플랫폼)별로 백엔드 러너가 있는 조합만 실제 job을 만든다(§10).
+  // aws는 ec2/s3/cloudfront/rds 네 조합 다 구현됐고, azure/gcp는 compute(vm/compute_engine)만
+  // 있다 — 러너 없는 조합(azure/gcp의 DB·Storage·CDN)은 501이 뻔하므로 대상별로 기존 진행률
+  // 시뮬레이션을 대신 돌린다(startProvisioning()의 simulateTarget 참고).
+  var SERVICE_CODE = {
+    compute: { aws: "ec2", azure: "vm", gcp: "compute_engine" },
+    storage_object: { aws: "s3" },
+    cdn: { aws: "cloudfront" },
+    db: { aws: "rds" },
+  };
+  function hasRealRunner(kind, platform) {
+    return !!(SERVICE_CODE[kind] && SERVICE_CODE[kind][platform]);
+  }
   var PROV_ERROR_MESSAGES = {
     IDEMPOTENCY_KEY_REQUIRED: "요청 식별 키가 없습니다(내부 오류).",
     CONFIRMATION_REQUIRED: "확인이 필요한 작업입니다.",
@@ -69,12 +79,15 @@
     return "prov-" + Date.now() + "-" + Math.random().toString(36).slice(2, 8);
   }
 
-  // DB 엔진 옵션(플랫폼별로 다름).
+  // DB 엔진 옵션(플랫폼별로 다름). aws는 실제 백엔드 러너(RDS)가 mysql/postgres만 지원해서
+  // 그 두 개만 노출한다(azure/gcp는 아직 시뮬레이션이라 더 넓은 목록을 유지).
   var DB_ENGINES = {
-    aws: ["MySQL", "PostgreSQL", "MariaDB", "SQL Server", "Oracle", "DB2", "Aurora"],
+    aws: ["MySQL", "PostgreSQL"],
     azure: ["MySQL", "PostgreSQL", "SQL Server"],
     gcp: ["MySQL", "PostgreSQL", "SQL Server"],
   };
+  // aws 실 API용 engine 값 매핑(표시 라벨 → provider_spec.engine).
+  var DB_ENGINE_CODE = { MySQL: "mysql", PostgreSQL: "postgres" };
   var WARN_STYLE = 'style="color:#b45309"'; // amber-700, 경고 문구용
 
   // ⑤ 추가 설정 옵션.
@@ -336,10 +349,11 @@
       html += '<p class="mt-1 text-xs" ' + WARN_STYLE + ">MariaDB는 2025년 9월 19일 이후 Azure에서 지원 종료됩니다.</p>";
     }
     html += "</div>";
-    if (p === "gcp") {
+    if (p === "gcp" || p === "aws") {
+      // aws는 실 API가 master_username을 안 받는다(서버가 mcp_admin으로 고정) — gcp와 같은 UI.
       html += "<div>" + labelHtml("루트 비밀번호", true) +
-        '<input type="password" data-ps-platform="gcp" data-ps="masterPassword" class="' + FIELD_INPUT + '" />' +
-        '<p class="mt-1 text-xs text-muted-foreground">GCP는 비밀번호만 입력합니다.</p></div>';
+        '<input type="password" data-ps-platform="' + p + '" data-ps="masterPassword" class="' + FIELD_INPUT + '" />' +
+        '<p class="mt-1 text-xs text-muted-foreground">' + PLATFORM_LABEL[p] + '는 비밀번호만 입력합니다(사용자명은 자동 지정).</p></div>';
     } else {
       html += '<div class="grid gap-2 sm:grid-cols-2"><div>' + labelHtml("마스터 사용자명", true) +
         '<input type="text" data-ps-platform="' + p + '" data-ps="masterUsername" class="' + FIELD_INPUT + '" /></div>' +
@@ -698,7 +712,7 @@
       return state.platforms.every(function (p) {
         var ps = state.providerSpec[p] || {};
         if (!isFilled(ps.region) || !isFilled(ps.engine)) return false;
-        if (p === "gcp") return isFilled(ps.masterPassword);
+        if (p === "gcp" || p === "aws") return isFilled(ps.masterPassword);
         return isFilled(ps.masterUsername) && isFilled(ps.masterPassword);
       });
     }
@@ -851,10 +865,7 @@
     });
   }
 
-  // ── 진행률 시뮬레이션 (실제 API 없이 진행바를 애니메이션) ──────────────────
-  var KIND_SUFFIX = { compute: "vm", db: "db", storage_object: "obj", cdn: "cdn" };
-  var simTimer = null;
-
+  // ── 진행률 표시 공통 ────────────────────────────────────────────────────
   function updateMini(targets) {
     var mini = document.getElementById("prov-mini-body");
     if (!mini) return;
@@ -869,84 +880,45 @@
       '<span class="flex items-center gap-1"><span class="h-2 w-2 rounded-full" style="background:#c0392b"></span>실패 ' + failed + "</span></div>";
   }
 
-  function startProvisioningSim() {
-    var list = document.getElementById("prov-progress-list");
-    if (!list) return;
-
-    // 선택한 대상(플랫폼×계정)별 타겟 생성. 실패 시점(failAt)은 랜덤(매 실행 다름).
-    var suffix = KIND_SUFFIX[state.resourceKind] || "res";
-    var targets = state.platforms.map(function (p) {
-      var account = state.selectedAccounts[p] || (PLATFORM_LABEL[p] + " 계정");
-      var name = "mcp-" + Math.random().toString(36).slice(2, 6) + "-" + suffix;
-      var willFail = Math.random() < 0.25;
-      return {
-        platform: p, account: account, name: name, progress: 0, status: "pending",
-        failAt: willFail ? 35 + Math.floor(Math.random() * 45) : null,
-      };
-    });
-
-    list.innerHTML = targets.map(function (t, i) {
-      return '<div data-sim-row="' + i + '">' +
-        '<div class="flex justify-between text-sm"><span>' + PLATFORM_LABEL[t.platform] + " · " + t.account + " · " + t.name +
-        '</span><span data-sim-status class="text-muted-foreground">대기</span></div>' +
-        '<div class="mt-1 h-2 rounded-full bg-muted"><div data-sim-bar class="h-2 rounded-full bg-sky" style="width:0%"></div></div>' +
-        '<p data-sim-msg class="mt-1 text-xs" hidden></p></div>';
-    }).join("");
-
-    if (simTimer) clearInterval(simTimer);
-    updateMini(targets);
-    simTimer = setInterval(function () {
-      var allDone = true;
-      targets.forEach(function (t, i) {
-        if (t.status === "done" || t.status === "failed") return;
-        allDone = false;
-        t.status = "running";
-        t.progress += 4 + Math.floor(Math.random() * 9);
-        if (t.failAt != null && t.progress >= t.failAt) { t.progress = t.failAt; t.status = "failed"; }
-        else if (t.progress >= 100) { t.progress = 100; t.status = "done"; }
-
-        var row = list.querySelector('[data-sim-row="' + i + '"]');
-        if (!row) return;
-        var bar = row.querySelector("[data-sim-bar]");
-        var st = row.querySelector("[data-sim-status]");
-        var msg = row.querySelector("[data-sim-msg]");
-        bar.style.width = t.progress + "%";
-        if (t.status === "failed") {
-          bar.className = "h-2 rounded-full";
-          bar.style.background = "#c0392b";
-          st.textContent = "실패";
-          st.className = "rounded px-1.5 py-0.5 text-xs text-white";
-          st.style.background = "#c0392b";
-          msg.hidden = false;
-          msg.style.color = "#c0392b";
-          msg.textContent = "할당량 초과 — 해당 리전의 한도를 넘었습니다.";
-        } else if (t.status === "done") {
-          bar.className = "h-2 rounded-full bg-primary";
-          st.textContent = "완료 100%";
-          st.className = "text-sm text-primary";
-        } else {
-          st.textContent = "진행중 " + t.progress + "%";
-        }
-      });
-      updateMini(targets);
-      if (allDone) { clearInterval(simTimer); simTimer = null; }
-    }, 450);
-  }
-
-  // ── 실 API 프로비저닝 (Compute 전용) ──────────────────────────────────────
-  // 백엔드 §10: POST /provisioning/{provider}/{service} 로 job을 만들고, 202(queued) 응답의
-  // job id를 GET /provisioning/jobs/{id}로 폴링해 진행바를 갱신한다. Compute만 지원(러너 존재).
+  // ── 프로비저닝 요청 조립(§10.3 common_spec/provider_spec) ─────────────────
   function buildCommonSpec() {
     var cs = state.commonSpec || {};
+    var kind = state.resourceKind;
+    if (kind === "cdn") {
+      // CDN엔 공통 이름 입력 스텝이 없다 — CloudFront의 name은 콘솔 표시용 comment일
+      // 뿐이라(app/aws_cloudfront_provisioning.py) 사용자 입력 없이 자동 생성한다.
+      return { name: "cdn-" + Math.random().toString(36).slice(2, 8), tags: {} };
+    }
     var rawName = (cs.name || "").replace(/^mcp-/, ""); // 백엔드가 mcp- 접두사를 다시 붙인다
-    return {
-      name: rawName,
-      tags: cs.tags || {},
-      inbound_rules: (cs.inboundRules || []).map(function (r) { return { port: r.port, cidr: r.cidr }; }),
-    };
+    var common = { name: rawName, tags: cs.tags || {} };
+    // inbound_rules는 compute(ComputeCommonSpec)에만 있는 필드 — 다른 종류(S3/RDS/CloudFront)의
+    // common_spec 모델은 extra="forbid"라 이 키를 보내면 그 자체로 422가 난다.
+    if (kind === "compute") {
+      common.inbound_rules = (cs.inboundRules || []).map(function (r) { return { port: r.port, cidr: r.cidr }; });
+    }
+    return common;
   }
   function buildProviderSpec(p) {
     var ps = state.providerSpec[p] || {};
+    var kind = state.resourceKind;
+
+    if (kind === "storage_object") {
+      if (p === "aws") return { region: ps.region }; // app/aws_s3_provisioning.py
+      return {};
+    }
+    if (kind === "cdn") {
+      if (p === "aws") return { origin_domain_name: ps.origin }; // app/aws_cloudfront_provisioning.py
+      return {};
+    }
+    if (kind === "db") {
+      if (p === "aws") {
+        // app/aws_rds_provisioning.py — master_username은 서버가 mcp_admin으로 고정, 안 받는다.
+        return { region: ps.region, engine: DB_ENGINE_CODE[ps.engine], master_password: ps.masterPassword };
+      }
+      return {};
+    }
+
+    // compute
     if (p === "aws") {
       var aws = { region: ps.region, instance_type: ps.instanceType };
       if (ps.image === AMI_CUSTOM && ps.amiId) aws.ami_id = ps.amiId; // 직접 입력한 AMI만 전송
@@ -969,7 +941,11 @@
     return {};
   }
 
-  function startProvisioningReal() {
+  // ── 프로비저닝 실행(대상별로 실 API 또는 시뮬레이션) ───────────────────────
+  // 백엔드 §10: POST /provisioning/{provider}/{service} 로 job을 만들고, 202(queued) 응답의
+  // job id를 GET /provisioning/jobs/{id}로 폴링해 진행바를 갱신한다. 러너가 없는 (kind, platform)
+  // 조합은 501이 뻔하므로 그 대상만 기존 진행률 애니메이션으로 대신한다(simulateTarget).
+  function startProvisioning() {
     var list = document.getElementById("prov-progress-list");
     if (!list) return;
     var creds = (state.selectedCredentials || []).filter(function (c) {
@@ -980,9 +956,13 @@
       return;
     }
 
+    var kind = state.resourceKind;
     var common = buildCommonSpec();
     var targets = creds.map(function (c, i) {
-      return { idx: i, platform: c.provider, account: c.label, credentialId: c.credentialId, progress: 0, status: "pending" };
+      return {
+        idx: i, platform: c.provider, account: c.label, credentialId: c.credentialId,
+        progress: 0, status: "pending", real: hasRealRunner(kind, c.provider),
+      };
     });
 
     function rowHtml(t) {
@@ -1029,9 +1009,28 @@
         .catch(function (err) { setRow(t, "failed", t.progress, provErrorMessage(err)); });
     }
 
+    // 러너가 없는 조합(azure/gcp의 DB·Storage·CDN)은 진행률만 애니메이션한다 — 실패 시점은 랜덤.
+    function simulateTarget(t) {
+      var willFail = Math.random() < 0.25;
+      var failAt = willFail ? 35 + Math.floor(Math.random() * 45) : null;
+      var timer = setInterval(function () {
+        t.progress += 4 + Math.floor(Math.random() * 9);
+        if (failAt != null && t.progress >= failAt) {
+          clearInterval(timer);
+          setRow(t, "failed", failAt, "할당량 초과 — 해당 리전의 한도를 넘었습니다.");
+        } else if (t.progress >= 100) {
+          clearInterval(timer);
+          setRow(t, "done", 100, null);
+        } else {
+          setRow(t, "running", t.progress);
+        }
+      }, 450);
+    }
+
     targets.forEach(function (t) {
       setRow(t, "running", 8);
-      MCPApi.request("/provisioning/" + t.platform + "/" + SERVICE_CODE[t.platform], {
+      if (!t.real) { simulateTarget(t); return; }
+      MCPApi.request("/provisioning/" + t.platform + "/" + SERVICE_CODE[kind][t.platform], {
         method: "POST",
         headers: { "Idempotency-Key": newIdemKey(), "X-Action-Confirmed": "true" },
         body: { credential_id: t.credentialId, common_spec: common, provider_spec: buildProviderSpec(t.platform) },
@@ -1090,10 +1089,7 @@
           MCPModal.close("#prov-confirm-modal");
           MCPModal.open("#prov-progress-modal");
         }
-        // Compute만 실제 백엔드 러너가 있다 — 실 API 연동. 나머지(DB/Storage/CDN)는 미지원(501)
-        // 이라 기존 시뮬레이션으로 화면 흐름만 보여준다.
-        if (state.resourceKind === "compute" && window.MCPApi) startProvisioningReal();
-        else startProvisioningSim();
+        startProvisioning();
       });
     }
 
