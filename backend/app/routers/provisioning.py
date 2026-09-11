@@ -304,14 +304,6 @@ def _execute_job(
     # negative — 실제 Full Access 키에서 확인됨). 따라서 실제 권한 게이트는 Terraform apply로 둔다:
     # 진짜 권한이 없으면 apply가 AccessDenied로 실패하고 terraform_runner._classify_error가
     # CLOUD_PERMISSION_DENIED로 분류한다.
-    if credential.permission_scope and not credential.permission_scope.get("provision", False):
-        job.status = "failed"
-        job.error_code = "CLOUD_PERMISSION_DENIED"
-        job.error_message = "이 자격 증명에는 프로비저닝 권한이 없습니다."
-        _finalize_job(db, job, service)
-        return
-
-
     runner = get_runner(service.provider, service.service_code)
     if runner is None:
         # 요청 시점에 501로 걸렀어야 하지만 방어적으로 한 번 더 막는다.

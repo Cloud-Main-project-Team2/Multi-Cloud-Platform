@@ -80,6 +80,63 @@ def test_run_returns_failed_result_when_credential_incomplete(tmp_path):
     assert result.error_code == "CREDENTIAL_VERIFICATION_FAILED"
 
 
+def test_build_tfvars_merges_user_tags_with_managed_defaults():
+    tfvars = aws_provisioning.build_tfvars(42, "mcp-web-01", "ap-northeast-2", "t3.micro", None, {"env": "prod"})
+    assert tfvars["tags"]["env"] == "prod"
+    assert tfvars["tags"]["job-id"] == "42"
+    assert tfvars["tags"]["managed-by"] == "multi-cloud-platform"
+
+
+def test_build_tfvars_serializes_inbound_rules():
+    from app.compute_specs import InboundRule
+
+    tfvars = aws_provisioning.build_tfvars(
+        42, "mcp-web-01", "ap-northeast-2", "t3.micro", None, {}, [InboundRule(port=22, cidr="0.0.0.0/0")]
+    )
+    assert tfvars["inbound_rules"] == [{"port": 22, "cidr": "0.0.0.0/0"}]
+
+
+def test_build_tfvars_defaults_to_no_inbound_rules():
+    tfvars = aws_provisioning.build_tfvars(42, "mcp-web-01", "ap-northeast-2", "t3.micro", None)
+    assert tfvars["inbound_rules"] == []
+
+
+def test_validate_spec_accepts_tags_and_inbound_rules():
+    aws_provisioning.validate_spec(
+        {"name": "web-01", "tags": {"env": "prod"}, "inbound_rules": [{"port": 22, "cidr": "1.2.3.4/32"}]},
+        VALID_PROVIDER,
+    )
+
+
+def test_validate_spec_rejects_invalid_inbound_rule_port():
+    with pytest.raises(ApiError) as exc_info:
+        aws_provisioning.validate_spec(
+            {"name": "web-01", "inbound_rules": [{"port": 70000, "cidr": "0.0.0.0/0"}]}, VALID_PROVIDER
+        )
+    assert exc_info.value.code == "VALIDATION_ERROR"
+
+
+def test_run_passes_tags_and_inbound_rules_through_to_run_apply(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run_apply(workspace_dir, module_dir, tfvars, credential_env, *, cancel_check=None):
+        captured["tfvars"] = tfvars
+        return TerraformResult(success=True, outputs={"instance_id": "i-123"})
+
+    monkeypatch.setattr(aws_provisioning, "run_apply", fake_run_apply)
+
+    aws_provisioning.run(
+        job_id=1,
+        workspace_dir=tmp_path,
+        common_spec={"name": "web-01", "tags": {"env": "prod"}, "inbound_rules": [{"port": 22, "cidr": "0.0.0.0/0"}]},
+        provider_spec=VALID_PROVIDER,
+        secret_payload={"access_key_id": "AKIAFAKE", "secret_access_key": "shh"},
+    )
+
+    assert captured["tfvars"]["tags"]["env"] == "prod"
+    assert captured["tfvars"]["inbound_rules"] == [{"port": 22, "cidr": "0.0.0.0/0"}]
+
+
 def test_run_returns_failed_result_on_invalid_spec(tmp_path):
     result = aws_provisioning.run(
         job_id=1,
