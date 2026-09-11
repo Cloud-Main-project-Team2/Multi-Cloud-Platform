@@ -57,6 +57,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
 |---|---|---|---|
 | 페이지 UI 구현 — 확정 화면 12개 정적 UI | `solcho/fe-pages` | 조은솔 | in progress |
 | 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
+| 프로비저닝 — Azure VM 생성 (`POST /provisioning/azure/vm`) | `seunghyunlee/azure` | 이승현 | in progress (PR 대기) |
 | 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | in progress |
 | 키 관리(마이페이지) API — cloud-accounts/credentials 10개 엔드포인트 + 최소 로그인(JWT)·회원가입 | `solcho/be-credentials-api` 외 | 조은솔 | merged |
 | 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | merged |
@@ -85,6 +86,22 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
   비용 카드용 최소 행. **재실행 idempotent**.
   credentials는 `app/security/credential_crypto.py`(AES-256-GCM)로 실제 암호화 저장하며,
   이후 BE API(키 관리/리소스 조회/대시보드)는 이 데이터 위에서 개발·테스트한다.
+- **Azure VM `admin_password` 정책(2026-09-10)**: `frontend/assets/js/provisioning.js`가
+  실제로 수집하는 Azure Compute 인증 방식은 SSH 키가 아니라 사용자명/비밀번호다
+  (`adminUsername`/`adminPassword`). `admin_password`는 `01_API_명세서_v1.1.md` 10.3절이
+  금지하는 "secret"(CSP 계정 자격증명)과는 다른 값(생성될 리소스 자체의 OS 접속 정보)이라고
+  판단해 **secret-필드 금지 검사에서 예외로 허용**하기로 결정. 대신 `provisioning_jobs.spec_json`
+  (DB 저장, `GET /provisioning/jobs/{id}` 응답)에는 절대 남기지 않고, Terraform에는
+  `TF_VAR_admin_password` 환경변수로만 전달한다(`app/services/provisioning/azure_vm.py`
+  `SENSITIVE_PROVIDER_SPEC_FIELDS`). 같은 패턴으로 AWS/GCP compute나 DB 서비스의 master
+  password도 처리할 수 있도록 라우터(`app/routers/provisioning.py`)는 실행기가 선언한
+  `SENSITIVE_PROVIDER_SPEC_FIELDS`를 범용으로 참조한다.
+- **Compute 공통 설정 필드 확정(2026-09-10)**: `docs/멀티클라우드 3사 기능 맵핑 — 설정값
+  입력 범위 (2026-09-10).md` 1절 + `provisioning.js` 실제 구현 기준으로 azure/vm의
+  `provider_spec`을 `region`/`instance_type`/`admin_username`/`admin_password`/`image`
+  (curated label, publisher/offer/sku/version은 서버가 내부 매핑)로, `common_spec`을
+  `name`/`tags`/`inbound_rules`(포트·CIDR 목록)로 확정. `instance_type`은 프론트가
+  `Standard_` 접두사 없이 보내므로(`B1s` 등) 서버가 자동 보정한다.
 - **최소 인증(JWT) 구현(2026-09-10, `solcho/be-credentials-api`)**: `01_API_명세서_v1.1.md`
   §5는 회원가입·로그인·비밀번호 재설정·`/me`까지 전체 인증 스펙을 정의하지만, 백엔드에는
   인증이 전혀 구현돼 있지 않았다(프론트 `auth-guard.js`는 `localStorage` 데모 세션일 뿐 실제

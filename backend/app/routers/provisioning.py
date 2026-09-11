@@ -1,31 +1,3 @@
-"""API 명세서 v1.1 §10 프로비저닝 API.
-
-**이번 세션 범위(2026-09-11, `kwonhyeong/be-gcp-provisioning`, CLAUDE.md 기록)**: job 생성·조회·
-취소 4개 엔드포인트만 구현한다(`POST /provisioning/{provider}/{service}`,
-`GET /provisioning/jobs`, `GET /provisioning/jobs/{job_id}`,
-`POST /provisioning/jobs/{job_id}/cancel`). `POST /provisioning/price-comparisons`,
-`GET /provisioning/options`, `GET /service-catalog`는 순수 조회/추정 엔드포인트라 job 실행
-파이프라인과 무관해 범위 밖으로 뺐다.
-
-`app/provisioning.py`의 `get_runner()` 레지스트리에는 GCP Compute Engine
-(`app/gcp_provisioning.py`) 러너 하나만 실제로 붙어 있다 — `service_catalog`엔 12개 조합이
-`provisionable=true`로 있지만, 러너가 없는 조합은 `501 PROVISIONING_NOT_IMPLEMENTED`로 명확히
-응답한다(어댑터가 없어서가 아니라 의도적 축소, `app/resources.py`의 `DELETE /cloud-accounts/{id}`
-501 선례와 동일한 모양).
-
-이 서버엔 별도 워커/큐가 없다 — `app/routers/sync_jobs.py`와 같은 전제로 FastAPI
-`BackgroundTasks` 안에서 같은 프로세스가 terraform CLI를 subprocess로 직접 구동한다(단일
-프로세스 전제, replica를 늘리면 별도 워커로 분리해야 한다). 취소도 sync_jobs와 동일하게
-best-effort·비영속이다: `_CANCEL_REQUESTED` 집합은 프로세스 메모리에만 있고, `terraform_runner`가
-init/plan/apply 사이사이에 그 값을 확인해 멈춘다 — 이미 시작된 terraform 호출 하나는 끝까지
-진행된다.
-
-**생성된 리소스를 인벤토리에 즉시 반영**: job이 성공하면 terraform output으로 `resources`
-테이블에 행을 하나 만든다(다음 `POST /sync-jobs` 없이도 INV-01에 바로 보이도록). 이 매핑은
-현재 GCP Compute Engine 전용이다(`app/gcp_provisioning.py`의 `outputs.tf` 키 이름에 의존) —
-다른 러너를 추가할 때는 `_create_resource_from_job()`도 함께 확장해야 한다.
-"""
-
 from __future__ import annotations
 
 import datetime as dt

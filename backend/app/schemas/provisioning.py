@@ -1,8 +1,15 @@
 from __future__ import annotations
 
+from pydantic import BaseModel, ConfigDict, Field
 from typing import Any
 
-from pydantic import BaseModel, Field
+
+class ProvisioningCreateRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    credential_id: int
+    common_spec: dict = Field(default_factory=dict)
+    provider_spec: dict = Field(default_factory=dict)
 
 
 class CreateProvisioningJobRequest(BaseModel):
@@ -56,3 +63,4 @@ class ProvisioningJobListData(BaseModel):
 
 class ProvisioningJobListResponse(BaseModel):
     data: ProvisioningJobListData
+
