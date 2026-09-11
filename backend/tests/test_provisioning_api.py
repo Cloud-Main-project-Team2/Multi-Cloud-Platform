@@ -458,7 +458,6 @@ def test_process_job_proceeds_despite_provision_scope_false(db_session, make_use
             ))
         })(),
     )
-
     provisioning_router._execute_job(db_session, job)
 
     assert job.status == "success"
