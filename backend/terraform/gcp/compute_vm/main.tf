@@ -6,10 +6,14 @@
 # subprocess 호출에만 잠깐 노출하는 임시 파일)를 통해 ADC로 읽는다 — secret을 tfvars/변수로
 # 절대 넘기지 않는다.
 #
-# 리소스 구성은 GCP_VM_생성_가이드.md(2026-09-01)를 따른다: Debian 11, pd-balanced 10GB 부팅 디스크,
+# 리소스 구성은 GCP_VM_생성_가이드.md(2026-09-01)를 따른다: Debian, pd-balanced 10GB 부팅 디스크,
 # 기본(default) 네트워크의 ephemeral 외부 IP. 방화벽은 프로젝트의 default-allow-http/ssh 존재 여부에
 # 기대지 않고, 이 VM에만 적용되는 전용 규칙(google_compute_firewall)을 job마다 함께 만든다
 # (2026-09-11 결정, CLAUDE.md 참고) — 다른 VM에 영향 없이 22/80만 연다.
+#
+# 이미지는 debian-12를 쓴다(2026-09-11 실사용 테스트에서 발견·수정): 원래 debian-11이었는데
+# GCP가 해당 이미지 패밀리를 단종시켜 `debian-cloud` 프로젝트에서 내려갔다 — 실제 계정으로
+# 끝까지(apply) 테스트해본 게 이번이 처음이라 아무도 못 보고 지나갔던 문제다.
 
 terraform {
   required_version = ">= 1.5.0"
@@ -38,7 +42,7 @@ resource "google_compute_instance" "vm" {
 
   boot_disk {
     initialize_params {
-      image = "debian-cloud/debian-11"
+      image = "debian-cloud/debian-12"
       size  = 10
       type  = "pd-balanced"
     }

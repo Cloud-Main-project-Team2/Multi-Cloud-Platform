@@ -145,7 +145,6 @@ def _resource_attrs(
     provider: str, service_code: str, outputs: dict, common_spec: dict, provider_spec: dict
 ) -> tuple[str | None, str, str | None, str | None]:
     """terraform outputs → `(external_resource_id, original_resource_type, region, name)`.
-
     provider(+service_code)마다 output 키·리소스 유형·region 파생 방식이 다르다.
     external_resource_id가 없으면(output 누락) 첫 원소가 None이고, 라우터는 리소스행을 만들지 않는다.
     """
@@ -169,10 +168,22 @@ def _resource_attrs(
         return db_instance_id, "RDS Instance", provider_spec.get("region"), db_instance_id
     if provider == "aws":
         return outputs.get("instance_id"), "AWS::EC2::Instance", provider_spec.get("region"), common_spec.get("name")
+    if provider == "gcp" and service_code == "cloud_sql":
+        instance_name = outputs.get("instance_name")
+        region = outputs.get("region") or provider_spec.get("region")
+        return instance_name, "Cloud SQL Instance", region, instance_name
+    if provider == "gcp" and service_code == "cloud_storage":
+        bucket_name = outputs.get("bucket_name")
+        region = outputs.get("region") or provider_spec.get("region")
+        return bucket_name, "Cloud Storage Bucket", region, bucket_name
     if provider == "gcp":
         instance_name = outputs.get("instance_name")
+        # resources.region엔 GCP zone을 그대로 저장한다(app/providers/gcp.py의
+        # perform_resource_action/discover_resources와 동일 관례, CLAUDE.md "GCP zone 단순화"
+        # 참고) — region prefix로 잘라 저장하면 start/stop/delete가 잘못된 zone으로 호출돼 실패한다
+        # (2026-09-11 실사용 테스트에서 발견: 생성된 VM을 인벤토리에서 삭제할 때 PROVIDER_API_ERROR).
         zone = outputs.get("zone")
-        region = zone.rsplit("-", 1)[0] if zone else provider_spec.get("region")
+        region = zone if zone else provider_spec.get("region")
         return instance_name, "Compute Engine Instance", region, instance_name
     if provider == "azure":
         # resource_actions.py는 Azure external_resource_id를 ARM 리소스 ID 전체로 가정한다.
@@ -340,9 +351,6 @@ def _execute_job(
     # provision 권한은 여기서 사전 차단하지 않는다 — `permission_scope.provision`은 AWS의 경우
     # `iam:SimulatePrincipalPolicy`로 프로빙하는데, EC2 권한만 있는 키(예: AmazonEC2FullAccess)는
     # IAM 시뮬레이션 권한이 없어 실제로는 생성 가능한데도 provision=false로 잘못 기록된다(false
-    # negative — 실제 Full Access 키에서 확인됨). 따라서 실제 권한 게이트는 Terraform apply로 둔다:
-    # 진짜 권한이 없으면 apply가 AccessDenied로 실패하고 terraform_runner._classify_error가
-    # CLOUD_PERMISSION_DENIED로 분류한다.
     runner = get_runner(service.provider, service.service_code)
     if runner is None:
         # 요청 시점에 501로 걸렀어야 하지만 방어적으로 한 번 더 막는다.
