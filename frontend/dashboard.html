@@ -74,21 +74,21 @@
         <div class="mt-6 grid gap-4 sm:grid-cols-3">
           <div class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm text-muted-foreground">전체 리소스 수</p>
-            <p class="mt-1 text-3xl font-extrabold">27</p>
-            <p class="mt-1 text-xs text-muted-foreground">AWS 12 · Azure 8 · GCP 7</p>
+            <p class="mt-1 text-3xl font-extrabold" id="dash-total-resources">—</p>
+            <p class="mt-1 text-xs text-muted-foreground" id="dash-total-resources-breakdown">불러오는 중…</p>
           </div>
           <div class="rounded-2xl border border-border bg-surface p-5">
             <p class="text-sm text-muted-foreground">전체 리전 수</p>
-            <p class="mt-1 text-3xl font-extrabold">4</p>
+            <p class="mt-1 text-3xl font-extrabold" id="dash-total-regions">—</p>
             <p class="mt-1 text-xs text-muted-foreground">활성 리전 기준</p>
           </div>
-          <div class="rounded-2xl border border-border bg-surface p-5">
+          <div class="rounded-2xl border border-dashed border-border bg-surface p-5">
             <div class="flex items-center justify-between">
               <p class="text-sm text-muted-foreground">예상 총 비용</p>
-              <span class="rounded border border-yellow px-1.5 text-[11px] text-yellow">Estimated</span>
+              <span class="rounded border border-border px-1.5 text-[11px] text-muted-foreground">준비 중</span>
             </div>
-            <p class="mt-1 text-3xl font-extrabold">$721.88<span class="text-base font-medium text-muted-foreground">/mo</span></p>
-            <p class="mt-1 text-xs text-muted-foreground">리소스별 정가/Cost Explorer 추정 합계. 정책문서 참고.</p>
+            <p class="mt-1 text-3xl font-extrabold text-muted-foreground">—</p>
+            <p class="mt-1 text-xs text-muted-foreground">비용 수집(Cost Explorer 등) 연동 전이라 아직 집계하지 않습니다.</p>
           </div>
         </div>
 
@@ -98,133 +98,45 @@
           <div class="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div class="rounded-xl bg-muted p-4">
               <p class="text-sm text-muted-foreground">Compute</p>
-              <p class="mt-1 text-2xl font-bold">14</p>
-              <p class="mt-1 text-xs text-muted-foreground">실행 9 · 중지 5</p>
+              <p class="mt-1 text-2xl font-bold" id="dash-cat-compute-count">—</p>
+              <p class="mt-1 text-xs text-muted-foreground" id="dash-cat-compute-sub">—</p>
             </div>
             <div class="rounded-xl bg-muted p-4">
               <p class="text-sm text-muted-foreground">Database</p>
-              <p class="mt-1 text-2xl font-bold">4</p>
-              <p class="mt-1 text-xs text-muted-foreground">실행 4</p>
+              <p class="mt-1 text-2xl font-bold" id="dash-cat-db-count">—</p>
+              <p class="mt-1 text-xs text-muted-foreground" id="dash-cat-db-sub">—</p>
             </div>
             <div class="rounded-xl bg-muted p-4">
               <p class="text-sm text-muted-foreground">Object Storage</p>
-              <p class="mt-1 text-2xl font-bold">6</p>
+              <p class="mt-1 text-2xl font-bold" id="dash-cat-storage_object-count">—</p>
               <p class="mt-1 text-xs text-muted-foreground">—</p>
             </div>
             <div class="rounded-xl bg-muted p-4">
               <p class="text-sm text-muted-foreground">CDN</p>
-              <p class="mt-1 text-2xl font-bold">3</p>
+              <p class="mt-1 text-2xl font-bold" id="dash-cat-cdn-count">—</p>
               <p class="mt-1 text-xs text-muted-foreground">—</p>
             </div>
           </div>
         </div>
 
-        <!-- 클라우드별 비용 내역 3 -->
-        <div class="mt-4 grid gap-4 lg:grid-cols-3">
-          <div class="rounded-2xl border border-border bg-surface p-5">
-            <div class="flex items-center justify-between">
-              <p class="font-semibold">AWS</p>
-              <span class="rounded border border-border px-1.5 text-[11px] text-muted-foreground">실측</span>
-            </div>
-            <p class="mt-2 text-2xl font-extrabold">$128.40</p>
-            <p class="mt-1 text-xs text-muted-foreground">12개 리소스 · 예상월 $481.50</p>
-            <p class="mt-2 text-xs text-muted-foreground">Cost Explorer · 2시간 전 수집</p>
-          </div>
-          <div class="rounded-2xl border border-border bg-surface p-5">
-            <div class="flex items-center justify-between">
-              <p class="font-semibold">Azure</p>
-              <span class="rounded border border-border px-1.5 text-[11px] text-muted-foreground">실측</span>
-            </div>
-            <p class="mt-2 text-2xl font-extrabold">$64.10</p>
-            <p class="mt-1 text-xs text-muted-foreground">8개 리소스 · 예상월 $240.38</p>
-            <p class="mt-2 text-xs text-muted-foreground">Cost Management · 3시간 전 수집</p>
-          </div>
-          <div class="rounded-2xl border border-dashed border-border bg-surface p-5">
-            <div class="flex items-center justify-between">
-              <p class="font-semibold">GCP</p>
-              <span class="rounded border border-border px-1.5 text-[11px] text-muted-foreground">데이터 없음</span>
-            </div>
-            <p class="mt-2 text-2xl font-extrabold text-muted-foreground">—</p>
-            <p class="mt-1 text-xs text-muted-foreground">7개 리소스 · export 미설정(조회는 정상)</p>
-          </div>
+        <!-- 클라우드별 리소스 수(비용은 아직 미구현) -->
+        <div class="mt-4 grid gap-4 lg:grid-cols-3" id="dash-cloud-cards">
+          <!-- JS(dashboard.js)가 provider별로 카드를 렌더링한다 -->
         </div>
 
-        <!-- 차트 2: 월별 추이 + 서비스별 비중 -->
+        <!-- 차트 2: 월별 추이 + 서비스별 비중 (비용 수집 미구현 — 준비 중 placeholder) -->
         <div class="mt-4 grid gap-4 lg:grid-cols-2">
-          <!-- 월별 비용 추이 (4~9월, AWS/Azure) -->
-          <div class="rounded-2xl border border-border bg-surface p-5">
-            <div class="flex items-center justify-between">
-              <p class="font-semibold">월별 비용 추이</p>
-              <div class="flex items-center gap-3 text-xs text-muted-foreground">
-                <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-sm bg-primary"></span>AWS</span>
-                <span class="flex items-center gap-1"><span class="h-2 w-2 rounded-sm bg-sky"></span>Azure</span>
-                <span>GCP 데이터 없음(제외)</span>
-              </div>
-            </div>
-            <div class="mt-5 flex h-40 items-end justify-between gap-3">
-              <!-- 각 월: AWS/Azure 그룹 막대 (높이는 예시값) -->
-              <div class="flex flex-1 flex-col items-center gap-1">
-                <div class="flex h-32 items-end gap-1">
-                  <div class="w-3 rounded-t bg-primary" style="height:38%"></div>
-                  <div class="w-3 rounded-t bg-sky" style="height:22%"></div>
-                </div>
-                <span class="text-[11px] text-muted-foreground">4월</span>
-              </div>
-              <div class="flex flex-1 flex-col items-center gap-1">
-                <div class="flex h-32 items-end gap-1">
-                  <div class="w-3 rounded-t bg-primary" style="height:46%"></div>
-                  <div class="w-3 rounded-t bg-sky" style="height:28%"></div>
-                </div>
-                <span class="text-[11px] text-muted-foreground">5월</span>
-              </div>
-              <div class="flex flex-1 flex-col items-center gap-1">
-                <div class="flex h-32 items-end gap-1">
-                  <div class="w-3 rounded-t bg-primary" style="height:55%"></div>
-                  <div class="w-3 rounded-t bg-sky" style="height:34%"></div>
-                </div>
-                <span class="text-[11px] text-muted-foreground">6월</span>
-              </div>
-              <div class="flex flex-1 flex-col items-center gap-1">
-                <div class="flex h-32 items-end gap-1">
-                  <div class="w-3 rounded-t bg-primary" style="height:66%"></div>
-                  <div class="w-3 rounded-t bg-sky" style="height:41%"></div>
-                </div>
-                <span class="text-[11px] text-muted-foreground">7월</span>
-              </div>
-              <div class="flex flex-1 flex-col items-center gap-1">
-                <div class="flex h-32 items-end gap-1">
-                  <div class="w-3 rounded-t bg-primary" style="height:80%"></div>
-                  <div class="w-3 rounded-t bg-sky" style="height:47%"></div>
-                </div>
-                <span class="text-[11px] text-muted-foreground">8월</span>
-              </div>
-              <div class="flex flex-1 flex-col items-center gap-1">
-                <div class="flex h-32 items-end gap-1">
-                  <div class="w-3 rounded-t bg-primary" style="height:100%"></div>
-                  <div class="w-3 rounded-t bg-sky" style="height:50%"></div>
-                </div>
-                <span class="text-[11px] text-muted-foreground">9월</span>
-              </div>
+          <div class="rounded-2xl border border-dashed border-border bg-surface p-5">
+            <p class="font-semibold">월별 비용 추이</p>
+            <div class="mt-5 grid h-40 place-items-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
+              비용 수집 기능이 아직 구현되지 않았습니다.
             </div>
           </div>
 
-          <!-- 서비스별 비용 비중 (도넛) -->
-          <div class="rounded-2xl border border-border bg-surface p-5">
+          <div class="rounded-2xl border border-dashed border-border bg-surface p-5">
             <p class="font-semibold">서비스별 비용 비중</p>
-            <div class="mt-4 flex items-center gap-6">
-              <svg viewBox="0 0 140 140" class="h-36 w-36 -rotate-90">
-                <circle cx="70" cy="70" r="60" fill="none" stroke="var(--muted)" stroke-width="18"></circle>
-                <circle cx="70" cy="70" r="60" fill="none" stroke="var(--primary)" stroke-width="18" stroke-dasharray="237.5 377" stroke-dashoffset="0"></circle>
-                <circle cx="70" cy="70" r="60" fill="none" stroke="var(--sky)" stroke-width="18" stroke-dasharray="79.2 377" stroke-dashoffset="-237.5"></circle>
-                <circle cx="70" cy="70" r="60" fill="none" stroke="var(--aero)" stroke-width="18" stroke-dasharray="41.5 377" stroke-dashoffset="-316.7"></circle>
-                <circle cx="70" cy="70" r="60" fill="none" stroke="var(--muted-foreground)" stroke-width="18" stroke-dasharray="18.8 377" stroke-dashoffset="-358.2"></circle>
-              </svg>
-              <ul class="space-y-2 text-sm">
-                <li class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-sm bg-primary"></span>컴퓨트 <span class="text-muted-foreground">63%</span></li>
-                <li class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-sm bg-sky"></span>스토리지 <span class="text-muted-foreground">21%</span></li>
-                <li class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-sm bg-aero"></span>데이터베이스 <span class="text-muted-foreground">11%</span></li>
-                <li class="flex items-center gap-2"><span class="h-2.5 w-2.5 rounded-sm" style="background:var(--muted-foreground)"></span>기타 <span class="text-muted-foreground">5%</span></li>
-              </ul>
+            <div class="mt-5 grid h-40 place-items-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
+              비용 수집 기능이 아직 구현되지 않았습니다.
             </div>
           </div>
         </div>
@@ -243,41 +155,27 @@
                   <th class="py-2 font-medium">결과</th>
                 </tr>
               </thead>
-              <tbody>
-                <tr class="border-b border-border">
-                  <td class="py-2.5 pr-4">09-08 14:22</td><td class="py-2.5 pr-4">CREATE</td><td class="py-2.5 pr-4">Azure</td><td class="py-2.5 pr-4">mcp-c3d4-vm</td>
-                  <td class="py-2.5"><span class="rounded-full bg-muted px-2 py-0.5 text-xs text-primary">성공</span></td>
-                </tr>
-                <tr class="border-b border-border">
-                  <td class="py-2.5 pr-4">09-08 11:05</td><td class="py-2.5 pr-4">STOP</td><td class="py-2.5 pr-4">AWS</td><td class="py-2.5 pr-4">mcp-a1b2-vm</td>
-                  <td class="py-2.5"><span class="rounded-full bg-muted px-2 py-0.5 text-xs text-primary">성공</span></td>
-                </tr>
-                <tr>
-                  <td class="py-2.5 pr-4">09-07 18:12</td><td class="py-2.5 pr-4">CREATE</td><td class="py-2.5 pr-4">GCP</td><td class="py-2.5 pr-4">mcp-g7h8-vm</td>
-                  <td class="py-2.5"><span class="rounded-full px-2 py-0.5 text-xs text-white" style="background:#c0392b">실패</span></td>
-                </tr>
+              <tbody id="dash-activity-body">
+                <tr><td class="py-2.5 text-muted-foreground" colspan="5">불러오는 중…</td></tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        <!-- 예산 경고 배너 + 리전 분포 -->
+        <!-- 예산 경고(비용 미구현이라 정보성 안내로 대체) + 리전 분포 -->
         <div class="mt-4 grid gap-4 lg:grid-cols-2">
-          <div class="flex items-start gap-3 rounded-2xl border border-yellow bg-surface p-5">
-            <span class="text-xl">⚠️</span>
+          <div class="flex items-start gap-3 rounded-2xl border border-dashed border-border bg-surface p-5">
+            <span class="text-xl">ℹ️</span>
             <div>
-              <p class="font-semibold">예산 임계값 80% 초과</p>
-              <p class="mt-1 text-sm text-muted-foreground">AWS 이번 달 $128.40 / 설정 예산 $150.00</p>
+              <p class="font-semibold">예산 임계값 경고</p>
+              <p class="mt-1 text-sm text-muted-foreground">비용 수집 기능이 아직 구현되지 않아 예산 초과 여부를 계산할 수 없습니다.</p>
             </div>
           </div>
           <div class="rounded-2xl border border-border bg-surface p-5">
-            <div class="flex items-center justify-between">
-              <p class="font-semibold">리전 분포</p>
-              <button type="button" class="rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-muted">표로 보기</button>
-            </div>
-            <div class="mt-3 grid h-40 place-items-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
-              세계 지도 · 리전별 리소스 수 버블 (자리표시)
-            </div>
+            <p class="font-semibold">리전 분포</p>
+            <ul class="mt-3 space-y-1.5 text-sm" id="dash-region-list">
+              <li class="text-muted-foreground">불러오는 중…</li>
+            </ul>
           </div>
         </div>
 
@@ -286,5 +184,6 @@
   </div>
 
   <script src="assets/js/ui.js"></script>
+  <script src="assets/js/dashboard.js"></script>
 </body>
 </html>
