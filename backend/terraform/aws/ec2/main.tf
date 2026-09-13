@@ -33,9 +33,41 @@ locals {
   resolved_ami_id = var.ami_id != null ? var.ami_id : data.aws_ami.al2023[0].id
 }
 
+data "aws_vpc" "default" {
+  default = true
+}
+
+resource "aws_security_group" "this" {
+  name_prefix = "${var.instance_name}-"
+  vpc_id      = data.aws_vpc.default.id
+  description = "Managed by multi-cloud-platform for ${var.instance_name}"
+
+  # 인바운드 규칙은 공통 설정 항목이다 — var.inbound_rules가 비어 있으면 인바운드를
+  # 아무것도 열지 않는다(azure/vm의 NSG와 같은 정책, 호출자가 명시한 규칙만 신뢰).
+  dynamic "ingress" {
+    for_each = var.inbound_rules
+    content {
+      from_port   = ingress.value.port
+      to_port     = ingress.value.port
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value.cidr]
+    }
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = var.tags
+}
+
 resource "aws_instance" "this" {
-  ami           = local.resolved_ami_id
-  instance_type = var.instance_type
+  ami                    = local.resolved_ami_id
+  instance_type          = var.instance_type
+  vpc_security_group_ids = [aws_security_group.this.id]
 
   tags = merge(
     { Name = var.instance_name },

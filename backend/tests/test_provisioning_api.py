@@ -139,15 +139,15 @@ def test_create_job_rejects_non_provisionable_service(client, make_user, auth_he
 
 def test_create_job_returns_501_when_no_runner_registered(client, make_user, auth_header, db_session):
     user = make_user()
-    account = _make_account(db_session, user, "aws", "111122223333")
+    account = _make_account(db_session, user, "azure", "sub-1")
     credential = _make_credential(db_session, account)
-    # provisionable하지만 러너가 등록되지 않은 조합(aws/rds) — ec2/vm/compute_engine 세 조합은
-    # 통합 후 모두 러너가 있으므로 러너 없는 서비스로 검증한다.
-    _make_service(db_session, "aws", "rds")
+    # provisionable하지만 러너가 등록되지 않은 조합(azure/sql_database) — ec2/vm/compute_engine/
+    # aws의 s3/cloudfront/rds는 모두 러너가 있으므로 러너 없는 서비스로 검증한다.
+    _make_service(db_session, "azure", "sql_database", category="db_rdbms")
     db_session.commit()
 
     resp = client.post(
-        "/api/v1/provisioning/aws/rds",
+        "/api/v1/provisioning/azure/sql_database",
         json={"credential_id": str(credential.id), "common_spec": {"name": "web-01"}, "provider_spec": {}},
         headers={**auth_header(user), **_HEADERS},
     )

@@ -5,7 +5,8 @@
 subprocess로 직접 구동한다. job마다 **독립된 워크스페이스 디렉터리**를 쓴다: 공유 디렉터리 +
 `terraform workspace new`는 서로 다른 사용자의 job이 같은 프로세스에서 동시에 백그라운드로 돌 때
 `.terraform/environment` 선택 포인터가 레이스될 수 있어 배제했다. 대신 `TF_PLUGIN_CACHE_DIR`
-(공유 볼륨)로 provider 플러그인 재다운로드 비용만 줄인다.
+(공유 볼륨)로 provider 플러그인 재다운로드 비용만 줄인다 — 단, 이 캐시 디렉터리 자체는 동시
+`terraform init` 접근에 안전하지 않아(Terraform 공식 문서) `_INIT_LOCK`으로 init만 직렬화한다.
 
 state는 워크스페이스 디렉터리 안 로컬 backend에만 남는다 — 원격 backend(S3/GCS 등)는 구성하지
 않는다(단일 호스트/단일 프로세스 전제, CLAUDE.md에 한계로 기록). `provisioning_jobs.terraform_state_ref`
@@ -37,6 +38,7 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -44,6 +46,14 @@ from typing import Callable
 from app.config import get_settings
 
 _STDERR_TAIL_CHARS = 2000
+
+# terraform init의 provider 설치 단계는 공유 TF_PLUGIN_CACHE_DIR에 처음 받는 provider 바이너리를
+# 그 경로에 직접 써 넣는다 — 이 디렉터리는 Terraform 공식 문서상 동시 접근에 안전하지 않다.
+# 여러 job이 FastAPI BackgroundTasks로 같은 프로세스 안에서 동시에 돌면(§ 위 docstring) 서로 다른
+# job의 init이 같은 provider 바이너리 경로에 동시에 쓰기를 시도해 "text file busy"로 실패할 수
+# 있다(RDS apply가 몇 분씩 걸리는 동안 다른 job의 init이 겹쳐 실제로 재현됨). init만 이 락으로
+# 직렬화한다 — plan/apply/output은 워크스페이스별로 독립이라 캐시를 다시 건드리지 않는다.
+_INIT_LOCK = threading.Lock()
 
 # secret 값이 이 길이보다 짧으면 redact 대상에서 제외한다 — 짧은 값(테스트 placeholder,
 # tenant_id="t" 같은 한 글자 등)은 에러 메시지 안 흔한 단어와 우연히 겹쳐 메시지 전체를
@@ -187,7 +197,8 @@ def run_apply(
         env["GOOGLE_APPLICATION_CREDENTIALS"] = str(credentials_path)
 
     try:
-        init = _run([terraform_bin, "init", "-no-color"], cwd=workspace_dir, env=env, timeout=timeout)
+        with _INIT_LOCK:
+            init = _run([terraform_bin, "init", "-no-color"], cwd=workspace_dir, env=env, timeout=timeout)
         if init.returncode != 0:
             return TerraformResult(
                 success=False, error_code=_classify_error(init.stderr),

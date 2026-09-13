@@ -354,7 +354,9 @@
   function loadResources() {
     loadingRow.hidden = false;
     emptyRow.hidden = true;
-    return MCPApi.request("/resources?include_stale=true").then(function (data) {
+    // 최근 동기화에서 확인되지 않은(=콘솔에서 삭제되는 등으로 사라진) 리소스는 목록에 표시하지
+    // 않는다. 서버 기본값(include_stale 미지정)이 is_stale=true 행을 제외한다.
+    return MCPApi.request("/resources").then(function (data) {
       allResources = data.items || [];
       loadingRow.hidden = true;
       populateDynamicOptions();
@@ -366,7 +368,7 @@
   }
 
   function loadSummary() {
-    MCPApi.request("/resources/summary?include_stale=true").then(function (data) {
+    MCPApi.request("/resources/summary").then(function (data) {
       totalCountEl.textContent = "전체 리소스 " + data.total_resources;
       lastSyncedEl.textContent = data.last_synced_at ? "마지막 동기화 " + formatDateTime(data.last_synced_at) : "마지막 동기화 없음";
     }).catch(function () {});

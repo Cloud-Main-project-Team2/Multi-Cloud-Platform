@@ -16,6 +16,9 @@ import re
 from pathlib import Path
 from typing import Callable
 
+from pydantic import ValidationError
+
+from app.compute_specs import ComputeCommonSpec, InboundRule
 from app.errors import ApiError, validation_error
 from app.terraform_runner import TerraformResult, run_apply
 
@@ -32,14 +35,28 @@ _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,38}[a-z0-9]$")
 _AMI_RE = re.compile(r"^ami-[0-9a-f]{8,17}$")
 
 
-def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str, str | None]:
-    """`(instance_name, region, instance_type, ami_id)`를 반환한다. 실패 시 422 `ApiError`를 raise한다."""
+def _derive(
+    common_spec: dict, provider_spec: dict
+) -> tuple[str, str, str, str | None, dict[str, str], list[InboundRule]]:
+    """`(instance_name, region, instance_type, ami_id, tags, inbound_rules)`를 반환한다.
+    실패 시 422 `ApiError`를 raise한다."""
     name = common_spec.get("name")
     if not isinstance(name, str) or not _NAME_RE.fullmatch(name):
         raise validation_error(
             "common_spec.name은 소문자로 시작하는 영소문자/숫자/하이픈 2~40자여야 합니다.",
             details=[{"field": "common_spec.name", "reason": "invalid"}],
         )
+
+    # tags/inbound_rules는 azure_provisioning.py와 같은 공유 모델(ComputeCommonSpec)로 검증한다
+    # — name 자체의 형식 규칙(위)만 AWS/GCP 전용이라 별도로 남겨둔다.
+    try:
+        common = ComputeCommonSpec.model_validate(common_spec)
+    except ValidationError as exc:
+        first = exc.errors()[0] if exc.errors() else {}
+        field = "common_spec." + ".".join(str(p) for p in first.get("loc", ())) if first.get("loc") else "common_spec"
+        raise validation_error(
+            f"common_spec 검증 실패: {first.get('msg', 'invalid')}", details=[{"field": field, "reason": "invalid"}]
+        ) from exc
 
     instance_type = provider_spec.get("instance_type")
     if instance_type not in ALLOWED_INSTANCE_TYPES:
@@ -62,7 +79,7 @@ def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str, str 
             details=[{"field": "provider_spec.ami_id", "reason": "invalid"}],
         )
 
-    return f"mcp-{name}", region, instance_type, ami_id
+    return f"mcp-{name}", region, instance_type, ami_id, common.tags, common.inbound_rules
 
 
 def validate_spec(common_spec: dict, provider_spec: dict) -> None:
@@ -70,13 +87,22 @@ def validate_spec(common_spec: dict, provider_spec: dict) -> None:
     _derive(common_spec, provider_spec)
 
 
-def build_tfvars(job_id: int, instance_name: str, region: str, instance_type: str, ami_id: str | None) -> dict:
+def build_tfvars(
+    job_id: int,
+    instance_name: str,
+    region: str,
+    instance_type: str,
+    ami_id: str | None,
+    tags: dict[str, str] | None = None,
+    inbound_rules: list[InboundRule] | None = None,
+) -> dict:
     return {
         "region": region,
         "instance_type": instance_type,
         "instance_name": instance_name,
         "ami_id": ami_id,
-        "tags": {"managed-by": "multi-cloud-platform", "job-id": str(job_id)},
+        "tags": {**(tags or {}), "managed-by": "multi-cloud-platform", "job-id": str(job_id)},
+        "inbound_rules": [rule.model_dump() for rule in (inbound_rules or [])],
     }
 
 
@@ -106,10 +132,10 @@ def run(
     """백그라운드 job에서 호출된다 — 이미 `validate_spec()`을 통과한 입력이지만, raise 대신
     `TerraformResult`로 실패를 표현해 백그라운드 태스크 밖으로 예외가 새 나가지 않게 한다."""
     try:
-        instance_name, region, instance_type, ami_id = _derive(common_spec, provider_spec)
+        instance_name, region, instance_type, ami_id, tags, inbound_rules = _derive(common_spec, provider_spec)
         credential_env = _credential_env(secret_payload)
     except ApiError as exc:
         return TerraformResult(success=False, error_code=exc.code, error_message=exc.message)
 
-    tfvars = build_tfvars(job_id, instance_name, region, instance_type, ami_id)
+    tfvars = build_tfvars(job_id, instance_name, region, instance_type, ami_id, tags, inbound_rules)
     return run_apply(workspace_dir, MODULE_DIR, tfvars, credential_env, cancel_check=cancel_check)
