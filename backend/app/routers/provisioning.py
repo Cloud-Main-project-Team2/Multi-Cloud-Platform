@@ -142,19 +142,31 @@ def _serialize_job(job: ProvisioningJob) -> ProvisioningJobOut:
 
 
 def _resource_attrs(
-    provider: str, outputs: dict, common_spec: dict, provider_spec: dict
+    provider: str, service_code: str, outputs: dict, common_spec: dict, provider_spec: dict
 ) -> tuple[str | None, str, str | None, str | None]:
     """terraform outputs → `(external_resource_id, original_resource_type, region, name)`.
 
-    provider마다 output 키·리소스 유형·region 파생 방식이 다르다. external_resource_id가 없으면
-    (output 누락) 첫 원소가 None이고, 라우터는 리소스행을 만들지 않는다.
+    provider·service 조합마다 output 키·리소스 유형·region 파생 방식이 다르다.
+    external_resource_id가 없으면(output 누락) 첫 원소가 None이고, 라우터는 리소스행을 만들지 않는다.
     """
     if provider == "aws":
         return outputs.get("instance_id"), "AWS::EC2::Instance", provider_spec.get("region"), common_spec.get("name")
+    if provider == "gcp" and service_code == "cloud_sql":
+        instance_name = outputs.get("instance_name")
+        region = outputs.get("region") or provider_spec.get("region")
+        return instance_name, "Cloud SQL Instance", region, instance_name
+    if provider == "gcp" and service_code == "cloud_storage":
+        bucket_name = outputs.get("bucket_name")
+        region = outputs.get("region") or provider_spec.get("region")
+        return bucket_name, "Cloud Storage Bucket", region, bucket_name
     if provider == "gcp":
         instance_name = outputs.get("instance_name")
+        # resources.region엔 GCP zone을 그대로 저장한다(app/providers/gcp.py의
+        # perform_resource_action/discover_resources와 동일 관례, CLAUDE.md "GCP zone 단순화"
+        # 참고) — region prefix로 잘라 저장하면 start/stop/delete가 잘못된 zone으로 호출돼 실패한다
+        # (2026-09-11 실사용 테스트에서 발견: 생성된 VM을 인벤토리에서 삭제할 때 PROVIDER_API_ERROR).
         zone = outputs.get("zone")
-        region = zone.rsplit("-", 1)[0] if zone else provider_spec.get("region")
+        region = zone if zone else provider_spec.get("region")
         return instance_name, "Compute Engine Instance", region, instance_name
     if provider == "azure":
         # resource_actions.py는 Azure external_resource_id를 ARM 리소스 ID 전체로 가정한다.
@@ -174,7 +186,9 @@ def _create_resource_from_job(
 ) -> str | None:
     """성공한 job에서 `resources` 행을 upsert한다 — 다음 동기화 없이도 INV-01에 바로 보이도록.
     생성된 리소스의 표시 이름을 반환한다(알림 문구용)."""
-    external_id, resource_type, region, name = _resource_attrs(service.provider, outputs, common_spec, provider_spec)
+    external_id, resource_type, region, name = _resource_attrs(
+        service.provider, service.service_code, outputs, common_spec, provider_spec
+    )
     if not external_id:
         return name
 
@@ -301,15 +315,11 @@ def _execute_job(
     # provision 권한은 여기서 사전 차단하지 않는다 — `permission_scope.provision`은 AWS의 경우
     # `iam:SimulatePrincipalPolicy`로 프로빙하는데, EC2 권한만 있는 키(예: AmazonEC2FullAccess)는
     # IAM 시뮬레이션 권한이 없어 실제로는 생성 가능한데도 provision=false로 잘못 기록된다(false
-    # negative — 실제 Full Access 키에서 확인됨). 따라서 실제 권한 게이트는 Terraform apply로 둔다:
-    # 진짜 권한이 없으면 apply가 AccessDenied로 실패하고 terraform_runner._classify_error가
-    # CLOUD_PERMISSION_DENIED로 분류한다.
-    if credential.permission_scope and not credential.permission_scope.get("provision", False):
-        job.status = "failed"
-        job.error_code = "CLOUD_PERMISSION_DENIED"
-        job.error_message = "이 자격 증명에는 프로비저닝 권한이 없습니다."
-        _finalize_job(db, job, service)
-        return
+    # negative — 실제 Full Access 키에서 확인됨). Azure/GCP는 안전한 프로빙 API가 없어 애초에
+    # `provision`을 프로빙하지 않고 항상 false로 고정한다(`app/providers/{azure,gcp}.py`) — 이
+    # 필드로 사전 차단하면 검증된 자격 증명이 실제 권한과 무관하게 전부 막힌다. 따라서 실제 권한
+    # 게이트는 Terraform apply로 둔다: 진짜 권한이 없으면 apply가 AccessDenied로 실패하고
+    # terraform_runner._classify_error가 CLOUD_PERMISSION_DENIED로 분류한다.
 
 
     runner = get_runner(service.provider, service.service_code)

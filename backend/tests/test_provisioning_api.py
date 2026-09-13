@@ -488,7 +488,10 @@ def test_process_job_success_creates_resource_and_notification(db_session, make_
 
     resource = db_session.query(Resource).filter_by(cloud_account_id=account.id).one()
     assert resource.external_resource_id == "mcp-web-01"
-    assert resource.region == "asia-northeast3"
+    # resources.region엔 zone을 그대로 저장한다(app/providers/gcp.py의 perform_resource_action/
+    # discover_resources와 동일 관례) — region prefix로 잘리면 start/stop/delete가 잘못된 zone으로
+    # 호출돼 실패한다(2026-09-11 실사용 테스트에서 발견).
+    assert resource.region == "asia-northeast3-a"
     assert resource.status == "RUNNING"
 
     notification = db_session.query(Notification).filter_by(reference_id=job.id).one()

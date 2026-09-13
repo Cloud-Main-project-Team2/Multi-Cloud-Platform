@@ -158,15 +158,15 @@ def test_create_job_not_provisionable_service_is_422(client, make_user, auth_hea
 
 def test_create_job_without_runner_is_501(client, make_user, auth_header, db_session):
     user = make_user()
-    # provisionable하지만 러너가 등록되지 않은 조합(gcp/cloud_storage). ec2/vm/compute_engine
-    # 세 조합은 통합 후 모두 러너가 있으므로 러너 없는 서비스로 검증한다.
-    _make_service(db_session, "gcp", "cloud_storage", provisionable=True)
-    account = _make_account(db_session, user, "gcp", "proj-1")
+    # provisionable하지만 러너가 등록되지 않은 조합(azure/sql_database). ec2/vm/compute_engine/
+    # cloud_sql/cloud_storage 조합은 전부 러너가 있으므로 러너 없는 서비스로 검증한다.
+    _make_service(db_session, "azure", "sql_database", provisionable=True)
+    account = _make_account(db_session, user, "azure", "sub-1")
     credential = _make_credential(db_session, account)
     db_session.commit()
 
     resp = client.post(
-        "/api/v1/provisioning/gcp/cloud_storage",
+        "/api/v1/provisioning/azure/sql_database",
         json={"credential_id": str(credential.id), "common_spec": VALID_COMMON_SPEC, "provider_spec": VALID_PROVIDER_SPEC},
         headers={**auth_header(user), **HEADERS_BASE},
     )
