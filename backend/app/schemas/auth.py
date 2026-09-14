@@ -34,6 +34,8 @@ class LoginResponseData(BaseModel):
     access_token: str
     token_type: str = "Bearer"
     expires_in: int
+    refresh_token: str
+    refresh_expires_in: int
     user: UserOut
 
 
@@ -43,3 +45,65 @@ class LoginResponse(BaseModel):
 
 class SignUpResponse(BaseModel):
     data: UserOut
+
+
+class MeResponse(BaseModel):
+    data: UserOut
+
+
+# --- refresh token ---
+class RefreshRequest(BaseModel):
+    refresh_token: str = Field(min_length=1)
+
+
+class RefreshResponse(BaseModel):
+    data: LoginResponseData
+
+
+class LogoutRequest(BaseModel):
+    refresh_token: str = Field(min_length=1)
+
+
+# --- 이메일 검증(OTP) ---
+class EmailVerificationRequest(BaseModel):
+    email: str = Field(min_length=1, max_length=320)
+
+
+class EmailVerificationRequestData(BaseModel):
+    expires_in: int
+    resend_available_in: int
+
+
+class EmailVerificationRequestResponse(BaseModel):
+    data: EmailVerificationRequestData
+
+
+class EmailVerifyRequest(BaseModel):
+    email: str = Field(min_length=1, max_length=320)
+    code: str = Field(min_length=1, max_length=12)
+
+
+class EmailVerifyData(BaseModel):
+    verified: bool
+
+
+class EmailVerifyResponse(BaseModel):
+    data: EmailVerifyData
+
+
+# --- 비밀번호 재설정 ---
+class PasswordResetRequest(BaseModel):
+    email: str = Field(min_length=1, max_length=320)
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    token: str = Field(min_length=1)
+    new_password: str = Field(min_length=1)
+
+
+class MessageData(BaseModel):
+    message: str
+
+
+class MessageResponse(BaseModel):
+    data: MessageData

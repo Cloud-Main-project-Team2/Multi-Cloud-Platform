@@ -40,15 +40,26 @@
         <p class="mt-1 text-sm text-muted-foreground"><span data-service-name>MultiCloud Ops</span> 계정을 만듭니다.</p>
 
         <form id="signup-form" class="mt-6 space-y-4">
-          <!-- 이메일 + 중복 확인 -->
+          <!-- 이메일 + 이메일 인증(OTP) -->
           <div>
             <label for="email" class="mb-1 block text-sm font-medium">이메일</label>
             <div class="flex gap-2">
               <input id="email" type="email" placeholder="name@company.com" autocomplete="username"
                 class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
-              <button id="dup-check-btn" type="button" class="shrink-0 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-muted">중복 확인</button>
+              <button id="send-code-btn" type="button" class="shrink-0 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-muted">인증하기</button>
             </div>
             <p id="dup-msg" class="mt-1 hidden text-xs"></p>
+
+            <!-- 인증 코드 입력(발송 후 노출) -->
+            <div id="code-row" class="mt-2 hidden">
+              <div class="flex gap-2">
+                <input id="verify-code" type="text" inputmode="numeric" maxlength="6" placeholder="6자리 인증 코드"
+                  class="w-full rounded-lg border border-border bg-background px-3 py-2.5 text-sm outline-none focus:border-primary" />
+                <button id="verify-code-btn" type="button" class="shrink-0 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-muted">확인</button>
+                <button id="resend-code-btn" type="button" class="shrink-0 rounded-lg border border-border bg-surface px-3 py-2.5 text-sm font-medium hover:bg-muted disabled:opacity-50" disabled>재전송</button>
+              </div>
+              <p id="code-msg" class="mt-1 hidden text-xs"></p>
+            </div>
           </div>
 
           <!-- 비밀번호 -->
@@ -157,8 +168,13 @@
   <script>
     (function () {
       var email = document.getElementById("email");
-      var dupBtn = document.getElementById("dup-check-btn");
+      var sendCodeBtn = document.getElementById("send-code-btn");
       var dupMsg = document.getElementById("dup-msg");
+      var codeRow = document.getElementById("code-row");
+      var verifyCode = document.getElementById("verify-code");
+      var verifyCodeBtn = document.getElementById("verify-code-btn");
+      var resendBtn = document.getElementById("resend-code-btn");
+      var codeMsg = document.getElementById("code-msg");
       var pw = document.getElementById("password");
       var pwHint = document.getElementById("pw-hint");
       var cp = document.getElementById("confirm-password");
@@ -170,7 +186,8 @@
       var form = document.getElementById("signup-form");
       var errorBanner = document.getElementById("signup-error");
       var errorText = document.getElementById("signup-error-text");
-      var dupChecked = false;
+      var emailVerified = false; // 이메일 인증(OTP) 완료 여부
+      var resendTimer = null;
 
       function hideError() {
         errorBanner.classList.add("hidden");
@@ -194,36 +211,118 @@
         var mismatch = cp.value.length > 0 && cp.value !== pw.value;
         matchMsg.classList.toggle("hidden", !mismatch);
 
-        var ok = MCVAL.isEmail(email.value) && dupChecked && strong
+        var ok = MCVAL.isEmail(email.value) && emailVerified && strong
           && cp.value === pw.value && cp.value.length > 0 && MCVAL.isNonEmpty(name.value)
           && affiliationValid();
         MCVAL.setEnabled(btn, ok);
       }
 
-      // 이메일이 바뀌면 중복 확인(형식 확인)을 다시 받아야 함 — 실제 중복 여부는 가입 시 서버가 최종 판단한다.
-      email.addEventListener("input", function () { dupChecked = false; dupMsg.classList.add("hidden"); hideError(); refresh(); });
+      function setMsg(el, text, color) {
+        el.classList.remove("hidden");
+        el.textContent = text;
+        el.style.color = color;
+      }
+
+      // 이메일 인증 상태를 초기화(이메일이 바뀌거나 재전송할 때).
+      function resetVerification() {
+        emailVerified = false;
+        codeRow.classList.add("hidden");
+        verifyCode.value = "";
+        codeMsg.classList.add("hidden");
+        if (resendTimer) { clearInterval(resendTimer); resendTimer = null; }
+      }
+
+      function startResendCooldown(seconds) {
+        var left = seconds;
+        resendBtn.disabled = true;
+        resendBtn.textContent = "재전송(" + left + ")";
+        resendTimer = setInterval(function () {
+          left -= 1;
+          if (left <= 0) {
+            clearInterval(resendTimer); resendTimer = null;
+            resendBtn.disabled = false;
+            resendBtn.textContent = "재전송";
+          } else {
+            resendBtn.textContent = "재전송(" + left + ")";
+          }
+        }, 1000);
+      }
+
+      // 이메일이 바뀌면 인증을 처음부터 다시 받아야 한다.
+      email.addEventListener("input", function () { resetVerification(); dupMsg.classList.add("hidden"); hideError(); refresh(); });
       pw.addEventListener("input", refresh);
       cp.addEventListener("input", refresh);
       name.addEventListener("input", refresh);
       affiliationType.addEventListener("change", refresh);
       affiliationName.addEventListener("input", refresh);
 
-      dupBtn.addEventListener("click", function () {
-        dupMsg.classList.remove("hidden");
-        if (MCVAL.isEmail(email.value)) {
-          dupChecked = true;
-          dupMsg.textContent = "형식이 올바른 이메일입니다. 가입 시 중복 여부를 다시 확인합니다.";
-          dupMsg.style.color = "var(--primary)";
-        } else {
-          dupChecked = false;
-          dupMsg.textContent = "이메일 형식을 확인해 주세요.";
-          dupMsg.style.color = "#c0392b";
+      // 인증 코드 발송
+      function sendCode() {
+        if (!MCVAL.isEmail(email.value)) {
+          setMsg(dupMsg, "이메일 형식을 확인해 주세요.", "#c0392b");
+          return;
         }
-        refresh();
+        MCVAL.setEnabled(sendCodeBtn, false);
+        MCPApi.request("/auth/email-verifications", {
+          method: "POST",
+          body: { email: email.value.trim() },
+        })
+          .then(function (data) {
+            setMsg(dupMsg, "인증 코드를 이메일로 보냈습니다. 메일함을 확인해 주세요.", "var(--primary)");
+            codeRow.classList.remove("hidden");
+            verifyCode.focus();
+            startResendCooldown(data.resend_available_in || 60);
+            MCVAL.setEnabled(sendCodeBtn, true);
+          })
+          .catch(function (err) {
+            MCVAL.setEnabled(sendCodeBtn, true);
+            if (err.code === "EMAIL_ALREADY_EXISTS") {
+              setMsg(dupMsg, "이미 사용 중인 이메일입니다.", "#c0392b");
+            } else if (err.code === "TOO_MANY_REQUESTS") {
+              setMsg(dupMsg, err.message || "잠시 후 다시 시도해 주세요.", "#c0392b");
+            } else {
+              setMsg(dupMsg, "코드 발송에 실패했습니다. 잠시 후 다시 시도해 주세요.", "#c0392b");
+            }
+          });
+      }
+
+      sendCodeBtn.addEventListener("click", sendCode);
+      resendBtn.addEventListener("click", function () { if (!resendBtn.disabled) sendCode(); });
+
+      // 인증 코드 확인
+      verifyCodeBtn.addEventListener("click", function () {
+        var code = verifyCode.value.trim();
+        if (!code) { setMsg(codeMsg, "인증 코드를 입력해 주세요.", "#c0392b"); return; }
+        MCVAL.setEnabled(verifyCodeBtn, false);
+        MCPApi.request("/auth/email-verifications/verify", {
+          method: "POST",
+          body: { email: email.value.trim(), code: code },
+        })
+          .then(function () {
+            emailVerified = true;
+            setMsg(codeMsg, "이메일 인증이 완료되었습니다.", "var(--primary)");
+            email.setAttribute("readonly", "readonly");
+            sendCodeBtn.disabled = true;
+            resendBtn.disabled = true;
+            verifyCode.disabled = true;
+            if (resendTimer) { clearInterval(resendTimer); resendTimer = null; }
+            refresh();
+          })
+          .catch(function (err) {
+            MCVAL.setEnabled(verifyCodeBtn, true);
+            if (err.code === "VERIFICATION_CODE_EXPIRED") {
+              setMsg(codeMsg, "코드가 만료되었습니다. 재전송해 주세요.", "#c0392b");
+            } else if (err.code === "TOO_MANY_ATTEMPTS") {
+              setMsg(codeMsg, "시도 횟수를 초과했습니다. 코드를 다시 요청해 주세요.", "#c0392b");
+            } else {
+              setMsg(codeMsg, "인증 코드가 올바르지 않습니다.", "#c0392b");
+            }
+          });
       });
 
       var ERROR_MESSAGES = {
         EMAIL_ALREADY_EXISTS: "이미 사용 중인 이메일입니다. 다른 이메일로 다시 확인해 주세요.",
+        EMAIL_NOT_VERIFIED: "이메일 인증을 먼저 완료해 주세요.",
         VALIDATION_ERROR: "입력값을 다시 확인해 주세요.",
       };
 
@@ -249,10 +348,10 @@
           .catch(function (err) {
             MCVAL.setEnabled(btn, true);
             if (err.code === "EMAIL_ALREADY_EXISTS") {
-              dupChecked = false;
-              dupMsg.classList.remove("hidden");
-              dupMsg.textContent = "이미 사용 중인 이메일입니다.";
-              dupMsg.style.color = "#c0392b";
+              resetVerification();
+              setMsg(dupMsg, "이미 사용 중인 이메일입니다.", "#c0392b");
+              email.removeAttribute("readonly");
+              sendCodeBtn.disabled = false;
               MCVAL.setEnabled(btn, false);
             } else {
               showError(ERROR_MESSAGES[err.code] || err.message || "가입에 실패했습니다. 잠시 후 다시 시도해 주세요.");

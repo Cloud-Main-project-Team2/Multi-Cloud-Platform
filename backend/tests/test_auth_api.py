@@ -82,7 +82,8 @@ def test_protected_route_with_garbage_token_is_invalid(client):
 # --- POST /auth/sign-up -----------------------------------------------------------------
 
 
-def test_sign_up_creates_user_and_allows_login(client):
+def test_sign_up_creates_user_and_allows_login(client, verify_email):
+    verify_email(SIGNUP_BODY["email"])
     resp = client.post("/api/v1/auth/sign-up", json=SIGNUP_BODY)
 
     assert resp.status_code == 201
@@ -99,7 +100,8 @@ def test_sign_up_creates_user_and_allows_login(client):
     assert login_resp.status_code == 200
 
 
-def test_sign_up_normalizes_email_case_for_duplicate_check(client):
+def test_sign_up_normalizes_email_case_for_duplicate_check(client, verify_email):
+    verify_email(SIGNUP_BODY["email"])
     client.post("/api/v1/auth/sign-up", json=SIGNUP_BODY)
 
     resp = client.post(
@@ -135,7 +137,8 @@ def test_sign_up_requires_affiliation_name_when_company(client):
     assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
 
 
-def test_sign_up_accepts_company_with_affiliation_name(client):
+def test_sign_up_accepts_company_with_affiliation_name(client, verify_email):
+    verify_email("company-user2@example.com")
     resp = client.post(
         "/api/v1/auth/sign-up",
         json={

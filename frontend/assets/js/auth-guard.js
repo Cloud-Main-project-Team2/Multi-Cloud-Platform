@@ -25,8 +25,10 @@
     });
     document.querySelectorAll(".sidebar__logout, [data-logout]").forEach(function (btn) {
       btn.addEventListener("click", function () {
-        window.MCPApi.clearSession();
-        window.location.href = "login.html";
+        // 서버의 refresh token까지 폐기한 뒤 로그인 화면으로 이동.
+        window.MCPApi.logout().then(function () {
+          window.location.href = "login.html";
+        });
       });
     });
   }
