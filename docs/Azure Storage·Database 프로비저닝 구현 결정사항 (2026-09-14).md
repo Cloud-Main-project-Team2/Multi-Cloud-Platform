@@ -96,10 +96,13 @@ MySQL/PostgreSQL/SQL Server 3종이다(Azure에서 이 셋은 서로 다른 리�
   `public_network_access_enabled=false` + Private Endpoint + Private DNS Zone
   (`privatelink.database.windows.net`)을 구성한다.
 
-**결과적으로 3사 DB 보안 수준**: AWS·Azure(비공개) vs **GCP만 여전히 퍼블릭+전체허용 데모**로 남아
-불일치가 있다. 이건 제가 새로 만든 불일치가 아니라 GCP 세션에서 이미 있던 타협인데, 이번에 Azure를
-따라 고치지 않고 그대로 뒀다 — **GCP Cloud SQL도 같은 원칙으로 고칠지는 이 브랜치 범위 밖이라 팀이
-별도로 판단해야 한다.**
+**추가(2026-09-14, 같은 날 후속 브랜치 `seunghyun/be-gcp-cloudsql-private`)**: 위에서 "GCP Cloud SQL도
+같은 원칙으로 고칠지는 팀이 판단해야 한다"고 남겼던 부분 — 팀 확인 후 **GCP도 동일하게 비공개로
+전환하기로 결정**했다. GCP는 MySQL/PostgreSQL/SQL Server 3엔진이 전부 같은 매커니즘(Private
+Services Access — VPC 피어링)을 지원해서, Azure처럼 엔진별로 다른 구조가 필요 없었다(리소스
+`google_sql_database_instance` 하나 그대로 유지, `ip_configuration`만 `ipv4_enabled=false` +
+`private_network`로 변경, `authorized_networks` 제거, VPC+피어링 리소스 3개만 추가). **이제 3사
+DB가 전부 비공개로 통일됐다.**
 
 **남는 한계**: AWS는 "같은 기본 VPC의 EC2에서 RDS 접속 가능"까지 되지만, Azure는 VM 모듈이 job마다
 독립된 VNet을 만드는 구조라 **VM↔DB 자동 연결까지는 안 된다**(원래 없던 기능이라 손해는 아니지만,
