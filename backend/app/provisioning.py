@@ -24,9 +24,10 @@ from app import (
     aws_rds_provisioning,
     aws_s3_provisioning,
     azure_provisioning,
-    gcp_provisioning,
+    gcp_cdn_provisioning,
     gcp_cloudsql_provisioning,
-    gcp_storage_provisioning
+    gcp_provisioning,
+    gcp_storage_provisioning,
 )
 
 _RUNNERS: dict[tuple[str, str], ModuleType] = {
@@ -38,6 +39,7 @@ _RUNNERS: dict[tuple[str, str], ModuleType] = {
     ("gcp", "compute_engine"): gcp_provisioning,
     ("gcp", "cloud_sql"): gcp_cloudsql_provisioning,
     ("gcp", "cloud_storage"): gcp_storage_provisioning,
+    ("gcp", "cloud_cdn"): gcp_cdn_provisioning,
 }
 
 
