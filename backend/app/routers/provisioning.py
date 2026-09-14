@@ -176,6 +176,10 @@ def _resource_attrs(
         bucket_name = outputs.get("bucket_name")
         region = outputs.get("region") or provider_spec.get("region")
         return bucket_name, "Cloud Storage Bucket", region, bucket_name
+    if provider == "gcp" and service_code == "cloud_cdn":
+        # S3/CloudFront와 같은 이유로 region=None — 로드밸런서 스택 전체가 전역(global) 리소스다.
+        forwarding_rule_name = outputs.get("forwarding_rule_name")
+        return forwarding_rule_name, "Cloud CDN (HTTP LB)", None, forwarding_rule_name
     if provider == "gcp":
         instance_name = outputs.get("instance_name")
         # resources.region엔 GCP zone을 그대로 저장한다(app/providers/gcp.py의
@@ -224,6 +228,9 @@ def _initial_resource_status(provider: str, service_code: str) -> str:
     if provider == "aws" and service_code == "rds":
         # aws_db_instance도 apply가 인스턴스 생성 완료(available)까지 기다린 뒤 반환한다.
         return "AVAILABLE"
+    if provider == "gcp" and service_code == "cloud_cdn":
+        # CloudFront와 동일 관례 — apply가 로드밸런서 스택 생성 완료까지 기다린 뒤 반환한다.
+        return "DEPLOYED"
     if provider == "azure" and service_code == "storage_account":
         # S3 버킷과 같은 원칙 — 시작/중지 개념이 없는 리소스.
         return "AVAILABLE"
@@ -285,6 +292,58 @@ def _create_resource_from_job(
         existing.last_synced_at = now
         existing.is_stale = False
     job.created_resource_count = 1
+
+    # GCP Cloud CDN은 전용 버킷을 함께 만드는데(app/gcp_cdn_provisioning.py 참고), 그 버킷이
+    # 인벤토리 어디에도 안 보이면 사용자가 나중에 뭘 지워야 하는지 찾을 방법이 없다(2026-09-14
+    # 실사용 중 지적받아 발견) — CDN 리소스 행과 별도로 "Cloud Storage Bucket" 행도 upsert한다.
+    # 실제 Storage 프로비저닝으로 만든 버킷과 같은 (gcp, cloud_storage) service_catalog로 묶어야
+    # 인벤토리의 "서비스 종류" 필터에서도 Storage로 정상 분류된다 — 삭제 버튼은 다른 GCP Storage
+    # 버킷과 동일하게 여전히 미지원(resource_actions.py에 (gcp, cloud_storage) 없음)이라, 이건
+    # "보이게"만 해결하는 것이지 "인벤토리에서 지울 수 있게"까지는 아니다.
+    if service.provider == "gcp" and service.service_code == "cloud_cdn":
+        bucket_name = outputs.get("backend_bucket_name")
+        if bucket_name:
+            storage_service = (
+                db.query(ServiceCatalog).filter_by(provider="gcp", service_code="cloud_storage").one_or_none()
+            )
+            if storage_service is not None:
+                bucket_key = f"gcp:cloud_storage:{bucket_name}"
+                existing_bucket = (
+                    db.query(Resource)
+                    .filter_by(cloud_account_id=account.id, provider_resource_key=bucket_key)
+                    .one_or_none()
+                )
+                if existing_bucket is None:
+                    db.add(
+                        Resource(
+                            cloud_account_id=account.id,
+                            service_catalog_id=storage_service.id,
+                            first_collected_by_credential_id=credential.id,
+                            last_collected_by_credential_id=credential.id,
+                            provider_resource_key=bucket_key,
+                            external_resource_id=bucket_name,
+                            original_resource_type="Cloud Storage Bucket",
+                            name=bucket_name,
+                            # terraform/gcp/cloud_cdn/main.tf가 고정한 리전과 동일값(하드코딩) —
+                            # google_storage_bucket.location을 그대로 읽으면 GCS가 대문자로
+                            # 정규화해 돌려줘서(예: "ASIA-NORTHEAST3") 앱 전역의 소문자 관례와
+                            # 어긋난다(Cloud Storage 러너가 이미 겪은 것과 같은 이유로 회피).
+                            region="asia-northeast3",
+                            status=_initial_resource_status("gcp", "cloud_storage"),
+                            tags={"managed-by": "multi-cloud-platform", "job-id": str(job.id), "created-for": "cdn"},
+                            raw_metadata={"forwarding_rule_name": outputs.get("forwarding_rule_name")},
+                            first_seen_at=now,
+                            last_seen_at=now,
+                            last_synced_at=now,
+                        )
+                    )
+                else:
+                    existing_bucket.last_collected_by_credential_id = credential.id
+                    existing_bucket.last_seen_at = now
+                    existing_bucket.last_synced_at = now
+                    existing_bucket.is_stale = False
+                job.created_resource_count = 2
+
     db.flush()
     return name
 
