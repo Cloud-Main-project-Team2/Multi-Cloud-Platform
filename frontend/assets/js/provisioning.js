@@ -43,13 +43,14 @@
   var PLATFORM_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
 
   // 실 API 연동: (리소스 종류, 플랫폼)별로 백엔드 러너가 있는 조합만 실제 job을 만든다(§10).
-  // 2026-09-14: azure(storage_account/sql_database)·gcp(cloud_storage/cloud_sql) 러너가 추가돼
-  // db/storage_object도 3사 다 실 연동됐다 — 이제 CDN(cloudfront만 있음)만 러너가 없어 501이 뻔하므로
-  // 그 대상만 기존 진행률 시뮬레이션을 대신 돌린다(startProvisioning()의 simulateTarget 참고).
+  // 2026-09-14: azure(storage_account/sql_database)·gcp(cloud_storage/cloud_sql/cloud_cdn) 러너가
+  // 추가돼 db/storage_object는 3사 다, CDN은 aws/gcp가 실 연동됐다 — Azure CDN(Front Door)만 아직
+  // 러너가 없어 501이 뻔하므로 그 대상만 기존 진행률 시뮬레이션을 대신 돌린다
+  // (startProvisioning()의 simulateTarget 참고).
   var SERVICE_CODE = {
     compute: { aws: "ec2", azure: "vm", gcp: "compute_engine" },
     storage_object: { aws: "s3", azure: "storage_account", gcp: "cloud_storage" },
-    cdn: { aws: "cloudfront" },
+    cdn: { aws: "cloudfront", gcp: "cloud_cdn" },
     db: { aws: "rds", azure: "sql_database", gcp: "cloud_sql" },
   };
   function hasRealRunner(kind, platform) {
@@ -119,7 +120,6 @@
     azSku: ["Standard", "Premium"],
     azQueryString: ["전체 무시", "전체 사용", "지정 파라미터만"],
     azProtocols: ["HTTPS만", "HTTP+HTTPS"],
-    gcpBackendType: ["백엔드 서비스", "백엔드 버킷"],
     gcpCacheMode: ["CACHE_ALL_STATIC", "USE_ORIGIN_HEADERS", "FORCE_CACHE_ALL"],
     gcpCompression: ["AUTOMATIC", "DISABLED"],
   };
@@ -569,9 +569,24 @@
           cdnToggle("azure", "compression", "Compression", true) +
           cdnToggle("azure", "httpsRedirect", "HTTPS 리다이렉트", true);
       } else if (p === "gcp") {
-        html += '<div class="grid gap-3 sm:grid-cols-2">' +
-          cdnText("gcp", "backend", "Backend/Backend Bucket", true, "my-backend") +
-          cdnSelect("gcp", "backendType", "백엔드 유형", CDN_OPTS.gcpBackendType, false, "data-gcp-backend-type") +
+        html +=
+          // 백엔드 버킷을 CDN 전용으로 새로 만들지, 이미 있는 버킷을 그대로 쓸지 선택
+          // (app/gcp_cdn_provisioning.py의 provider_spec.create_bucket과 1:1 대응).
+          '<label class="flex items-start gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">' +
+          '<input type="checkbox" data-ps-platform="gcp" data-ps="createBucket" data-gcp-create-bucket class="mt-0.5" checked />' +
+          "<span>CDN 전용 버킷을 자동으로 생성합니다(권장). 이 CDN만을 위한 공개 버킷을 새로 만들어 " +
+          "연결하므로 이름이 겹칠 걱정이나 기존 파일이 함께 공개될 위험이 없습니다. 체크를 해제하면 " +
+          "이미 가지고 있는 버킷을 연결할 수 있습니다 — 단, 그 버킷의 공개 읽기 권한은 저희가 " +
+          "대신 설정해 드리지 않으니, GCP 콘솔에서 미리 직접 설정해 두셔야 합니다.</span></label>" +
+          '<div data-gcp-existing-bucket-wrap hidden class="grid gap-3 sm:grid-cols-2">' +
+          cdnText("gcp", "backendBucketName", "연결할 기존 버킷 이름", true, "my-existing-bucket") +
+          "</div>" +
+          '<label data-gcp-existing-bucket-ack-wrap hidden class="flex items-start gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">' +
+          '<input type="checkbox" data-ps-platform="gcp" data-ps="existingBucketPublicAck" class="mt-0.5" />' +
+          "<span>이 버킷을 GCP 콘솔에서 이미 공개 읽기(버킷 전체 — 개별 파일 아님, allUsers · " +
+          "Storage Object Viewer)로 설정해 두었습니다. 확인합니다. " +
+          '<span class="text-primary">*</span></span></label>' +
+          '<div class="grid gap-3 sm:grid-cols-2">' +
           cdnSelect("gcp", "cacheMode", "Cache Mode", CDN_OPTS.gcpCacheMode) +
           cdnSelect("gcp", "compression", "Compression", CDN_OPTS.gcpCompression) +
           "</div>" +
@@ -580,24 +595,27 @@
           "<span>GCP Cloud CDN은 외부 HTTP(S) 로드밸런서 스택이 필요합니다. 함께 구성에 동의합니다. " +
           '<span class="text-primary">*</span></span></label>' +
           cdnToggle("gcp", "enableCdn", "enableCdn", true) +
-          cdnToggle("gcp", "httpsRedirect", "HTTPS 강제 리다이렉트", true) +
-          // Health Probe는 백엔드 '서비스' 구성일 때만 노출(백엔드 버킷이면 숨김)
-          '<div data-gcp-health-wrap class="grid gap-3 sm:grid-cols-2">' +
-          cdnText("gcp", "healthProbePath", "Health Probe 경로", false, "", "/") +
-          cdnNumber("gcp", "healthProbeIntervalSec", "Health Probe 간격(초)", false, 10) +
-          "</div>";
+          cdnToggle("gcp", "httpsRedirect", "HTTPS 강제 리다이렉트", true);
       }
       box.innerHTML = html;
       container.appendChild(box);
     });
   }
 
-  // GCP 백엔드 유형이 '백엔드 버킷'이면 Health Probe 필드를 숨긴다.
-  function toggleGcpHealth(sel) {
-    var boxEl = sel.closest(".rounded-xl");
+  // CDN 전용 버킷 자동 생성 체크를 해제하면 기존 버킷 이름 입력 + 공개 전환 동의 체크박스를 보여준다
+  // (app/gcp_cdn_provisioning.py의 create_bucket=false 경로와 1:1 대응).
+  function toggleGcpBucketMode(cb) {
+    var boxEl = cb.closest(".rounded-xl");
     if (!boxEl) return;
-    var wrap = boxEl.querySelector("[data-gcp-health-wrap]");
-    if (wrap) wrap.hidden = sel.value !== "백엔드 서비스";
+    var useExisting = !cb.checked;
+    var nameWrap = boxEl.querySelector("[data-gcp-existing-bucket-wrap]");
+    var ackWrap = boxEl.querySelector("[data-gcp-existing-bucket-ack-wrap]");
+    if (nameWrap) nameWrap.hidden = !useExisting;
+    if (ackWrap) ackWrap.hidden = !useExisting;
+    if (!useExisting) {
+      var ackInput = ackWrap && ackWrap.querySelector('[data-ps="existingBucketPublicAck"]');
+      if (ackInput) ackInput.checked = false; // 다시 자동 생성으로 바꾸면 동의도 초기화
+    }
   }
 
   // ── ⑤ 플랫폼별 추가 설정 렌더링 ──────────────────────────────────────────
@@ -682,12 +700,19 @@
     var cs = state.commonSpec || {};
 
     if (kind === "cdn") {
-      // 필수: AWS Origin / Azure Origin·Resource Group·SKU / GCP Backend·LB stack 동의
+      // 필수: AWS Origin / Azure Origin·Resource Group·SKU /
+      // GCP LB stack 동의 + (버킷 자동 생성이면 그걸로 충분, 기존 버킷 사용이면 버킷 이름·공개 동의)
       return state.platforms.every(function (p) {
         var ps = state.providerSpec[p] || {};
         if (p === "aws") return isFilled(ps.origin);
         if (p === "azure") return isFilled(ps.origin) && isFilled(ps.resourceGroup) && isFilled(ps.sku);
-        if (p === "gcp") return isFilled(ps.backend) && ps.lbStackAck === true;
+        if (p === "gcp") {
+          if (ps.lbStackAck !== true) return false;
+          if (ps.createBucket === false) {
+            return isFilled(ps.backendBucketName) && ps.existingBucketPublicAck === true;
+          }
+          return true;
+        }
         return true;
       });
     }
@@ -916,6 +941,17 @@
     }
     if (kind === "cdn") {
       if (p === "aws") return { origin_domain_name: ps.origin }; // app/aws_cloudfront_provisioning.py
+      if (p === "gcp") {
+        // app/gcp_cdn_provisioning.py — createBucket 체크(기본 true)면 서버가 CDN 전용 버킷을
+        // 자동 생성한다(backend_bucket_name 불필요). 체크 해제 시에만 기존 버킷 이름 +
+        // 공개 전환 동의를 함께 보낸다.
+        var spec = { lb_stack_ack: ps.lbStackAck === true, create_bucket: ps.createBucket !== false };
+        if (!spec.create_bucket) {
+          spec.backend_bucket_name = ps.backendBucketName;
+          spec.existing_bucket_public_ack = ps.existingBucketPublicAck === true;
+        }
+        return spec;
+      }
       return {};
     }
     if (kind === "db") {
@@ -1083,8 +1119,8 @@
       providerC.addEventListener("change", function (e) {
         var imgSel = e.target.closest("[data-image-select]");
         if (imgSel) toggleAmi(imgSel);
-        var btSel = e.target.closest("[data-gcp-backend-type]");
-        if (btSel) toggleGcpHealth(btSel);
+        var bucketCb = e.target.closest("[data-gcp-create-bucket]");
+        if (bucketCb) toggleGcpBucketMode(bucketCb);
         onFieldChange();
       });
       providerC.addEventListener("click", function (e) {
