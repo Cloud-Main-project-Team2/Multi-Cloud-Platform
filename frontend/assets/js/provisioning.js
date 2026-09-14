@@ -43,14 +43,14 @@
   var PLATFORM_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
 
   // 실 API 연동: (리소스 종류, 플랫폼)별로 백엔드 러너가 있는 조합만 실제 job을 만든다(§10).
-  // aws는 ec2/s3/cloudfront/rds 네 조합 다 구현됐고, azure/gcp는 compute(vm/compute_engine)만
-  // 있다 — 러너 없는 조합(azure/gcp의 DB·Storage·CDN)은 501이 뻔하므로 대상별로 기존 진행률
-  // 시뮬레이션을 대신 돌린다(startProvisioning()의 simulateTarget 참고).
+  // 2026-09-14: azure(storage_account/sql_database)·gcp(cloud_storage/cloud_sql) 러너가 추가돼
+  // db/storage_object도 3사 다 실 연동됐다 — 이제 CDN(cloudfront만 있음)만 러너가 없어 501이 뻔하므로
+  // 그 대상만 기존 진행률 시뮬레이션을 대신 돌린다(startProvisioning()의 simulateTarget 참고).
   var SERVICE_CODE = {
     compute: { aws: "ec2", azure: "vm", gcp: "compute_engine" },
-    storage_object: { aws: "s3" },
+    storage_object: { aws: "s3", azure: "storage_account", gcp: "cloud_storage" },
     cdn: { aws: "cloudfront" },
-    db: { aws: "rds" },
+    db: { aws: "rds", azure: "sql_database", gcp: "cloud_sql" },
   };
   function hasRealRunner(kind, platform) {
     return !!(SERVICE_CODE[kind] && SERVICE_CODE[kind][platform]);
@@ -80,7 +80,8 @@
   }
 
   // DB 엔진 옵션(플랫폼별로 다름). aws는 실제 백엔드 러너(RDS)가 mysql/postgres만 지원해서
-  // 그 두 개만 노출한다(azure/gcp는 아직 시뮬레이션이라 더 넓은 목록을 유지).
+  // 그 두 개만 노출한다. azure/gcp는 세 엔진(MySQL/PostgreSQL/SQL Server) 모두 실제 러너가
+  // 지원한다(app/azure_database_provisioning.py·app/gcp_cloudsql_provisioning.py).
   var DB_ENGINES = {
     aws: ["MySQL", "PostgreSQL"],
     azure: ["MySQL", "PostgreSQL", "SQL Server"],
@@ -720,7 +721,12 @@
     if (kind === "storage_object") {
       if (!isFilled(cs.name)) return false; // 버킷/계정명(프리픽스 없음)
       return state.platforms.every(function (p) {
-        return isFilled((state.providerSpec[p] || {}).region);
+        var ps = state.providerSpec[p] || {};
+        if (!isFilled(ps.region)) return false;
+        // ⑤ 스토리지 등급은 GCP 전용 필수 입력(app/gcp_storage_provisioning.py — 이제 실 API라
+        // 값이 없으면 422). 실 연동 전엔 시뮬레이션이라 검사 없이도 문제없었지만 이제는 필요하다.
+        if (p === "gcp" && !isFilled(ps.storageClass)) return false;
+        return true;
       });
     }
     return false;
@@ -904,6 +910,8 @@
 
     if (kind === "storage_object") {
       if (p === "aws") return { region: ps.region }; // app/aws_s3_provisioning.py
+      if (p === "azure") return { region: ps.region }; // app/azure_storage_provisioning.py
+      if (p === "gcp") return { region: ps.region, storage_class: ps.storageClass }; // app/gcp_storage_provisioning.py
       return {};
     }
     if (kind === "cdn") {
@@ -914,6 +922,19 @@
       if (p === "aws") {
         // app/aws_rds_provisioning.py — master_username은 서버가 mcp_admin으로 고정, 안 받는다.
         return { region: ps.region, engine: DB_ENGINE_CODE[ps.engine], master_password: ps.masterPassword };
+      }
+      if (p === "azure") {
+        // app/azure_database_provisioning.py — Azure만 마스터 사용자명도 사용자 입력으로 받는다
+        // (엔진 라벨은 "MySQL"/"PostgreSQL"/"SQL Server" 그대로 보낸다 — 백엔드 Literal과 동일 어휘).
+        return {
+          region: ps.region, engine: ps.engine,
+          master_username: ps.masterUsername, master_password: ps.masterPassword,
+        };
+      }
+      if (p === "gcp") {
+        // app/gcp_cloudsql_provisioning.py — aws처럼 비밀번호만 입력받는다(관리자 계정명은 엔진별
+        // 서버 고정값 root/postgres/sqlserver). 엔진 라벨도 그대로 보낸다(_ENGINE_CONFIG 키와 동일).
+        return { region: ps.region, engine: ps.engine, master_password: ps.masterPassword };
       }
       return {};
     }
@@ -1009,7 +1030,7 @@
         .catch(function (err) { setRow(t, "failed", t.progress, provErrorMessage(err)); });
     }
 
-    // 러너가 없는 조합(azure/gcp의 DB·Storage·CDN)은 진행률만 애니메이션한다 — 실패 시점은 랜덤.
+    // 러너가 없는 조합(azure/gcp의 CDN)은 진행률만 애니메이션한다 — 실패 시점은 랜덤.
     function simulateTarget(t) {
       var willFail = Math.random() < 0.25;
       var failAt = willFail ? 35 + Math.floor(Math.random() * 45) : null;
