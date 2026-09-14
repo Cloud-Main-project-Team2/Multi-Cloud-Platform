@@ -185,6 +185,17 @@ def _resource_attrs(
         zone = outputs.get("zone")
         region = zone if zone else provider_spec.get("region")
         return instance_name, "Compute Engine Instance", region, instance_name
+    if provider == "azure" and service_code == "sql_database":
+        # 엔진마다 실제 Azure 서비스가 다르므로(MySQL/PostgreSQL Flexible Server, Azure SQL)
+        # original_resource_type도 사람이 읽을 수 있게 구분한다(RDS Instance/Cloud SQL Instance와
+        # 같은 관례 — 자세한 배경은 azure_database_provisioning.py 모듈 docstring 참고).
+        server_name = outputs.get("server_name")
+        engine_label = {
+            "MySQL": "Azure Database for MySQL",
+            "PostgreSQL": "Azure Database for PostgreSQL",
+            "SQL Server": "Azure SQL Database",
+        }.get(provider_spec.get("engine"), "Azure Database")
+        return server_name, engine_label, provider_spec.get("region"), server_name
     if provider == "azure" and service_code == "storage_account":
         # app/providers/azure.py에는 아직 Storage Account discover/action 어댑터가 없다(CLAUDE.md
         # "resources/action SDK 어댑터 구현 범위" — 의도적으로 범위 밖). 계정 이름을 식별자로 쓴다
@@ -215,6 +226,9 @@ def _initial_resource_status(provider: str, service_code: str) -> str:
         return "AVAILABLE"
     if provider == "azure" and service_code == "storage_account":
         # S3 버킷과 같은 원칙 — 시작/중지 개념이 없는 리소스.
+        return "AVAILABLE"
+    if provider == "azure" and service_code == "sql_database":
+        # RDS/Cloud SQL과 동일 — apply가 서버 생성 완료까지 기다린 뒤 반환한다.
         return "AVAILABLE"
     return "RUNNING"
 
