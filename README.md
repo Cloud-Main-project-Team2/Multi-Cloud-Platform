@@ -12,7 +12,16 @@
 | Infra / IaC | **Terraform** |
 | VCS / 협업 | GitHub (branch → PR → squash merge) |
 
-> 상세 실행 방법(로컬 구동, 환경변수, DB 마이그레이션 등)은 백엔드 개발 환경 구축(`feature/be-env-setup`) 완료 후 이 문서에 갱신된다.
+### 로컬 실행 (Docker)
+
+```bash
+cp backend/.env.example backend/.env   # 필요 값(시크릿 등) 채우기
+docker compose up -d --build           # db · api · web · mailhog 기동
+```
+
+- 프론트: http://localhost:8080 · API: http://localhost:8000 · 메일 확인(MailHog): http://localhost:8025
+- `api` 컨테이너는 기동 시 Alembic 마이그레이션 + 목업 시딩을 자동 실행한다.
+- 환경변수 목록·기본값은 [`backend/.env.example`](./backend/.env.example) 참고.
 
 ## 디렉토리 구조
 
@@ -41,4 +50,6 @@ repo-root/
 
 ## 현재 상태
 
-레포 골격 셋업 완료, 기능 구현 진행 중.
+1주차(2026-09-14 기준) 완료: 인증(로그인·회원가입·이메일 검증·비밀번호 재설정·JWT/refresh),
+키 관리·인벤토리(조회/동기화/액션), 프로비저닝(AWS·GCP·Azure 3사 + 서비스 확장) 백엔드/프론트
+실 연동까지 `main`에 병합. 상세 진행 상황은 [CLAUDE.md](./CLAUDE.md)의 진행 트래커 참고.
