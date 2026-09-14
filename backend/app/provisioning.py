@@ -24,6 +24,7 @@ from app import (
     aws_rds_provisioning,
     aws_s3_provisioning,
     azure_provisioning,
+    azure_storage_provisioning,
     gcp_provisioning,
     gcp_cloudsql_provisioning,
     gcp_storage_provisioning
@@ -35,6 +36,7 @@ _RUNNERS: dict[tuple[str, str], ModuleType] = {
     ("aws", "cloudfront"): aws_cloudfront_provisioning,
     ("aws", "rds"): aws_rds_provisioning,
     ("azure", "vm"): azure_provisioning,
+    ("azure", "storage_account"): azure_storage_provisioning,
     ("gcp", "compute_engine"): gcp_provisioning,
     ("gcp", "cloud_sql"): gcp_cloudsql_provisioning,
     ("gcp", "cloud_storage"): gcp_storage_provisioning,
