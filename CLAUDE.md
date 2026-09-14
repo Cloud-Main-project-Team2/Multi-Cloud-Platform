@@ -51,26 +51,42 @@ so skeleton commits don't clutter branch diffs.
 
 ## Current phase & progress tracker
 
-Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress.
+Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(2026-09-14): 인증·인벤토리·
+프로비저닝(3사 통합 + 서비스 확장) 백엔드/프론트 실 연동까지 `main`에 병합 완료.
 
 | WBS 항목 | 브랜치 | 담당 | 상태 |
 |---|---|---|---|
-| 페이지 UI 구현 — 확정 화면 12개 정적 UI | `solcho/fe-pages` | 조은솔 | in progress |
-| 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | not started |
+| 페이지 UI 구현 — 확정 화면 12개 정적 UI | `solcho/fe-pages` | 조은솔 | merged |
+| 개발 환경 구축 — DB 구축 | `kwonhyeong/be-env-setup` | 안권형/김종국/이승현 | done |
 | 프로비저닝 — Azure VM 생성 (`POST /provisioning/azure/vm`) | `seunghyunlee/azure` | 이승현 | merged → 통합됨(`solcho/be-provisioning-merge`) |
-| 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | in progress |
+| 목업 데이터 시딩 — 13테이블 최신 스키마 + 화면 예시 데이터 | `solcho/be-mock-data` | 조은솔 | merged |
 | 키 관리(마이페이지) API — cloud-accounts/credentials 10개 엔드포인트 + 최소 로그인(JWT)·회원가입 | `solcho/be-credentials-api` 외 | 조은솔 | merged |
 | 리소스 조회 API — INV-01 인벤토리 4개 엔드포인트(조회·요약·상세·시작/중지/삭제) | `solcho/be-resources-api` | 조은솔 | merged |
 | 리소스 동기화 API — 실제 CSP 리소스 탐색 + `/sync-jobs` 4개 엔드포인트 | `solcho/be-sync-api` | 조은솔 | merged |
-| 인벤토리(INV-01/INV-02) 실API 연동 — 조회·동기화·시작/중지/삭제 | `solcho/fe-inventory-integration` | 조은솔 | in progress |
+| 인벤토리(INV-01/INV-02) 실API 연동 — 조회·동기화·시작/중지/삭제 | `solcho/fe-inventory-integration` | 조은솔 | merged (#33) |
+| 인증 강화 — `/me`·refresh token·이메일 검증(OTP)·비밀번호 재설정 + 실메일 발송(MailHog/SMTP) | `solcho/be-auth-enhancements` | 조은솔 | merged (#48) |
 
 | AWS 프로비저닝 API — `/provisioning/{provider}/{service}` 등 4개 엔드포인트, AWS EC2만 Terraform으로 실제 생성 | `jongkuk/aws-provisioning` | 김종국 | merged → 통합됨(`solcho/be-provisioning-merge`) |
 | GCP 프로비저닝 API — `/provisioning/{provider}/{service}` 등 4개 엔드포인트, GCP Compute Engine만 Terraform으로 실제 생성 | `kwonhyeong/be-gcp-provisioning` | 안권형 | merged → 통합됨(`solcho/be-provisioning-merge`) |
-| 프로비저닝 3사 통합 — flat 아키텍처로 AWS/GCP/Azure 러너·terraform_runner·라우터 단일화 | `solcho/be-provisioning-merge` | 조은솔 | in progress |
+| 프로비저닝 3사 통합 — flat 아키텍처로 AWS/GCP/Azure 러너·terraform_runner·라우터 단일화 | `solcho/be-provisioning-merge` | 조은솔 | merged (#38/#41) |
+| 프로비저닝 서비스 확장 — AWS S3/CloudFront/RDS(#43), GCP Cloud SQL/Storage(#44), Azure 프로비저닝(#46)·Storage/DB(#49), GCP Cloud SQL 네트워크(#47) | — | 김종국/안권형/이승현/조은솔 | merged |
+| 프로비저닝 위저드·대시보드 실 API 연동 — 위저드 실 연동(#39/#40/#43/#49), 대시보드 실데이터(#45) | — | 조은솔/김종국/이승현 | merged |
 
 > Keep this table updated as branches open, progress, and merge.
 
 ## Key architectural decisions
+
+> 아래 결정 기록의 목차(탐색용 — 내용은 각 항목 참조). 시간순으로 추가되며, 최신 항목이 이전 결정을
+> 갱신할 수 있으니 같은 주제는 마지막 항목을 우선한다.
+>
+> **인증** — 최소 인증(JWT) 구현 · 회원가입 추가 · 인증 강화(`/me`·refresh·이메일검증·비번재설정 + 실메일)
+> **credentials/키 관리** — credential 검증 실패 시 저장 정책 · cloud account 삭제 API 보류 ·
+> permission_scope 프로빙 범위 축소 · GCP secret_payload 통째 저장 · 마이페이지 자격 증명 수정/삭제 UI
+> **리소스(인벤토리/동기화)** — resources/action 일괄 요청 원자성 · resources/action SDK 어댑터 범위 ·
+> 리소스 동기화 아키텍처
+> **프로비저닝** — API 형태 · Azure VM `admin_password` 정책 · Compute 공통 설정 필드 · AWS/GCP 프로비저닝
+> API 구현 범위 · 프로비저닝 3사 코드 통합
+> **데이터/기타** — 목업·데모 데이터
 
 - **API 형태(2026-09-10)**: 신규 통합 API 명세(`docs/01_API_명세서_v1.1.md`)가 아니라
   기존에 구현돼 있던 **provider별 개별 엔드포인트**(`/credentials/{provider}`,
@@ -111,17 +127,52 @@ Phase 0 (repo skeleton + collaboration rules) complete. Feature work in progress
   토큰이 아님). credentials API 전체가 소유권 검사(`current_user`)를 전제로 하므로, 이 세션에서
   범위를 넓혀 `POST /api/v1/auth/login` + `Authorization: Bearer <JWT>` 검증만 최소 구현했다
   (`app/security/jwt_tokens.py`, `app/deps.py`, `app/routers/auth.py`). 회원가입·비밀번호
-  재설정·`/me`·refresh token은 여전히 범위 밖 — 별도 인증 세션에서 이어서 구현한다. 목업
+  재설정·`/me`·refresh token은 여전히 범위 밖 — 별도 인증 세션에서 이어서 구현한다(→ 2026-09-14
+  `solcho/be-auth-enhancements`에서 모두 구현·실메일 발송 도입). 목업
   데모 계정(`demo@multicloud.example` / `demo-pass-1234`, `seed_mock_data.py`)으로 로그인 가능.
 - **회원가입(`POST /auth/sign-up`) 추가(2026-09-10, `solcho/be-credentials-api`)**: 로그인만
   있으면 목업 데모 계정 외에는 아무도 로그인할 수 없어(가입 경로 없음) 범위를 넓혀 회원가입만
   추가했다. 비밀번호 재설정·`/me`는 여전히 범위 밖(실제 메일 발송 없는 데모형 토큰 발급이
-  필요해 별도 세션으로 미룸). 이때 §19 미확정 항목 두 개를 확정:
+  필요해 별도 세션으로 미룸 → 2026-09-14 `solcho/be-auth-enhancements`에서 실메일 발송으로 구현).
+  이때 §19 미확정 항목 두 개를 확정:
   - **비밀번호 정책**: `frontend/assets/js/validate.js`의 `MCVAL.isStrongPassword`와 동일하게
     "8자 이상 + 영문/숫자/기호 중 2종 이상"으로 통일(`app/security/passwords.py`의
     `is_strong_password`). 프론트가 이미 이 규칙으로 UI를 만들어 둬서 그대로 재사용했다.
   - **`affiliation_type=company`일 때 단체명 필수 여부**: 필수로 확정. `affiliation_name`이
     비어 있으면 `422 VALIDATION_ERROR`.
+- **인증 강화 — `/me`·refresh token·이메일 검증·비밀번호 재설정 + 실제 메일 발송 도입(2026-09-14,
+  `solcho/be-auth-enhancements`)**: 그동안 "범위 밖"으로 미뤄 뒀던 §5 나머지를 구현하면서, 곳곳에
+  전제였던 **"실제 메일 발송 없음(데모형 토큰)"을 처음으로 깨고 실발송을 도입**했다.
+  - **메일 발송(`app/mailer.py`, stdlib `smtplib`)**: 로컬/데모는 `docker-compose.yml`에 추가한
+    **MailHog**(host `mailhog`, SMTP 1025 / 웹 UI :8025)가 나가는 메일을 가로챈다 — 외부 계정·실제
+    수신함 없이도 발송 경로가 실제로 동작한다. 운영은 `MAIL_*` env만 실제 SMTP로 교체(코드 불변).
+    MailHog는 인증·TLS가 없어 `MAIL_USERNAME`이 비면 로그인 단계를 건너뛴다.
+  - **`GET /auth/me`**: access token으로 현재 유저 반환(`_serialize_user` 재사용).
+  - **refresh token**: §19 "회전·폐기 정책 미확정"을 **회전 On**으로 확정. JWT가 아니라 DB에 해시로
+    저장하는 opaque 토큰(`refresh_tokens` 테이블, `app/security/tokens.py`). `POST /auth/login`이
+    access(1h)+refresh(14d)를 함께 발급하고, `POST /auth/refresh`는 기존 토큰을 폐기(`revoked_at`)
+    하며 새 쌍을 발급한다. `POST /auth/logout`은 refresh를 폐기(멱등). 비밀번호 재설정 시 해당
+    유저의 refresh를 전부 폐기한다. 프론트(`assets/js/api.js`)는 401이 나면 refresh로 자동 재발급 후
+    원 요청을 1회 재시도(동시 401은 하나의 refresh로 합침)한다.
+  - **이메일 검증(OTP)**: 회원가입 전 메일함 소유 확인. 링크가 아니라 **6자리 코드**(폼 이탈 없음).
+    계정 생성 전이라 email 기준(`email_verifications` 테이블, `normalized_email` unique). `POST
+    /auth/email-verifications`(코드 발송, 이미 가입된 메일이면 409로 중복확인 흡수, 재전송 60초
+    rate-limit) + `POST /auth/email-verifications/verify`(만료 10분·시도 5회 제한). **가입 게이트**:
+    `POST /auth/sign-up`은 최근 window(30분) 내 검증 완료 레코드가 없으면 `422 EMAIL_NOT_VERIFIED`,
+    성공 시 해당 레코드를 소비(삭제)한다. 프론트 `signup.html`의 "중복 확인" 버튼을 "인증하기"(코드
+    발송)+코드 입력·"확인"·재전송 UI로 교체.
+  - **비밀번호 재설정**: 기존 `password_reset_tokens` 테이블 재사용(신규 마이그레이션 없음). `POST
+    /auth/password-reset`은 **계정 존재 여부를 노출하지 않도록 항상 202**로 응답하고 가입된 계정에만
+    링크 메일 발송(`{FRONTEND_BASE_URL}/password-reset.html?token=...`). `POST
+    /auth/password-reset/confirm`은 토큰 검증·비밀번호 교체·`used_at` 기록. 프론트
+    `password-reset.html`의 STEP1/STEP2를 실 API로 연동(STEP2는 링크의 `?token=` 사용).
+  - **토큰/코드 해시**: opaque 토큰·OTP 모두 평문 대신 SHA-256 해시만 저장(`security/tokens.py`,
+    `password_reset_tokens.token_hash` 규약과 동일), 대조는 `hmac.compare_digest`.
+  - **마이그레이션**: `a1b2c3d4e5f6`(down_revision `0caab346f140`) — `email_verifications` +
+    `refresh_tokens` 2개 테이블 추가(테이블 13→15).
+  - **검증**: 전체 backend 테스트 337개 통과(auth 26개, 그중 신규 흐름 테스트 14개), 실 스택 재빌드 후 MailHog로
+    발송된 실제 코드·링크로 이메일검증→가입→로그인→`/me`→refresh 회전(옛 토큰 401)→비번재설정→
+    신규 비번 로그인까지 end-to-end 통과.
 - **credential 검증 실패 시 저장 정책(2026-09-10, `solcho/be-credentials-api`)**: §19에서
   미확정으로 남아 있던 두 옵션 중 **"검증 실패해도 암호화 저장하고 `verified=false`로 반환"**
   (§6.2 옵션 1)을 채택했다. 근거: 사용자가 실패 원인을 보고 재시도/수정할 수 있어야 하고,
@@ -480,8 +531,11 @@ API 연동 없이 JS만으로 완성 가능한 나머지 데모 기능들. 서�
 
 ## Pointer — where the planning docs live
 
-The functional spec (기능명세서), screen design (화면설계서), WBS, and the
-existing confirmed design documents (프로토타입 개발 프롬프트.md, Tier2 확장
-프롬프트 등) are **NOT in this repo** — they live only in the Claude project
-context. Don't look for them under `docs/` yet; the team adds copies there as
-needed. Flag this to new members during onboarding so they aren't confused.
+일부 확정 문서는 이제 `docs/`에 들어와 있다: **API 명세서**(`01_API_명세서_v1.1.md`),
+**DB ERD**(`DB_ERD_v1.1.md`), **기능 명세서**(`기능 명세서.html`), **화면설계서**
+(`화면설계서_멀티클라우드_V1.1.html`), **기술 스택**(`기술 스택.md`), **3사 기능 맵핑**
+(`멀티클라우드 3사 기능 맵핑 …`), 프로비저닝 결정사항 문서, 디자인 스크린샷(`design/`).
+
+아직 레포에 없는 것(**Claude 프로젝트 컨텍스트에만** 존재): WBS, 프로토타입 개발 프롬프트,
+Tier2 확장 프롬프트 등. 필요 시 팀이 `docs/`에 복사본을 추가한다. 새 멤버 온보딩 때 이 구분을
+알려줘 혼란이 없게 한다.

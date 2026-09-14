@@ -141,13 +141,14 @@ def test_create_job_returns_501_when_no_runner_registered(client, make_user, aut
     user = make_user()
     account = _make_account(db_session, user, "azure", "sub-1")
     credential = _make_credential(db_session, account)
-    # provisionable하지만 러너가 등록되지 않은 조합(azure/sql_database) — ec2/vm/compute_engine/
-    # aws의 s3/cloudfront/rds는 모두 러너가 있으므로 러너 없는 서비스로 검증한다.
-    _make_service(db_session, "azure", "sql_database", category="db_rdbms")
+    # provisionable하지만 러너가 등록되지 않은 조합(azure/cdn) — ec2/vm/storage_account/sql_database/
+    # compute_engine/cloud_sql/cloud_storage/aws의 s3/cloudfront/rds는 모두 러너가 있으므로 러너
+    # 없는 서비스로 검증한다(2026-09-14: azure/sql_database에 러너가 추가되면서 azure/cdn으로 교체).
+    _make_service(db_session, "azure", "cdn", category="cdn")
     db_session.commit()
 
     resp = client.post(
-        "/api/v1/provisioning/azure/sql_database",
+        "/api/v1/provisioning/azure/cdn",
         json={"credential_id": str(credential.id), "common_spec": {"name": "web-01"}, "provider_spec": {}},
         headers={**auth_header(user), **_HEADERS},
     )

@@ -189,6 +189,23 @@ def _resource_attrs(
         zone = outputs.get("zone")
         region = zone if zone else provider_spec.get("region")
         return instance_name, "Compute Engine Instance", region, instance_name
+    if provider == "azure" and service_code == "sql_database":
+        # 엔진마다 실제 Azure 서비스가 다르므로(MySQL/PostgreSQL Flexible Server, Azure SQL)
+        # original_resource_type도 사람이 읽을 수 있게 구분한다(RDS Instance/Cloud SQL Instance와
+        # 같은 관례 — 자세한 배경은 azure_database_provisioning.py 모듈 docstring 참고).
+        server_name = outputs.get("server_name")
+        engine_label = {
+            "MySQL": "Azure Database for MySQL",
+            "PostgreSQL": "Azure Database for PostgreSQL",
+            "SQL Server": "Azure SQL Database",
+        }.get(provider_spec.get("engine"), "Azure Database")
+        return server_name, engine_label, provider_spec.get("region"), server_name
+    if provider == "azure" and service_code == "storage_account":
+        # app/providers/azure.py에는 아직 Storage Account discover/action 어댑터가 없다(CLAUDE.md
+        # "resources/action SDK 어댑터 구현 범위" — 의도적으로 범위 밖). 계정 이름을 식별자로 쓴다
+        # (S3/GCS 버킷과 같은 관례 — region은 azure/vm과 달리 계정 자체엔 zone 개념이 없어 그대로 사용).
+        account_name = outputs.get("account_name")
+        return account_name, "Microsoft.Storage/storageAccounts", provider_spec.get("region"), account_name
     if provider == "azure":
         # resource_actions.py는 Azure external_resource_id를 ARM 리소스 ID 전체로 가정한다.
         return outputs.get("vm_id"), "Microsoft.Compute/virtualMachines", provider_spec.get("region"), common_spec.get("name")
@@ -214,6 +231,12 @@ def _initial_resource_status(provider: str, service_code: str) -> str:
     if provider == "gcp" and service_code == "cloud_cdn":
         # CloudFront와 동일 관례 — apply가 로드밸런서 스택 생성 완료까지 기다린 뒤 반환한다.
         return "DEPLOYED"
+    if provider == "azure" and service_code == "storage_account":
+        # S3 버킷과 같은 원칙 — 시작/중지 개념이 없는 리소스.
+        return "AVAILABLE"
+    if provider == "azure" and service_code == "sql_database":
+        # RDS/Cloud SQL과 동일 — apply가 서버 생성 완료까지 기다린 뒤 반환한다.
+        return "AVAILABLE"
     return "RUNNING"
 
 

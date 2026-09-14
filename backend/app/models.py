@@ -77,6 +77,39 @@ class PasswordResetToken(CreatedAtMixin, Base):
     used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class EmailVerification(CreatedAtMixin, Base):
+    """회원가입 전 이메일 검증(OTP). 계정이 아직 없으므로 user_id가 아니라 email 기준으로 키를 잡는다.
+    같은 이메일로 재전송하면 기존 미검증 행을 갱신(overwrite)한다."""
+
+    __tablename__ = "email_verifications"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    normalized_email: Mapped[str] = mapped_column(String(320), nullable=False, unique=True)
+    code_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=sa.text("0"), default=0)
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+
+class RefreshToken(CreatedAtMixin, Base):
+    """회전(rotation)하는 opaque refresh token. 발급 시 DB에 해시로 저장하고, /auth/refresh에서
+    기존 토큰을 폐기(revoked_at)하며 새 토큰을 발급한다. 로그아웃 시에도 폐기한다."""
+
+    __tablename__ = "refresh_tokens"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    token_hash: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+
 class CloudAccount(CreatedAtMixin, Base):
     __tablename__ = "cloud_accounts"
 
