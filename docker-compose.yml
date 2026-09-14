@@ -27,6 +27,14 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-jwt-secret-change-me}
       JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
       JWT_ACCESS_TOKEN_EXPIRES_SECONDS: ${JWT_ACCESS_TOKEN_EXPIRES_SECONDS:-3600}
+      REFRESH_TOKEN_EXPIRES_SECONDS: ${REFRESH_TOKEN_EXPIRES_SECONDS:-1209600}
+      MAIL_HOST: ${MAIL_HOST:-mailhog}
+      MAIL_PORT: ${MAIL_PORT:-1025}
+      MAIL_USERNAME: ${MAIL_USERNAME:-}
+      MAIL_PASSWORD: ${MAIL_PASSWORD:-}
+      MAIL_FROM: ${MAIL_FROM:-no-reply@multicloud.example}
+      MAIL_USE_TLS: ${MAIL_USE_TLS:-false}
+      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:8080}
       TERRAFORM_WORKSPACES_DIR: /app/terraform_workspaces
       TERRAFORM_PLUGIN_CACHE_DIR: /app/terraform_plugin_cache
     volumes:
@@ -37,6 +45,15 @@ services:
         condition: service_healthy
     ports:
       - "8000:8000"
+
+  # 로컬/데모 전용 가짜 SMTP — 나가는 메일을 가로채 웹 UI(:8025)에서 확인한다.
+  # 운영에서는 이 서비스를 빼고 api의 MAIL_* env를 실제 SMTP로 지정한다.
+  mailhog:
+    image: mailhog/mailhog:v1.0.1
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
 
   web:
     image: nginx:1.27-alpine

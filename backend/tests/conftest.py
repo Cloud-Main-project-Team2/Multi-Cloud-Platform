@@ -1,5 +1,6 @@
 import base64
 import os
+from datetime import datetime, timedelta, timezone
 
 import bcrypt
 import pytest
@@ -10,9 +11,10 @@ from sqlalchemy.orm import sessionmaker
 
 import app.main as main_module
 import app.models  # noqa: F401 — register models on Base.metadata
+import app.routers.auth as auth_module
 from app.config import get_settings
 from app.db import Base, get_db
-from app.models import User
+from app.models import EmailVerification, User
 from app.security.jwt_tokens import create_access_token
 
 DEFAULT_DATABASE_URL = "postgresql+psycopg2://mcp_user:change_me@db:5432/mcp_db"
@@ -121,3 +123,33 @@ def auth_header():
         return {"Authorization": f"Bearer {token}"}
 
     return _header
+
+
+@pytest.fixture()
+def verify_email(db_session):
+    """회원가입 게이트를 통과시키기 위해 이메일을 '검증 완료' 상태로 심어 둔다."""
+
+    def _verify(email: str) -> EmailVerification:
+        row = EmailVerification(
+            normalized_email=email.strip().casefold(),
+            code_hash="seeded",
+            expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
+            verified_at=datetime.now(timezone.utc),
+        )
+        db_session.add(row)
+        db_session.flush()
+        return row
+
+    return _verify
+
+
+@pytest.fixture()
+def sent_emails(monkeypatch):
+    """auth 라우터가 발송하는 메일을 가로채 (to, subject, body) 튜플 리스트로 모은다."""
+    outbox: list[tuple[str, str, str]] = []
+
+    def _capture(to: str, subject: str, body: str) -> None:
+        outbox.append((to, subject, body))
+
+    monkeypatch.setattr(auth_module, "send_email", _capture)
+    return outbox
