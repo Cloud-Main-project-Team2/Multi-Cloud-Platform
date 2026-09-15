@@ -45,6 +45,7 @@ from app.schemas.provisioning import (
     ProvisioningJobOut,
     ProvisioningJobResponse,
 )
+from app.providers.session import CredentialResolutionError, resolve_secret_payload
 from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json
 from app.serialization import iso_z, str_id
 
@@ -466,6 +467,20 @@ def _execute_job(
         job.status = "failed"
         job.error_code = "PROVIDER_API_ERROR"
         job.error_message = "자격 증명을 복호화하지 못했습니다."
+        _finalize_job(db, job, service)
+        return
+
+    # 위임(assume_role) credential이면 여기서 1시간짜리 임시 자격증명을 발급받는다. 레거시
+    # 장기 키는 그대로 통과한다. terraform apply 타임아웃(900초)이 세션 수명보다 훨씬 짧아
+    # 실행 도중 만료될 여지는 없다.
+    try:
+        secret_payload = resolve_secret_payload(
+            account.provider, secret_payload, credential_id=credential.id
+        )
+    except CredentialResolutionError as exc:
+        job.status = "failed"
+        job.error_code = exc.error_code
+        job.error_message = exc.message
         _finalize_job(db, job, service)
         return
 
