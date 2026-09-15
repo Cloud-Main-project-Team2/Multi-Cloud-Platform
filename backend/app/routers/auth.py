@@ -14,7 +14,6 @@
 
 from __future__ import annotations
 
-import logging
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -54,8 +53,6 @@ from app.security.jwt_tokens import create_access_token
 from app.security.passwords import hash_password, is_strong_password, verify_password
 from app.security.tokens import generate_numeric_code, generate_token, hash_token, verify_token
 from app.serialization import iso_z, str_id
-
-logger = logging.getLogger("app.auth")
 
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 

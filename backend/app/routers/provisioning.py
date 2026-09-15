@@ -32,6 +32,7 @@ from app.config import get_settings
 from app.db import SessionLocal, get_db
 from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError
+from app.logging_config import log_background_task
 from app.models import CloudAccount, Credential, Notification, ProvisioningJob, Resource, ServiceCatalog, User
 from app.pricing import estimate_monthly_cost_usd
 from app.provisioning import get_runner
@@ -532,15 +533,20 @@ def _execute_job(
 
 def _run_provisioning_job(job_id: int, common_spec: dict | None = None, provider_spec: dict | None = None) -> None:
     """백그라운드 진입점. `SessionLocal()`은 테스트 트랜잭션과 무관한 별도 커넥션이라 HTTP 계층
-    테스트에서는 이 함수 자체를 monkeypatch로 no-op화한다."""
-    db = SessionLocal()
-    try:
-        job = db.get(ProvisioningJob, job_id)
-        if job is None:
-            return
-        _execute_job(db, job, common_spec=common_spec, provider_spec=provider_spec)
-    finally:
-        db.close()
+    테스트에서는 이 함수 자체를 monkeypatch로 no-op화한다.
+
+    `log_background_task`로 감싸는 이유: 이 함수는 요청 사이클 밖에서 돌기 때문에 main.py의
+    전역 예외 핸들러가 잡지 못한다 — 감싸지 않으면 여기서 터진 예외가 어디에도 남지 않는다.
+    """
+    with log_background_task("provisioning.job", job_id=job_id):
+        db = SessionLocal()
+        try:
+            job = db.get(ProvisioningJob, job_id)
+            if job is None:
+                return
+            _execute_job(db, job, common_spec=common_spec, provider_spec=provider_spec)
+        finally:
+            db.close()
 
 
 # --- 엔드포인트 ----------------------------------------------------------------------------

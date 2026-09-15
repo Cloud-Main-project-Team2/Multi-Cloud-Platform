@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal, get_db
 from app.deps import get_current_user
 from app.errors import ApiError, validation_error
+from app.logging_config import log_background_task
 from app.models import CloudAccount, Credential, Resource, ResourceSyncJob, ResourceSyncJobItem, ServiceCatalog, User
 from app.resource_sync import DiscoveredResource, SyncError, discover_resources
 from app.schemas.sync_jobs import (
@@ -277,6 +278,13 @@ def _process_sync_item(db: Session, item: ResourceSyncJobItem, account: CloudAcc
 
 
 def _run_sync_job(job_id: int) -> None:
+    # 요청 사이클 밖(BackgroundTasks)이라 전역 예외 핸들러가 닿지 않는다 — 여기서 감싸지 않으면
+    # 동기화 도중 터진 예외가 로그에 한 줄도 남지 않는다.
+    with log_background_task("sync.job", job_id=job_id):
+        _run_sync_job_inner(job_id)
+
+
+def _run_sync_job_inner(job_id: int) -> None:
     db = SessionLocal()
     try:
         job = db.get(ResourceSyncJob, job_id)
