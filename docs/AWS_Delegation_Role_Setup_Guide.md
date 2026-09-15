@@ -174,6 +174,8 @@ ExternalId는 **그 페이지를 열었을 때 발급된 값**이고 서버에 �
 | 증상 | 원인 / 조치 |
 |---|---|
 | 정책 생성 화면에서 신뢰 정책 JSON이 거부됨 | 정상. §0 — 역할 생성의 "사용자 지정 신뢰 정책"에 넣어야 한다 |
+| 역할 만들기 3단계에서 이름을 넣었는데 "이름은 필수 항목"이라며 생성이 안 됨 | IAM 콘솔이 React라 **브라우저 자동완성/비밀번호 관리자가 채운 값은 입력 이벤트가 발생하지 않아** 폼 내부 상태가 빈 칸으로 남는다. 화면에는 글자가 보이는데 검증은 실패한다. 필드를 전부 지우고 **직접 타이핑**하면 해결된다(2026-09-15 실제로 겪음). 이름을 바꿔가며 시도해도 똑같이 실패하는 것이 이 증상의 단서다 — 이름이 원인이면 다른 이름으로는 됐어야 한다 |
+| 콘솔 폼에서 계속 막힘 | CloudShell에서 `aws iam create-role --role-name MultiCloudOpsAccess --assume-role-policy-document file://trust.json` → `attach-role-policy` → `put-role-policy`로 우회한다. 콘솔과 달리 거부 사유(`MalformedPolicyDocument`/`EntityAlreadyExists`/`AccessDenied`)를 그대로 알려줘 원인 파악이 빠르다 |
 | "역할을 빌릴 수 없습니다" (`CLOUD_PERMISSION_DENIED`) | STS는 원인을 구분해주지 않는다. ①역할 이름이 `MultiCloudOps`로 시작하는지 ②신뢰 정책의 계정 ID가 플랫폼 계정인지 ③ExternalId가 등록값과 같은지 — 셋을 순서대로 확인 |
 | "역할이 속한 AWS 계정이 다릅니다" (`CREDENTIAL_ACCOUNT_MISMATCH`) | Role ARN의 계정과 실제 빌린 역할의 계정이 다르다. ARN을 다시 확인 |
 | "서비스의 AWS 설정이 없습니다" (`PLATFORM_AWS_NOT_CONFIGURED`) | `.env`의 `PLATFORM_AWS_ACCOUNT_ID`가 비었거나 컨테이너에 전달되지 않았다. `docker compose exec api printenv \| grep PLATFORM`으로 확인 |
