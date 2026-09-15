@@ -9,6 +9,12 @@
 > - 이 문서: 09-15 제안 문서를 `main`(커밋 `b581f7a` 시점) 기준으로 재검증하고, `change_iam.md`가
 >   다루지 않은 **팀·예산 기능**까지 합쳐 실행 순서를 확정한 판본. 앞으로 이 문서를 기준으로 한다.
 
+> **범위 확정(2026-09-15)**: **AWS만 전환한다.** Azure·GCP는 코드를 건드리지 않는다.
+> 근거 — (a) 세 CSP의 위임 모델이 서로 다른 물건이라 "3사 동일 맵핑"은 올바른 목표가 아니고,
+> (b) 지금 `main`에 기능이 계속 들어오는 중이라 동작하는 경로를 건드리는 위험을 최소화해야 한다.
+> `auth_type` 병존(§2-2) 덕분에 이번 작업은 **교체가 아니라 추가**이며, Azure·GCP는 물론 기존
+> AWS 등록분도 코드 경로가 바뀌지 않는다. 발표용 설명은 `docs/AWS_AssumeRole_Delegation_Explainer.md`.
+
 ## 0. 요약
 
 1. **위임 전환은 제안 문서가 추정한 것보다 싸다.** 특히 AWS는 하류(소비처) 코드 수정이 사실상
@@ -123,12 +129,28 @@ AssumeRole 기본 세션은 3600초라 안전 마진이 4배다. 제안 문서�
 | ① 플랫폼(호출자) | IAM 사용자 `mcp-platform-caller` | 권한은 `sts:AssumeRole` 하나뿐, `Resource`를 `arn:aws:iam::*:role/MultiCloudOpsAccess`로 제한 → 키가 유출돼도 이 역할 외엔 아무것도 못 빌린다. 액세스 키는 `.env`로 |
 | ② 고객(피호출) | IAM 역할 `MultiCloudOpsAccess` | 신뢰 정책 Principal = ①의 user ARN, `Condition`에 `sts:ExternalId`. 권한은 데모 범위로 `AmazonEC2FullAccess`/`AmazonRDSFullAccess`/`AmazonS3FullAccess`/`CloudFrontFullAccess` + 인라인 `ce:GetCostAndUsage`·`iam:SimulatePrincipalPolicy`. 최대 세션 1시간(기본값) |
 
-역할 이름을 `MultiCloudOpsAccess`로 고정하는 것이 ①의 `Resource` 제한이 성립하는 전제다.
+**역할 이름은 고정이 아니라 접두사로 제한한다(2026-09-15 결정)**: ①의 `Resource`를
+`arn:aws:iam::*:role/MultiCloudOps*`로 둔다. 이름을 정확히 하나로 못 박으면 이미 같은 이름의
+역할이 있거나 사내 명명 규칙이 강제되는 계정은 **연결 자체가 불가능**해진다. 접두사 방식은
+보안 손실이 사실상 없다 — 이 제한은 **우리 키가 유출됐을 때의 blast radius 축소**가 목적이고,
+실제 관문은 고객 쪽 신뢰 정책이기 때문이다. 나중에 더 풀어야 할 경우를 대비해 패턴 자체를
+`.env`(`PLATFORM_AWS_ASSUMABLE_ROLE_PATTERN`)로 빼 코드 수정 없이 조정할 수 있게 한다.
+
+**신뢰 정책 Principal은 계정 root로 한다**: `arn:aws:iam::<플랫폼계정ID>:root`. IAM 사용자 ARN을
+직접 쓰면 AWS가 그 principal의 내부 고유 ID를 정책에 박아두기 때문에, 그 사용자를 지웠다가 **같은
+이름으로 다시 만들어도 신뢰가 깨져** 고객 전원이 역할을 다시 저장해야 한다. root principal은
+"이 계정을 신뢰한다"는 뜻이고, 우리 계정 안에서 누가 빌릴 수 있는지는 ①의 사용자 정책으로 통제된다.
+
+**AccessDenied는 원인 구분이 안 된다**: 이름·계정 ID·ExternalId 중 무엇이 틀려도 같은 에러가
+온다. 등록 실패 응답(`CREDENTIAL_VERIFICATION_FAILED`)과 `delegation-setup` 응답에 이름 규칙을
+명시해 사용자가 스스로 원인을 좁힐 수 있게 한다.
+
 권한을 최소권한으로 조이는 것은 후속 과제 — 지금 조이면 Terraform이 VPC/보안그룹 생성 단계에서
 막혀 디버깅에 시간을 쓰게 된다.
 
 `.env` 신규 키: `PLATFORM_AWS_ACCOUNT_ID` / `PLATFORM_AWS_ACCESS_KEY_ID` /
-`PLATFORM_AWS_SECRET_ACCESS_KEY`.
+`PLATFORM_AWS_SECRET_ACCESS_KEY` / `PLATFORM_AWS_ASSUMABLE_ROLE_PATTERN`(기본
+`arn:aws:iam::*:role/MultiCloudOps*`) / `PLATFORM_AWS_SESSION_DURATION_SECONDS`(기본 3600).
 
 **ExternalId 발급 순서**: 원래 흐름은 "서버 발급 → 사용자가 신뢰 정책에 붙여넣기"지만, 역할을
 먼저 만들어 두는 개발 초기를 위해 **등록 요청이 `external_id`를 받을 수 있게** 한다(없으면 서버가
@@ -278,8 +300,8 @@ Lighthouse로 가면 `secret_payload`에서 `client_secret`이 사라지고 `ARM
 | 2 | `teams` + `cloud_accounts.team_id` + 팀 CRUD/배정 API + 마이페이지 팀 UI | `*/be-teams` | 낮음 | 타 담당 |
 | 3 | 예산 (A): 정가 추정 기반 팀 집계·예산 카드·초과 차단 + 동기화 리소스에도 추정치 부여 | `*/be-team-budget` | 낮음~중간 | 타 담당 |
 | 4 | 예산 (B): AWS 실측 비용 수집(`cloud_account_costs`) | `*/be-cost-actual` | **중간** | 타 담당 |
-| 5 | GCP impersonation 대칭 전환 | `solcho/be-gcp-impersonation` | 1일 | **조은솔**(A 완료 후 판단) |
-| 6 | Azure Lighthouse — **설계 문서만**, 코드는 SP 유지 | — | — | **조은솔**(문서만) |
+| 5 | GCP impersonation 대칭 전환 | `solcho/be-gcp-impersonation` | 1일 | **보류**(2026-09-15 결정: 이번 범위 밖) |
+| 6 | Azure Lighthouse — **설계 문서만**, 코드는 SP 유지 | — | — | **보류**(문서만) |
 
 1·5·6이 이 문서 담당자의 작업이고, 2~4는 담당이 분리됐다(§3 머리말). 1을 먼저 두는 이유는
 **보안 이슈가 더 무겁고 구현이 더 싸기** 때문이다.
