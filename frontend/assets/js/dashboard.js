@@ -16,6 +16,8 @@
   var PLATFORMS = ["aws", "azure", "gcp"];
   var PLATFORM_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
   var PROVIDER_COLOR = { aws: "#FF9900", azure: "#0078D4", gcp: "#34A853" };
+  // inventory.js의 PROVIDER_ICON과 같은 에셋 — 클라우드별 카드 제목 앞에 로고를 붙인다.
+  var PROVIDER_ICON = { aws: "assets/imgs/aws.png", azure: "assets/imgs/azure.png", gcp: "assets/imgs/gcp.png" };
 
   // 리전 → 지도상의 "지점(site)". map.png(세계 지도, 대서양 중심)에 맞춰 좌표를 보정했다.
   // x/y는 이미지 대비 백분율. 프로젝트가 쓰는 리전 집합이 작고 고정이라 위경도 자동 변환 대신
@@ -121,7 +123,9 @@
         return (
           '<div class="rounded-2xl border border-border bg-surface p-5">' +
           '<div class="flex items-center justify-between">' +
-          '<p class="font-semibold">' + PLATFORM_LABEL[p] + "</p>" +
+          '<p class="flex items-center gap-2 font-semibold">' +
+          '<img src="' + PROVIDER_ICON[p] + '" alt="" class="h-5 w-auto align-middle" />' +
+          PLATFORM_LABEL[p] + "</p>" +
           '<span class="rounded border border-border px-1.5 text-[11px] text-muted-foreground">' + costText + "</span>" +
           "</div>" +
           '<p class="mt-2 text-2xl font-extrabold">' + count + "개 리소스</p>" +
@@ -378,7 +382,9 @@
         '<tr class="border-b border-border">' +
         '<td class="py-2.5 pr-4">' + formatDateTime(job.created_at) + "</td>" +
         '<td class="py-2.5 pr-4">CREATE</td>' +
-        '<td class="py-2.5 pr-4">' + PLATFORM_LABEL[entry.platform] + "</td>" +
+        '<td class="py-2.5 pr-4"><span class="inline-flex items-center gap-1.5">' +
+        '<img src="' + PROVIDER_ICON[entry.platform] + '" alt="" class="h-4 w-auto align-middle" />' +
+        PLATFORM_LABEL[entry.platform] + "</span></td>" +
         '<td class="py-2.5 pr-4">' + escHtml(name) + "</td>" +
         '<td class="py-2.5"><span class="' + badgeClass + '"' + badgeStyle + ">" + label + "</span></td>" +
         "</tr>"
