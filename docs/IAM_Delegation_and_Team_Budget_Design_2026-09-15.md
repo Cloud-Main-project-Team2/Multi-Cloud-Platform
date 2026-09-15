@@ -13,11 +13,11 @@
 
 1. **위임 전환은 제안 문서가 추정한 것보다 싸다.** 특히 AWS는 하류(소비처) 코드 수정이 사실상
    0이고 DB 마이그레이션도 필요 없다(§2-1, §2-2).
-2. **팀·예산은 제안 문서가 추정한 것보다 비싸다.** 제안 문서는 "대시보드가 이미 3사 비용을
+2. **팀·예산은 제안 문서가 추정한 것보다 비싸다**(단 §3은 **이번 범위 밖 — 타 담당**). 제안 문서는 "대시보드가 이미 3사 비용을
    actual/estimated로 계산해두고 있다"를 전제했으나, 실제로 있는 것은 **정가 기반 추정
    (`list_price_estimate`)뿐**이고 실측 비용 API 연동은 여전히 0줄이다(§3-1).
-3. 권장 순서: **AWS 위임 → 팀 모델 → 예산(정가 추정 기반 먼저, 실측은 AWS부터) → GCP 위임 →
-   (Azure는 설계만)**(§4).
+3. **이 문서 담당자의 실행 순서: AWS 위임(§2-3) → GCP impersonation(§2-4) → Azure는 설계만(§2-5).**
+   팀·예산(§3)은 담당이 분리돼 이 순서에 포함되지 않는다(§4).
 4. 3사 균형에 대한 입장: 편중이 아니라 **CSP별 표준 성숙도 차이**다. AWS/GCP는 대칭으로
    구현하고 Azure는 "왜 다른지"를 근거와 함께 남긴다(§2-5).
 
@@ -113,6 +113,27 @@ AWS에서 작업량을 0에 가깝게 만든다 — 코드가 이미 세션 토�
 AssumeRole 기본 세션은 3600초라 안전 마진이 4배다. 제안 문서가 우려한 "RDS apply가 1시간 안에
 끝나는가"는 **현재 설정에서는 문제되지 않는다**(타임아웃이 먼저 걸린다).
 
+**개발·데모용 AWS 준비물(2026-09-15 확정)** — 플랫폼 측과 고객 측을 **같은 계정 하나**로 쓴다.
+한 계정 안의 user → role AssumeRole은 정상 동작하며 코드 경로는 실제 타사 계정과 동일하다.
+단 **신뢰 정책(역할 쪽)과 `sts:AssumeRole` 권한(user 쪽)이 둘 다** 있어야 한다 — 하나만 있으면
+같은 계정이어도 `AccessDenied`다.
+
+| | 리소스 | 내용 |
+|---|---|---|
+| ① 플랫폼(호출자) | IAM 사용자 `mcp-platform-caller` | 권한은 `sts:AssumeRole` 하나뿐, `Resource`를 `arn:aws:iam::*:role/MultiCloudOpsAccess`로 제한 → 키가 유출돼도 이 역할 외엔 아무것도 못 빌린다. 액세스 키는 `.env`로 |
+| ② 고객(피호출) | IAM 역할 `MultiCloudOpsAccess` | 신뢰 정책 Principal = ①의 user ARN, `Condition`에 `sts:ExternalId`. 권한은 데모 범위로 `AmazonEC2FullAccess`/`AmazonRDSFullAccess`/`AmazonS3FullAccess`/`CloudFrontFullAccess` + 인라인 `ce:GetCostAndUsage`·`iam:SimulatePrincipalPolicy`. 최대 세션 1시간(기본값) |
+
+역할 이름을 `MultiCloudOpsAccess`로 고정하는 것이 ①의 `Resource` 제한이 성립하는 전제다.
+권한을 최소권한으로 조이는 것은 후속 과제 — 지금 조이면 Terraform이 VPC/보안그룹 생성 단계에서
+막혀 디버깅에 시간을 쓰게 된다.
+
+`.env` 신규 키: `PLATFORM_AWS_ACCOUNT_ID` / `PLATFORM_AWS_ACCESS_KEY_ID` /
+`PLATFORM_AWS_SECRET_ACCESS_KEY`.
+
+**ExternalId 발급 순서**: 원래 흐름은 "서버 발급 → 사용자가 신뢰 정책에 붙여넣기"지만, 역할을
+먼저 만들어 두는 개발 초기를 위해 **등록 요청이 `external_id`를 받을 수 있게** 한다(없으면 서버가
+발급). 이렇게 해야 나중에 CloudFormation 흐름을 그대로 얹을 수 있다.
+
 ### 2-4. GCP — Service Account Impersonation
 
 고객 온보딩 난이도는 AWS와 비슷하다(자기 SA에 우리 플랫폼 아이덴티티로
@@ -178,7 +199,12 @@ Lighthouse로 가면 `secret_payload`에서 `client_secret`이 사라지고 `ARM
 | Alembic | **마이그레이션 없음**(§2-2) |
 | 테스트 | `tests/test_credentials_api.py`, `tests/test_gcp_credential_payload.py`가 `REQUIRED_SECRET_FIELDS` 형태를 고정하고 있어 수정 필요 |
 
-## 3. 팀 단위 계정 관리 + 팀별 예산
+## 3. 팀 단위 계정 관리 + 팀별 예산 — **이번 범위 밖(타 담당)**
+
+> **담당 분리(2026-09-15)**: 조은솔의 이번 작업 범위는 **§2 인증 방식 전환뿐**이다.
+> 비용 수집·팀 예산 API는 다른 담당자의 업무이므로, 이 절은 **착수 전 조사 결과와
+> 설계 제안**으로만 남긴다. 담당자가 정해지면 §3-1의 현황 표부터 다시 확인할 것
+> (그 사이에 비용 관련 PR이 더 들어왔을 수 있다).
 
 > 제품 기능으로서의 정의(2026-09-15 확인): **우리 서비스 사용자가 자기 클라우드 계정들을 팀
 > 단위로 묶어 비용·리소스를 조회하고 팀별 예산 한도를 관리**하는 기능. 고객의 AWS
@@ -248,15 +274,15 @@ Lighthouse로 가면 `secret_payload`에서 `client_secret`이 사라지고 `ARM
 
 | 순서 | 작업 | 브랜치(안) | 공수 | 위험 |
 |---|---|---|---|---|
-| 1 | AWS AssumeRole 위임 + `session.py` choke point + 온보딩 UI | `solcho/be-assume-role` | **낮음** (하류 0, 스키마 0) | 낮음 |
-| 2 | `teams` + `cloud_accounts.team_id` + 팀 CRUD/배정 API + 마이페이지 팀 UI | `*/be-teams` | 낮음 | 낮음 |
-| 3 | 예산 (A): 정가 추정 기반 팀 집계·예산 카드·초과 차단 + 동기화 리소스에도 추정치 부여 | `*/be-team-budget` | 낮음~중간 | 낮음 |
-| 4 | 예산 (B): AWS 실측 비용 수집(`cloud_account_costs`) | `*/be-cost-actual` | **중간** | CE 권한·데이터 지연 |
-| 5 | GCP impersonation 대칭 전환 | `*/be-gcp-impersonation` | 중간 | `providers/gcp.py` 3곳 + 러너 4개 |
-| 6 | Azure Lighthouse — **설계 문서만**, 코드는 SP 유지 | — | — | 테넌트 2개 필요 |
+| 1 | AWS AssumeRole 위임 + `session.py` choke point + 온보딩 UI | `solcho/be-assume-role` | 1일 | **조은솔** |
+| 2 | `teams` + `cloud_accounts.team_id` + 팀 CRUD/배정 API + 마이페이지 팀 UI | `*/be-teams` | 낮음 | 타 담당 |
+| 3 | 예산 (A): 정가 추정 기반 팀 집계·예산 카드·초과 차단 + 동기화 리소스에도 추정치 부여 | `*/be-team-budget` | 낮음~중간 | 타 담당 |
+| 4 | 예산 (B): AWS 실측 비용 수집(`cloud_account_costs`) | `*/be-cost-actual` | **중간** | 타 담당 |
+| 5 | GCP impersonation 대칭 전환 | `solcho/be-gcp-impersonation` | 1일 | **조은솔**(A 완료 후 판단) |
+| 6 | Azure Lighthouse — **설계 문서만**, 코드는 SP 유지 | — | — | **조은솔**(문서만) |
 
-1과 2는 서로 독립이라 병렬 가능하다. 1을 먼저 두는 이유는 **보안 이슈가 더 무겁고 구현이 더
-싸기** 때문이다.
+1·5·6이 이 문서 담당자의 작업이고, 2~4는 담당이 분리됐다(§3 머리말). 1을 먼저 두는 이유는
+**보안 이슈가 더 무겁고 구현이 더 싸기** 때문이다.
 
 ## 5. 확인이 필요한 항목
 
