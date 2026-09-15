@@ -9,11 +9,33 @@
 # 리소스 구성은 GCP_VM_생성_가이드.md(2026-09-01)를 따른다: Debian, pd-balanced 10GB 부팅 디스크,
 # 기본(default) 네트워크의 ephemeral 외부 IP. 방화벽은 프로젝트의 default-allow-http/ssh 존재 여부에
 # 기대지 않고, 이 VM에만 적용되는 전용 규칙(google_compute_firewall)을 job마다 함께 만든다
-# (2026-09-11 결정, CLAUDE.md 참고) — 다른 VM에 영향 없이 22/80만 연다.
+# (2026-09-11 결정, CLAUDE.md 참고).
 #
 # 이미지는 debian-12를 쓴다(2026-09-11 실사용 테스트에서 발견·수정): 원래 debian-11이었는데
 # GCP가 해당 이미지 패밀리를 단종시켜 `debian-cloud` 프로젝트에서 내려갔다 — 실제 계정으로
 # 끝까지(apply) 테스트해본 게 이번이 처음이라 아무도 못 보고 지나갔던 문제다.
+#
+# ## SSH는 IAP + OS Login으로 접속한다(2026-09-16 결정) — 키 페어·전체 공개 22번 포트 제거
+#
+# 프론트 폼에 "SSH Public Key" 입력칸이 있었지만 실제로는 백엔드/Terraform 어디에도 전달되지
+# 않는 죽은 필드였다(실사용 테스트로 발견) — `google_compute_instance`에 `metadata.ssh-keys`가
+# 애초에 없어 그 키를 등록할 방법 자체가 없었다. 그런데도 방화벽은 22번 포트를 `0.0.0.0/0`
+# (전 세계)에 열어두고 있어서, "아무도 정상적으로는 못 들어가는데 공격 표면만 열려 있는" 상태였다.
+#
+# AWS가 같은 문제를 SSH 키 페어 대신 SSM Session Manager로 해결한 것(2026-09-15 결정,
+# `terraform/aws/ec2/main.tf` 참고)과 같은 원칙으로, GCP는 자체 기능인 **IAP(Identity-Aware
+# Proxy) TCP forwarding + OS Login**을 쓴다:
+# - `enable-oslogin=TRUE`로 SSH 키 대신 GCP IAM 계정 자체가 로그인 인증 수단이 된다(키 관리 불필요).
+# - 22번 포트는 전 세계가 아니라 **구글의 IAP 릴레이 대역(`35.235.240.0/20`)에서 오는 트래픽만**
+#   허용한다 — 이 대역 밖에서는 22번 포트에 직접 접근 자체가 안 된다.
+# - 80번 포트(실제 서비스 트래픽)는 그대로 `0.0.0.0/0`에 열어둔다 — 이건 관리용 접속이 아니라
+#   외부 사용자가 쓰는 통로라 안 건드린다.
+#
+# **IAM 권한 부여는 이 모듈이 하지 않는다**(의도적) — `roles/compute.osLogin` +
+# `roles/iap.tunnelResourceAccessor`를 누구에게 줄지는 이 GCP 프로젝트의 소유자가 콘솔에서 직접
+# 정한다. CDN의 "기존 버킷 IAM은 자동으로 안 바꾼다"(app/gcp_cdn_provisioning.py 참고)는 결정과
+# 같은 이유 — 우리 서비스 계정에 IAM 정책을 바꿀 권한까지 쥐어주지 않는 편이, 실수로 잘못된
+# 대상에게 권한을 주는 사고를 원천적으로 막는다.
 
 terraform {
   required_version = ">= 1.5.0"
@@ -37,8 +59,13 @@ resource "google_compute_instance" "vm" {
   project      = var.project_id
   zone         = var.zone
   machine_type = var.machine_type
-  tags         = ["http-server", "ssh"]
+  tags         = ["http-server", "iap-ssh"]
   labels       = var.labels
+
+  # SSH 키 대신 OS Login(IAM 계정 기반 인증)을 쓴다 — ssh-keys 메타데이터는 아예 안 둔다.
+  metadata = {
+    enable-oslogin = "TRUE"
+  }
 
   boot_disk {
     initialize_params {
@@ -54,16 +81,34 @@ resource "google_compute_instance" "vm" {
   }
 }
 
-resource "google_compute_firewall" "allow_web_ssh" {
-  name    = "${var.instance_name}-allow-web-ssh"
+# 실제 서비스 트래픽(80번)은 그대로 전 세계에 연다 — 관리용 접속이 아니라 외부 사용자가 쓰는 통로.
+resource "google_compute_firewall" "allow_http" {
+  name    = "${var.instance_name}-allow-http"
   project = var.project_id
   network = "default"
 
   allow {
     protocol = "tcp"
-    ports    = ["22", "80"]
+    ports    = ["80"]
   }
 
   source_ranges = ["0.0.0.0/0"]
-  target_tags   = ["http-server", "ssh"]
+  target_tags   = ["http-server"]
+}
+
+# 관리용 SSH(22번)는 구글 IAP 릴레이 대역에서 오는 트래픽만 허용한다 — 이 대역은 전 세계 어디서든
+# 직접 도달할 수 없고, `gcloud compute ssh --tunnel-through-iap`(또는 콘솔의 SSH 버튼)를 통해서만
+# 트래픽이 나온다. 이 범위는 구글이 문서로 고정해 공개한 값이라 IP 하드코딩이 아니다.
+resource "google_compute_firewall" "allow_iap_ssh" {
+  name    = "${var.instance_name}-allow-iap-ssh"
+  project = var.project_id
+  network = "default"
+
+  allow {
+    protocol = "tcp"
+    ports    = ["22"]
+  }
+
+  source_ranges = ["35.235.240.0/20"]
+  target_tags   = ["iap-ssh"]
 }
