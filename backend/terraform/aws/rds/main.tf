@@ -28,14 +28,32 @@ data "aws_subnets" "default" {
   }
 }
 
+# 서브넷이 2개 미만인 계정도 실제로 있었다(EC2 모듈에서 같은 문제를 먼저 발견 — 기본 VPC는
+# 있는데 서브넷이 전부/거의 삭제된 상태, 2026-09-15). RDS는 publicly_accessible=false라
+# 인터넷 게이트웨이/라우팅이 필요 없다 — 서브넷을 명시적 라우트 테이블 없이 두면 VPC의 기본
+# 메인 라우트 테이블(로컬 라우트만 있음)을 자동으로 쓰는데, VPC 내부 접근만 필요한 이 모듈엔
+# 그걸로 충분하다.
+data "aws_availability_zones" "available" {
+  state = "available"
+}
+
 locals {
+  needs_fallback_subnets = length(data.aws_subnets.default.ids) < 2
   # engine별 기본 포트 — provider_spec.engine 허용 목록(mysql/postgres)과 짝을 맞춘다.
   port = var.engine == "mysql" ? 3306 : 5432
 }
 
+resource "aws_subnet" "fallback" {
+  count             = local.needs_fallback_subnets ? 2 : 0
+  vpc_id            = data.aws_vpc.default.id
+  cidr_block        = cidrsubnet(data.aws_vpc.default.cidr_block, 8, count.index)
+  availability_zone = data.aws_availability_zones.available.names[count.index]
+  tags              = { Name = "mcp-fallback-subnet-${count.index}" }
+}
+
 resource "aws_db_subnet_group" "this" {
   name_prefix = "${var.instance_name}-"
-  subnet_ids  = data.aws_subnets.default.ids
+  subnet_ids  = local.needs_fallback_subnets ? aws_subnet.fallback[*].id : data.aws_subnets.default.ids
   tags        = var.tags
 }
 
