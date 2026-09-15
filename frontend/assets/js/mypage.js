@@ -260,19 +260,45 @@
           arnInput.placeholder = "arn:aws:iam::<내 계정 ID>:role/" + data.suggested_role_name;
         }
 
+        // 인라인 권한 정책은 서버가 준 action 목록으로 조립한다 — 목록이 바뀌면 안내도 같이 바뀐다.
+        var inlinePolicy = {
+          Version: "2012-10-17",
+          Statement: [{ Effect: "Allow", Action: data.inline_actions, Resource: "*" }],
+        };
+
+        // JSON 블록은 길어서 접어 둔다(<details>는 브라우저 기본 토글이라 JS가 필요 없다).
+        function jsonBlock(summary, note, value) {
+          return (
+            '<details class="mt-2 rounded-lg border border-border bg-background">' +
+              '<summary class="cursor-pointer select-none px-3 py-2 text-sm font-medium">' + escapeHtml(summary) + '</summary>' +
+              '<div class="border-t border-border px-3 py-2">' +
+                (note ? '<p class="mb-2 text-xs text-muted-foreground">' + note + '</p>' : '') +
+                '<textarea readonly rows="10" class="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-[11px]">' +
+                  escapeHtml(JSON.stringify(value, null, 2)) +
+                '</textarea>' +
+              '</div>' +
+            '</details>'
+          );
+        }
+
         guide.innerHTML =
           '<p class="font-medium">AWS 콘솔에서 역할을 먼저 만들어 주세요</p>' +
           '<ol class="mt-2 list-decimal space-y-1 pl-5 text-muted-foreground">' +
-            '<li>IAM → 역할 → <b>사용자 지정 신뢰 정책</b>을 선택하고 아래 JSON을 붙여넣습니다.</li>' +
-            '<li>권한: ' + data.managed_policy_arns.map(function (arn) {
+            '<li>IAM → <b>역할</b> → 역할 만들기 → <b>사용자 지정 신뢰 정책</b>을 선택하고 아래 ①을 붙여넣습니다. ' +
+              '<b>정책 메뉴가 아니라 역할 메뉴</b>입니다 — ①에는 <code>Principal</code>이 있어 "정책 만들기"로는 생성되지 않습니다.</li>' +
+            '<li>권한 추가에서 ' + data.managed_policy_arns.map(function (arn) {
               return escapeHtml(arn.split("/").pop());
-            }).join(", ") + ' + 인라인 <code>' + data.inline_actions.map(escapeHtml).join("</code>, <code>") + '</code></li>' +
+            }).join(", ") + '를 선택합니다.</li>' +
             '<li>역할 이름은 <b>' + escapeHtml(data.role_name_prefix) + '</b>로 시작해야 합니다(예: ' + escapeHtml(data.suggested_role_name) + ').</li>' +
+            '<li>역할을 만든 뒤 <b>권한 탭 → 인라인 정책 추가</b>로 아래 ②를 붙여넣습니다.</li>' +
             '<li>만들어진 <b>역할 ARN</b>을 아래에 붙여넣습니다.</li>' +
           '</ol>' +
-          '<textarea readonly rows="9" class="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-[11px]">' +
-            escapeHtml(JSON.stringify(data.trust_policy, null, 2)) +
-          '</textarea>' +
+          jsonBlock("① 신뢰 정책 (역할 만들기 중 붙여넣기)", "역할 생성 화면의 \"사용자 지정 신뢰 정책\"에만 들어갑니다.", data.trust_policy) +
+          jsonBlock(
+            "② 인라인 권한 정책 (역할 생성 후 추가)",
+            "관리형 정책에 없는 권한입니다. 비용 표시와 권한 자동 판별에 쓰이며, 없어도 연결은 됩니다.",
+            inlinePolicy
+          ) +
           '<p class="mt-2"><a href="' + escapeHtml(data.iam_console_url) + '" target="_blank" rel="noopener" class="text-primary underline">IAM 콘솔에서 역할 만들기 ↗</a></p>' +
           '<p class="mt-2 text-xs text-muted-foreground">이 방식에서는 Access Key를 저장하지 않습니다. 저장되는 값은 역할 ARN과 External ID뿐이며, 둘 다 그 자체로는 권한이 없습니다.</p>';
       })
