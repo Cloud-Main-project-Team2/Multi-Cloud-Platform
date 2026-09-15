@@ -588,9 +588,13 @@ API 연동 없이 JS만으로 완성 가능한 나머지 데모 기능들. 서�
 ## Pointer — where the planning docs live
 
 일부 확정 문서는 이제 `docs/`에 들어와 있다: **API 명세서**(`01_API_Specification_v1.1.md`),
-**DB ERD**(`DB_ERD_v1.1.md`), **기능 명세서**(`기능 명세서.html`), **화면설계서**
-(`화면설계서_멀티클라우드_V1.1.html`), **기술 스택**(`기술 스택.md`), **3사 기능 맵핑**
-(`멀티클라우드 3사 기능 맵핑 …`), 프로비저닝 결정사항 문서, 디자인 스크린샷(`design/`).
+**DB ERD**(`DB_ERD_v1.1.md`), **기능 명세서**(`Functional_Specification.html`), **화면설계서**
+(`Screen_Design_v1.1.html`), **기술 스택**(`Tech_Stack.md`), **3사 기능 맵핑**
+(`Multicloud_Provider_Feature_Mapping_2026-09-10.md`), 프로비저닝 결정사항 문서
+(`Azure_Storage_Database_Provisioning_Decisions_2026-09-14.md`), IAM 위임 문서 3종
+(`AWS_AssumeRole_Delegation_Explainer.md` / `AWS_Delegation_Role_Setup_Guide.md` /
+`IAM_Delegation_and_Team_Budget_Design_2026-09-15.md`), 디자인 스크린샷(`design/`).
+**문서 파일명은 영어(ASCII)로 쓴다** — 내용은 한국어 그대로(`docs/README.md` 참고).
 
 아직 레포에 없는 것(**Claude 프로젝트 컨텍스트에만** 존재): WBS, 프로토타입 개발 프롬프트,
 Tier2 확장 프롬프트 등. 필요 시 팀이 `docs/`에 복사본을 추가한다. 새 멤버 온보딩 때 이 구분을

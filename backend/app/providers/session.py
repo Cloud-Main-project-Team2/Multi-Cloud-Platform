@@ -69,12 +69,22 @@ def _platform_sts_client():
     return boto3.client("sts", region_name="us-east-1", config=_TIMEOUT_CONFIG)
 
 
-def assume_role(role_arn: str, external_id: str, *, credential_id: int | None = None) -> dict:
+def assume_role(
+    role_arn: str,
+    external_id: str,
+    *,
+    credential_id: int | None = None,
+    duration_seconds: int | None = None,
+) -> dict:
     """역할을 빌려 임시 자격증명 3종을 받는다.
 
     반환 dict의 키 이름은 레거시 payload와 같다(`access_key_id`/`secret_access_key`) — 하류가
     두 방식을 구분할 필요가 없게 하기 위한 의도적 선택이며, 여기에 `session_token`과
     `expiration`이 추가된다.
+
+    `duration_seconds`를 주면 기본 세션 수명 대신 그 값을 쓴다 — 사용자에게 직접 건네는
+    자격증명(CLI 접속 등)은 더 짧게 끊기 위한 것이다. 역할의 MaxSessionDuration을 넘으면
+    STS가 거부한다.
     """
     settings = get_settings()
     try:
@@ -82,7 +92,7 @@ def assume_role(role_arn: str, external_id: str, *, credential_id: int | None = 
             RoleArn=role_arn,
             RoleSessionName=_session_name(credential_id),
             ExternalId=external_id,
-            DurationSeconds=settings.platform_aws_session_duration_seconds,
+            DurationSeconds=duration_seconds or settings.platform_aws_session_duration_seconds,
         )
     except ClientError as exc:
         code = exc.response.get("Error", {}).get("Code", "")
