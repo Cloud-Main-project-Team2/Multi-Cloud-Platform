@@ -74,6 +74,8 @@ services:
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # 엣지 로그도 같은 자리에 모은다 — logs/nginx/access.log (JSON Lines, api와 동일 포맷)
+      - ./logs/nginx:/var/log/nginx
     ports:
       - "8080:80"
     depends_on:
