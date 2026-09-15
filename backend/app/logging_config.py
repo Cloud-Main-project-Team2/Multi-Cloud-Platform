@@ -30,6 +30,9 @@ from logging.handlers import RotatingFileHandler
 from typing import Any
 
 LOG_DIR = os.environ.get("LOG_DIR", "logs")
+# 10MB × 5 = 파일당 최대 약 50MB, 두 로거 합쳐 100MB 정도를 디스크 상한으로 본다.
+MAX_BYTES = 10 * 1024 * 1024
+BACKUP_COUNT = 5
 
 
 def _log_timezone() -> dt.timezone:
