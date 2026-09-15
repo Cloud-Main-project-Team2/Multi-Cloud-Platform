@@ -5,8 +5,10 @@
  * Azure/GCP 리소스가 나중에 실제로 쌓이기 시작해도 이 파일을 고칠 필요가 없다(PLATFORMS 배열에
  * 이미 셋 다 들어있고, 데이터가 없는 provider는 0으로 표시될 뿐이다).
  *
- * 비용(Cost Explorer/Cost Management 등) 수집은 이번 작업 범위 밖이다 — 관련 카드는
- * dashboard.html에 정직한 "준비 중" placeholder로 남겨뒀고 이 파일은 건드리지 않는다.
+ * 비용은 `app/pricing.py`의 정가(list price) 기반 추정치(`resources.estimated_monthly_cost`,
+ * `/resources` 응답의 `cost_summary`)를 쓴다 — 실제 CSP 비용 API(Cost Explorer 등) 연동은 아직
+ * 없다. 그래서 "예상 총 비용"/"클라우드별"/"서비스별 비중"은 실제 값이지만 전부 "추정치" 배지를
+ * 붙인다. 월별 추이·예산 임계값은 시계열 스냅샷/예산 설정 자체가 DB에 없어 여전히 "준비 중"이다.
  */
 (function () {
   "use strict";
@@ -40,6 +42,8 @@
 
   // service_catalog.category -> dashboard.html의 카드 id 접미사.
   var CATEGORY_ID = { compute: "compute", db_rdbms: "db", storage_object: "storage_object", cdn: "cdn" };
+  // service_catalog.category -> "서비스별 비용 비중"에 쓰는 표시 라벨.
+  var CATEGORY_LABEL = { compute: "Compute", db_rdbms: "Database", storage_object: "Object Storage", cdn: "CDN" };
   // 이 상태값들은 "실행 중"으로 간주한다(EC2 running, RDS/S3 available, CloudFront deployed 등).
   var RUNNING_LIKE = { RUNNING: true, AVAILABLE: true, DEPLOYED: true };
 
@@ -57,9 +61,30 @@
     return pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
   }
 
-  // ── 전체 리소스 수 + 클라우드별 카드(/resources/summary) ────────────────────
-  function renderResourceSummary(summary) {
+  // ── 비용 집계(/resources 각 항목의 cost_summary.estimated_monthly_cost) ────
+  // app/pricing.py가 정가 기준으로 채워준 값을 그대로 합산한다 — 사용량 기반 서비스(S3/CDN 등)나
+  // 허용 목록 밖 스펙은 cost_summary 자체가 없어 자동으로 missing 카운트에 들어간다.
+  function computeCostAggregates(items) {
+    var totalCost = 0, hasAny = false, missing = 0;
+    var byProvider = {}, byCategory = {};
+    items.forEach(function (r) {
+      var raw = r.cost_summary && r.cost_summary.estimated_monthly_cost;
+      var amount = raw != null ? parseFloat(raw) : NaN;
+      if (isNaN(amount)) { missing++; return; }
+      hasAny = true;
+      totalCost += amount;
+      var prov = r.cloud_account && r.cloud_account.provider;
+      if (prov) byProvider[prov] = (byProvider[prov] || 0) + amount;
+      var cat = r.service && r.service.category;
+      if (cat) byCategory[cat] = (byCategory[cat] || 0) + amount;
+    });
+    return { totalCost: totalCost, hasAny: hasAny, missing: missing, byProvider: byProvider, byCategory: byCategory };
+  }
+
+  // ── 전체 리소스 수 + 예상 총 비용 + 클라우드별 카드(/resources/summary + costInfo) ─
+  function renderResourceSummary(summary, costInfo) {
     var byProvider = (summary && summary.by_provider) || [];
+    costInfo = costInfo || { totalCost: 0, hasAny: false, missing: 0, byProvider: {}, byCategory: {} };
 
     var totalEl = document.getElementById("dash-total-resources");
     if (totalEl) totalEl.textContent = (summary && summary.total_resources) || 0;
@@ -74,22 +99,63 @@
     var countByProvider = {};
     byProvider.forEach(function (p) { countByProvider[p.provider] = p.count; });
 
+    var costEl = document.getElementById("dash-total-cost");
+    var costNoteEl = document.getElementById("dash-total-cost-note");
+    if (costEl) costEl.textContent = costInfo.hasAny ? "$" + costInfo.totalCost.toFixed(2) + "/mo" : "—";
+    if (costNoteEl) {
+      if (!costInfo.hasAny) {
+        costNoteEl.textContent = "정가 기준으로 추정 가능한 리소스가 없습니다(사용량 기반 서비스만 있거나 리소스 없음).";
+      } else if (costInfo.missing > 0) {
+        costNoteEl.textContent = "정가(list price) 기준 추정 · 사용량 기반 리소스 " + costInfo.missing + "개는 제외됨.";
+      } else {
+        costNoteEl.textContent = "정가(list price) 기준 추정 — 실제 청구액과 다를 수 있습니다.";
+      }
+    }
+
     var container = document.getElementById("dash-cloud-cards");
     if (container) {
       container.innerHTML = PLATFORMS.map(function (p) {
         var count = countByProvider[p] || 0;
+        var cost = costInfo.byProvider[p];
+        var costText = cost != null ? "$" + cost.toFixed(2) + "/mo · 추정치" : "추정 불가";
         return (
           '<div class="rounded-2xl border border-border bg-surface p-5">' +
           '<div class="flex items-center justify-between">' +
           '<p class="font-semibold">' + PLATFORM_LABEL[p] + "</p>" +
-          '<span class="rounded border border-border px-1.5 text-[11px] text-muted-foreground">비용 미구현</span>' +
+          '<span class="rounded border border-border px-1.5 text-[11px] text-muted-foreground">' + costText + "</span>" +
           "</div>" +
           '<p class="mt-2 text-2xl font-extrabold">' + count + "개 리소스</p>" +
-          '<p class="mt-1 text-xs text-muted-foreground">리소스 수는 실시간 · 비용은 수집 기능 구현 후 표시됩니다.</p>' +
+          '<p class="mt-1 text-xs text-muted-foreground">리소스 수·비용 모두 실시간 조회(비용은 정가 기준 추정치)</p>' +
           "</div>"
         );
       }).join("");
     }
+  }
+
+  // ── 서비스별 비용 비중(카테고리별 합산 막대) ────────────────────────────────
+  function renderCostBreakdown(costInfo) {
+    var el = document.getElementById("dash-cost-by-category");
+    if (!el) return;
+    if (!costInfo.hasAny) {
+      el.innerHTML = '<p class="text-sm text-muted-foreground">추정 가능한 리소스가 없습니다.</p>';
+      return;
+    }
+    var entries = Object.keys(costInfo.byCategory)
+      .map(function (cat) { return { cat: cat, amount: costInfo.byCategory[cat] }; })
+      .sort(function (a, b) { return b.amount - a.amount; });
+
+    el.innerHTML = entries.map(function (e) {
+      var pct = costInfo.totalCost > 0 ? (e.amount / costInfo.totalCost) * 100 : 0;
+      return (
+        "<div>" +
+        '<div class="flex items-center justify-between text-sm"><span>' + (CATEGORY_LABEL[e.cat] || escHtml(e.cat)) +
+        '</span><span class="font-medium">$' + e.amount.toFixed(2) + "</span></div>" +
+        '<div class="mt-1 h-1.5 rounded-full bg-muted"><div class="h-1.5 rounded-full bg-primary" style="width:' +
+        pct.toFixed(1) + '%"></div></div>' +
+        '<p class="mt-0.5 text-right text-xs text-muted-foreground">' + pct.toFixed(1) + "%</p>" +
+        "</div>"
+      );
+    }).join("");
   }
 
   // ── 주요 리소스 요약 + 리전 분포(/resources 목록, 기본 필터=활성 리소스만) ───
@@ -107,7 +173,9 @@
         else if (r.status) categoryCounts[cat].other++;
       }
       if (r.region) {
-        var prov = r.provider || "unknown";
+        // r.provider가 아니라 r.cloud_account.provider — ResourceOut엔 최상위 provider 필드가
+        // 없다(2026-09-14 발견한 버그, PR #52). 이걸 안 고치면 마커/표가 전부 "unknown"으로 나온다.
+        var prov = (r.cloud_account && r.cloud_account.provider) || "unknown";
         if (!regionProvider[r.region]) regionProvider[r.region] = {};
         regionProvider[r.region][prov] = (regionProvider[r.region][prov] || 0) + 1;
       }
@@ -338,13 +406,21 @@
   function init() {
     if (!window.MCPApi) return;
 
-    MCPApi.request("/resources/summary")
-      .then(renderResourceSummary)
-      .catch(function () { renderResourceSummary(null); });
-
-    MCPApi.request("/resources")
-      .then(function (data) { renderCategoriesAndRegions((data && data.items) || []); })
-      .catch(function () { renderCategoriesAndRegions([]); });
+    // /resources/summary(전체 개수·provider별 개수)와 /resources(항목별 cost_summary 포함)를
+    // 같이 기다린다 — 비용 집계는 /resources 쪽 데이터로 하고, 그 결과를 요약 카드/클라우드별
+    // 카드에도 같이 써야 해서 두 응답이 다 와야 렌더링이 정확하다(따로 부르면 순서에 따라
+    // 클라우드별 카드가 비용 없이 먼저 그려질 수 있음).
+    Promise.all([
+      MCPApi.request("/resources/summary").catch(function () { return null; }),
+      MCPApi.request("/resources").catch(function () { return null; }),
+    ]).then(function (results) {
+      var summary = results[0];
+      var items = (results[1] && results[1].items) || [];
+      var costInfo = computeCostAggregates(items);
+      renderResourceSummary(summary, costInfo);
+      renderCategoriesAndRegions(items);
+      renderCostBreakdown(costInfo);
+    });
 
     loadRecentActivity();
   }
