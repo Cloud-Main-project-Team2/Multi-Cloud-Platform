@@ -28,11 +28,32 @@ def _client(secret_payload: dict, service: str, region: str):
 
 
 def verify(external_account_id: str, secret_payload: dict) -> VerificationResult:
+    """credential이 실제로 쓸 수 있는지 확인하고 permission_scope를 프로빙한다.
+
+    위임(assume_role) 방식에서는 **AssumeRole이 성공하는 것 자체가 1차 검증**이고, 그 위에
+    "빌린 역할이 정말 사용자가 등록한 그 계정의 것인지"까지 확인한다(confused deputy 방지 —
+    공격자가 남의 Role ARN을 자기 계정인 척 등록하는 것을 막는다).
+
+    이 계정 일치 검사는 **위임 방식에만** 적용한다. 레거시 access key 경로에 새 실패 사유를
+    추가하면 이미 등록돼 동작 중인 credential이 재검증에서 갑자기 실패할 수 있기 때문이다.
+    """
+    from app.providers import AUTH_TYPE_ASSUME_ROLE, auth_type_of
+    from app.providers.session import CredentialResolutionError, resolve_secret_payload
+
+    is_delegated = auth_type_of(secret_payload) == AUTH_TYPE_ASSUME_ROLE
+    try:
+        secret_payload = resolve_secret_payload("aws", secret_payload)
+    except CredentialResolutionError as exc:
+        return VerificationResult(verified=False, error_code=exc.error_code)
+
     try:
         sts = _client(secret_payload, "sts", "us-east-1")
         identity = sts.get_caller_identity()
     except (BotoCoreError, ClientError, KeyError):
         return VerificationResult(verified=False, error_code="PROVIDER_AUTHENTICATION_FAILED")
+
+    if is_delegated and identity.get("Account") != external_account_id:
+        return VerificationResult(verified=False, error_code="CREDENTIAL_ACCOUNT_MISMATCH")
 
     scope = {"inventory_read": False, "resource_control": False, "provision": False, "cost_read": False}
 

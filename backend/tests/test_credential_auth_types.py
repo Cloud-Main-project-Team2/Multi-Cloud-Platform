@@ -183,3 +183,74 @@ def test_delegated_payload_missing_fields_raises_resolution_error(fake_sts):
 
     assert exc.value.error_code == "CREDENTIAL_VERIFICATION_FAILED"
     assert fake_sts.calls == []
+
+
+# --- verify(): 위임 방식에서만 계정 일치를 확인한다 -------------------------------------
+
+
+class _FakeAwsClient:
+    """verify()가 쓰는 SDK 호출만 흉내 낸다. 프로빙 호출은 실패해도 검증 결과에 영향이 없다."""
+
+    def __init__(self, account_id: str):
+        self.account_id = account_id
+
+    def get_caller_identity(self):
+        return {"Account": self.account_id, "Arn": f"arn:aws:sts::{self.account_id}:assumed-role/X/Y"}
+
+    def __getattr__(self, _name):  # describe_instances 등 프로빙 호출
+        def _raise(*args, **kwargs):
+            raise ClientError({"Error": {"Code": "AccessDenied"}}, "Probe")
+
+        return _raise
+
+
+@pytest.fixture
+def fake_aws(monkeypatch):
+    from app.providers import aws as aws_provider
+
+    def _install(account_id: str):
+        monkeypatch.setattr(
+            aws_provider, "_client", lambda payload, service, region: _FakeAwsClient(account_id)
+        )
+        return aws_provider
+
+    return _install
+
+
+def test_verify_delegated_rejects_account_mismatch(fake_aws, fake_sts):
+    """공격자가 남의 Role ARN을 자기 계정인 척 등록하는 것을 막는다."""
+    aws_provider = fake_aws("999999999999")
+
+    result = aws_provider.verify("123456789012", DELEGATED_AWS)
+
+    assert result.verified is False
+    assert result.error_code == "CREDENTIAL_ACCOUNT_MISMATCH"
+
+
+def test_verify_delegated_accepts_matching_account(fake_aws, fake_sts):
+    aws_provider = fake_aws("123456789012")
+
+    result = aws_provider.verify("123456789012", DELEGATED_AWS)
+
+    assert result.verified is True
+
+
+def test_verify_legacy_does_not_check_account(fake_aws):
+    """레거시 경로에는 새 실패 사유를 추가하지 않는다 — 이미 등록돼 동작 중인
+    credential이 재검증에서 갑자기 실패하면 안 된다."""
+    aws_provider = fake_aws("999999999999")
+
+    result = aws_provider.verify("123456789012", LEGACY_AWS)
+
+    assert result.verified is True
+
+
+def test_verify_surfaces_assume_role_failure(fake_aws, monkeypatch):
+    sts = _FakeSTS(error=_client_error("AccessDenied"))
+    monkeypatch.setattr(provider_session, "_platform_sts_client", lambda: sts)
+    aws_provider = fake_aws("123456789012")
+
+    result = aws_provider.verify("123456789012", DELEGATED_AWS)
+
+    assert result.verified is False
+    assert result.error_code == "CLOUD_PERMISSION_DENIED"
