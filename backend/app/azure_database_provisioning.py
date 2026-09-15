@@ -187,9 +187,11 @@ def build_tfvars(
     return tfvars, module_dir
 
 
-def _credential_env(secret_payload: dict) -> dict[str, str]:
-    required = ("tenant_id", "client_id", "client_secret", "subscription_id")
+def _credential_env(secret_payload: dict, project_id: str | None) -> dict[str, str]:
+    required = ("tenant_id", "client_id", "client_secret")
     missing = [f for f in required if not secret_payload.get(f)]
+    if not project_id:
+        missing.append("subscription_id(cloud_account.external_account_id)")
     if missing:
         raise ApiError(
             422, "CREDENTIAL_VERIFICATION_FAILED", f"credential에 Azure 인증에 필요한 필드가 없습니다: {', '.join(missing)}"
@@ -198,7 +200,9 @@ def _credential_env(secret_payload: dict) -> dict[str, str]:
         "ARM_TENANT_ID": secret_payload["tenant_id"],
         "ARM_CLIENT_ID": secret_payload["client_id"],
         "ARM_CLIENT_SECRET": secret_payload["client_secret"],
-        "ARM_SUBSCRIPTION_ID": secret_payload["subscription_id"],
+        # 구독 ID는 secret_payload에 없다 — cloud_accounts.external_account_id로 저장되고
+        # 라우터가 project_id로 넘긴다(2026-09-15 발견·수정, azure_storage_provisioning.py와 동일).
+        "ARM_SUBSCRIPTION_ID": project_id,
     }
 
 
@@ -210,7 +214,8 @@ def run(
     provider_spec: dict,
     secret_payload: dict,
     workspace_name: str | None = None,
-    project_id: str | None = None,  # 라우터가 모든 러너에 동일 시그니처로 넘긴다 — Azure Database는 안 씀
+    project_id: str | None = None,  # 라우터가 account.external_account_id를 넘긴다 — Azure 구독
+    # ID로 쓴다(_credential_env() 참고).
     cancel_check: Callable[[], bool] = lambda: False,
 ) -> TerraformResult:
     """백그라운드 job에서 호출된다 — raise 대신 `TerraformResult`로 실패를 표현한다.
@@ -220,7 +225,7 @@ def run(
     """
     try:
         common, provider = _derive(common_spec, provider_spec)
-        credential_env = _credential_env(secret_payload)
+        credential_env = _credential_env(secret_payload, project_id)
     except ApiError as exc:
         return TerraformResult(success=False, error_code=exc.code, error_message=exc.message)
 
