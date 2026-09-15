@@ -157,14 +157,25 @@
           <span class="text-yellow">🛡️</span>
           <span>보안 점검 1건 — 0.0.0.0/0 → SSH(22) 허용</span>
         </div>
+
+        <!-- AWS CLI(SSM Session Manager) 접속 — 키 페어 대신 단기 자격증명 발급(2026-09-15) -->
+        <div id="inv-modal-cli-result" class="mt-4 hidden rounded-xl border border-dashed border-border bg-muted p-3 text-xs">
+          <div class="flex items-center justify-between">
+            <span class="font-medium">AWS CLI 접속 명령 (<span id="inv-modal-cli-expiry">-</span>까지 유효)</span>
+            <button type="button" id="inv-modal-cli-copy" class="rounded border border-border px-2 py-1 hover:bg-background">복사</button>
+          </div>
+          <pre id="inv-modal-cli-command" class="mt-2 overflow-x-auto whitespace-pre-wrap break-all"></pre>
+          <p class="mt-1 text-muted-foreground">터미널에 붙여넣으면 로컬 AWS CLI로 SSM Session Manager 세션이 열립니다. 이 자격증명은 짧게 만료되며 저장되지 않습니다.</p>
+        </div>
       </div>
 
       <!-- 하단 액션 -->
       <div class="flex flex-wrap items-center justify-between gap-3 border-t border-border p-5">
-        <div class="flex gap-2">
+        <div class="flex flex-wrap gap-2">
           <button type="button" data-modal-action="start" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-muted">start</button>
           <button type="button" data-modal-action="stop" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-muted">stop</button>
           <button type="button" data-modal-action="delete" class="rounded-lg px-3 py-2 text-sm font-medium text-white" style="background:#c0392b">delete</button>
+          <button type="button" id="inv-modal-cli-access" hidden class="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-muted">AWS CLI로 접속</button>
         </div>
         <a id="inv-modal-console" href="#" target="_blank" rel="noopener" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">콘솔에서 열기 ↗</a>
       </div>

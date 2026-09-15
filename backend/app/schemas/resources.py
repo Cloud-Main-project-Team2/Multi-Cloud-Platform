@@ -103,3 +103,19 @@ class ResourceActionData(BaseModel):
 
 class ResourceActionResponse(BaseModel):
     data: ResourceActionData
+
+
+class CliAccessData(BaseModel):
+    """AWS CLI(SSM Session Manager) 접속용 단기 자격증명 — DB에 저장하지 않고 응답 1회만 내려준다."""
+
+    access_key_id: str
+    secret_access_key: str
+    session_token: str
+    expires_at: str
+    region: str
+    instance_id: str
+    command: str
+
+
+class CliAccessResponse(BaseModel):
+    data: CliAccessData

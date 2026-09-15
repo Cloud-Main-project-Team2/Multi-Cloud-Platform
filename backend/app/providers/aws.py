@@ -168,6 +168,31 @@ def perform_resource_action(
         raise ResourceActionError("PROVIDER_API_ERROR") from exc
 
 
+def issue_cli_session(secret_payload: dict, *, duration_seconds: int = 900) -> dict:
+    """SSM Session Manager 접속용 단기 AWS CLI 자격증명을 발급한다.
+
+    계정에 저장된 access_key_id/secret_access_key를 그대로 사용자에게 내려주지 않고, STS
+    GetSessionToken으로 짧게 만료되는(기본 15분) 임시 자격증명만 반환한다 — SSH 키 페어처럼
+    오래 남는 비밀을 새로 만들지 않는다는 원칙(마이페이지 크리덴셜을 IAM Role/MFA로 옮기려는
+    방향과 같은 선상, 2026-09-15).
+    """
+    from app.resource_actions import ResourceActionError
+
+    try:
+        sts = _client(secret_payload, "sts", "us-east-1")
+        result = sts.get_session_token(DurationSeconds=duration_seconds)
+    except (BotoCoreError, ClientError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+    creds = result["Credentials"]
+    return {
+        "access_key_id": creds["AccessKeyId"],
+        "secret_access_key": creds["SecretAccessKey"],
+        "session_token": creds["SessionToken"],
+        "expires_at": creds["Expiration"],
+    }
+
+
 def _instance_tags(tag_list) -> tuple[dict, str | None]:
     tags = {t["Key"]: t["Value"] for t in tag_list or []}
     return tags, tags.get("Name")

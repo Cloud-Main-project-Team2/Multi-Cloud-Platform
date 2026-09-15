@@ -33,8 +33,10 @@
   ];
 
   // 인바운드 규칙 프리셋(체크박스). 기본 CIDR은 전체 허용.
+  // SSH(22)는 2026-09-15부로 뺐다 — 키 페어를 새로 발급하지 않고 SSM Session Manager(인스턴스에
+  // 붙는 IAM 역할, terraform/aws/ec2/main.tf의 aws_iam_instance_profile.ssm)로 접속하는 방향으로
+  // 바꿨기 때문에 22번 포트를 열어도 쓸 방법이 없다.
   var INBOUND_PRESETS = [
-    { label: "SSH (22)", port: 22 },
     { label: "HTTP (80)", port: 80 },
     { label: "HTTPS (443)", port: 443 },
   ];
@@ -160,6 +162,126 @@
     return '<label class="mb-1 block text-sm font-medium">' + text +
       (required ? ' <span class="text-primary">*</span>' : "") + "</label>";
   }
+  // 이름 필드 정책(리소스 종류 × 플랫폼). 2026-09-15 백엔드 조사 결과, compute(aws/gcp)·db(aws/
+  // azure/gcp)·storage_object(aws)는 전부 같은 정규식 `^[a-z][a-z0-9-]{0,38}[a-z0-9]$`를 쓴다
+  // (app/aws_provisioning.py, app/aws_rds_provisioning.py, app/aws_s3_provisioning.py,
+  // app/aws_cloudfront_provisioning.py, app/gcp_provisioning.py, app/gcp_cloudsql_provisioning.py,
+  // app/gcp_cdn_provisioning.py, app/azure_database_provisioning.py). Azure Storage Account
+  // (app/azure_storage_provisioning.py, 하이픈 불가·2~21자)와 GCP Cloud Storage
+  // (app/gcp_storage_provisioning.py, 점·밑줄 허용·3~63자)만 다르다. Azure VM(app/azure_provisioning.py)은
+  // 백엔드에 이름 검증이 아예 없지만, 이름 입력창이 선택된 플랫폼 전체가 공유하는 필드라
+  // AWS/GCP를 함께 선택하면 어차피 그쪽 규칙에 맞춰야 하므로 같은 정책을 적용하고, Azure 공식
+  // 문서 기준으로도 안전한 문자만 남긴다.
+  var NAME_POLICY = {
+    compute: {
+      aws: { chars: "a-z0-9-", startLetter: true, max: 40,
+        note: "소문자로 시작 · 소문자/숫자/하이픈(-)만 · 끝은 소문자나 숫자 · 최대 40자",
+        doc: { label: "AWS 리소스 명명 규칙", url: "https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html" } },
+      azure: { chars: "a-z0-9-", startLetter: true, max: 40,
+        note: "영소문자/숫자/하이픈(-)만 · 하이픈으로 시작·종료 불가 · 최대 64자",
+        doc: { label: "Azure 리소스 명명 규칙", url: "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/resource-name-rules" } },
+      gcp: { chars: "a-z0-9-", startLetter: true, max: 40,
+        note: "소문자로 시작 · 소문자/숫자/하이픈(-)만 · 끝은 소문자나 숫자 · 최대 63자",
+        doc: { label: "GCP 리소스 명명 규칙(RFC1035)", url: "https://docs.cloud.google.com/compute/docs/naming-resources" } },
+    },
+    db: {
+      aws: { chars: "a-z0-9-", startLetter: true, max: 40,
+        note: "문자로 시작 · 소문자/숫자/하이픈만 · 하이픈 연속·종료 불가 · 최대 63자",
+        doc: { label: "AWS RDS 식별자 규칙", url: "https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_Limits.html" } },
+      azure: { chars: "a-z0-9-", startLetter: true, max: 40,
+        note: "영소문자/숫자/하이픈만 · 하이픈으로 시작·종료 불가 · 최대 63자",
+        doc: { label: "Azure Database 서버 명명 규칙", url: "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/resource-name-rules" } },
+      gcp: { chars: "a-z0-9-", startLetter: true, max: 40,
+        note: "문자로 시작 · 소문자/숫자/하이픈만 · 프로젝트ID 포함 최대 98자",
+        doc: { label: "GCP Cloud SQL 인스턴스 ID 규칙", url: "https://docs.cloud.google.com/sql/docs/mysql/instance-settings" } },
+    },
+    storage_object: {
+      aws: { chars: "a-z0-9-", startLetter: false, max: 40,
+        note: "소문자/숫자/하이픈(-)만 · 3~63자 · 전역에서 고유해야 함",
+        doc: { label: "AWS S3 버킷 명명 규칙", url: "https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html" } },
+      azure: { chars: "a-z0-9", startLetter: false, max: 21,
+        note: "하이픈 없이 영소문자/숫자만 · 원래 3~24자 규칙에 접두사(mcp) 여유를 둬 최대 21자까지 입력 가능",
+        doc: { label: "Azure Storage 계정 명명 규칙", url: "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/resource-name-rules" } },
+      gcp: { chars: "a-z0-9._-", startLetter: false, max: 63,
+        note: "소문자/숫자/하이픈(-)/밑줄(_)/점(.)만 · 3~63자 · 전역에서 고유해야 함",
+        doc: { label: "GCP Cloud Storage 버킷 명명 규칙", url: "https://docs.cloud.google.com/storage/docs/buckets" } },
+    },
+  };
+  // 현재 선택된 플랫폼 각각의 정책(리소스 종류 기준). 아직 플랫폼을 못 골랐으면 3사 전체로 본다.
+  function activeNamePolicies(kind) {
+    var byPlatform = NAME_POLICY[kind];
+    if (!byPlatform) return [];
+    var platforms = state.platforms.length ? state.platforms : Object.keys(byPlatform);
+    var out = [];
+    platforms.forEach(function (p) {
+      if (byPlatform[p]) out.push({ platform: p, policy: byPlatform[p] });
+    });
+    return out;
+  }
+  // 여러 플랫폼을 동시에 선택하면 이름 입력 하나를 공유하므로, 허용 문자는 선택된 플랫폼
+  // 전부가 허용하는 문자만(교집합), 길이·시작문자 제약은 어느 한쪽이라도 요구하면 적용한다
+  // (그래야 어느 플랫폼에서도 422/apply 실패가 안 난다).
+  function effectiveNameConstraint(kind) {
+    var active = activeNamePolicies(kind);
+    if (!active.length) return { charsetRe: /[^a-z0-9-]/g, max: 40, startLetter: true };
+    var maxLen = Math.min.apply(null, active.map(function (a) { return a.policy.max; }));
+    var startLetter = active.some(function (a) { return a.policy.startLetter; });
+    // policy.chars(예: "a-z0-9-")는 정규식 문자 클래스 표기이므로 리터럴 substring 검사(indexOf)로
+    // 멤버십을 확인하면 안 된다 — 'a'/'z'/'0'/'9'/'-'만 문자열에 그대로 포함돼 있어 나머지
+    // a-z/0-9 범위 전체가 "허용 안 됨"으로 오판된다(2026-09-15 실사용 중 발견: b~y, 1~8 입력 불가).
+    // 각 정책의 chars를 실제 정규식 문자 클래스로 컴파일해 멤버십을 판정한다.
+    var charRes = active.map(function (a) { return new RegExp("^[" + a.policy.chars + "]$"); });
+    var ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789-_.";
+    var allowed = "";
+    for (var i = 0; i < ALPHABET.length; i++) {
+      var c = ALPHABET[i];
+      var okEverywhere = charRes.every(function (re) { return re.test(c); });
+      if (okEverywhere) allowed += c;
+    }
+    var escaped = allowed.replace(/[-\]\\^]/g, "\\$&");
+    return { charsetRe: new RegExp("[^" + escaped + "]", "g"), max: maxLen, startLetter: startLetter };
+  }
+  // 선택된 플랫폼별 규칙 + 공식 문서 링크를 입력창 아래 안내 문구로 렌더링한다.
+  function namePolicyHintHtml(kind) {
+    var active = activeNamePolicies(kind);
+    if (!active.length) return "";
+    var items = active.map(function (a) {
+      return "<li>" + escHtml(PLATFORM_LABEL[a.platform]) + ": " + escHtml(a.policy.note) + " — " +
+        '<a href="' + a.policy.doc.url + '" target="_blank" rel="noopener" class="underline">' +
+        escHtml(a.policy.doc.label) + "</a></li>";
+    }).join("");
+    return '<div class="mt-1 text-xs text-muted-foreground">' +
+      "<p>ⓘ 선택한 플랫폼 기준 이름 규칙 — 아래 문자·형식만 입력할 수 있어요(공식 문서 기준):</p>" +
+      '<ul class="ml-4 list-disc space-y-0.5">' + items + "</ul></div>";
+  }
+  // data-cs="name" 입력에서 허용 안 되는 문자(대문자 포함)는 애초에 입력 자체가 막힌다 — 제출
+  // 후 422/apply 실패로 걸리는 대신 키를 누르는 시점에 preventDefault로 차단한다(2026-09-15
+  // 실사용 중 발견: 대문자 이름 입력 시 검증 실패).
+  function guardNameBeforeInput(e) {
+    if (e.data == null) return; // 삭제·IME 조합 취소 등은 그대로 둔다
+    var input = e.target;
+    var c = effectiveNameConstraint(state.resourceKind);
+    var filtered = e.data.replace(c.charsetRe, "");
+    if (c.startLetter && input.selectionStart === 0) filtered = filtered.replace(/^[^a-z]+/, "");
+    var before = input.value.slice(0, input.selectionStart);
+    var after = input.value.slice(input.selectionEnd);
+    var room = c.max - (before.length + after.length);
+    if (filtered.length > Math.max(0, room)) filtered = filtered.slice(0, Math.max(0, room));
+    if (filtered === e.data) return; // 전부 허용된 입력 — 그대로 통과
+    e.preventDefault();
+    if (filtered) {
+      input.setRangeText(filtered, input.selectionStart, input.selectionEnd, "end");
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  }
+  // beforeinput을 못 받는 경로(붙여넣기 일부 브라우저·프로그램적 값 설정)를 위한 보조 필터.
+  function sanitizeNameInputs(scope) {
+    var c = effectiveNameConstraint(state.resourceKind);
+    scope.querySelectorAll('[data-cs="name"]').forEach(function (input) {
+      var cleaned = input.value.replace(c.charsetRe, "").slice(0, c.max);
+      if (cleaned !== input.value) input.value = cleaned;
+    });
+  }
 
   // ── 선택 상태 읽기 ────────────────────────────────────────────────────────
   function readPlatforms() {
@@ -247,7 +369,7 @@
       '<div class="flex items-stretch rounded-lg border border-border bg-background focus-within:border-primary">' +
       '<span class="flex items-center px-3 text-sm text-muted-foreground">mcp-</span>' +
       '<input type="text" data-cs="name" data-prefix="mcp-" placeholder="web-01" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" />' +
-      "</div>";
+      "</div>" + namePolicyHintHtml("compute");
     container.appendChild(nameField);
 
     // 3) 사양(추상 등급) — providerSpec의 실제 SKU는 collect 시 매핑
@@ -285,13 +407,13 @@
   }
 
   // ── 공용 필드 빌더 ────────────────────────────────────────────────────────
-  function nameFieldEl(placeholder) {
+  function nameFieldEl(placeholder, kind) {
     var f = el("div", { class: "sm:col-span-2" });
     f.innerHTML = labelHtml("이름", true) +
       '<div class="flex items-stretch rounded-lg border border-border bg-background focus-within:border-primary">' +
       '<span class="flex items-center px-3 text-sm text-muted-foreground">mcp-</span>' +
       '<input type="text" data-cs="name" data-prefix="mcp-" placeholder="' + (placeholder || "") +
-      '" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" /></div>';
+      '" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" /></div>' + namePolicyHintHtml(kind);
     return f;
   }
   // 국가 단일 select(공통). 선택 국가는 collect()에서 각 플랫폼 리전으로 매핑된다.
@@ -334,8 +456,11 @@
     var f = el("div", { class: "sm:col-span-2 rounded-xl bg-muted p-3" });
     var inner = '<p class="mb-2 text-sm font-medium">인증 · ' + PLATFORM_LABEL[p] + "</p>";
     if (p === "aws") {
-      inner += labelHtml("키 페어 이름", true) +
-        '<input type="text" data-ps-platform="aws" data-ps="keyPairName" placeholder="mcp-keypair" class="' + FIELD_INPUT + '" />';
+      // 2026-09-15: SSH 키 페어 발급을 없앴다(정적 비밀키를 새로 만들지 않는 방향). 생성 후
+      // 인벤토리 상세에서 "AWS CLI로 접속" 버튼으로 단기 자격증명을 발급받아 SSM Session
+      // Manager로 접속한다 — 이 단계에서 별도로 입력받을 값이 없다.
+      inner += '<p class="text-xs text-muted-foreground">SSH 키 페어 없이 생성됩니다 — 생성 후 ' +
+        "인벤토리에서 <b>AWS CLI로 접속</b> 버튼으로 SSM Session Manager를 통해 접속하세요.</p>";
     } else if (p === "azure") {
       inner += '<div class="grid gap-2 sm:grid-cols-2">' +
         "<div>" + labelHtml("관리자 계정명", true) +
@@ -380,7 +505,7 @@
   // ── DB 공통 설정 렌더링 ───────────────────────────────────────────────────
   function renderDbCommon(container, platforms) {
     container.innerHTML = "";
-    container.appendChild(nameFieldEl("db-01"));
+    container.appendChild(nameFieldEl("db-01", "db"));
     container.appendChild(countryFieldEl());
 
     // 엔진·인증은 플랫폼별로 달라 ⑤ 추가 설정으로 이동(공통은 플랫폼 무관 유지).
@@ -410,7 +535,8 @@
     var bucket = el("div", { class: "sm:col-span-2" });
     bucket.innerHTML = labelHtml("버킷/계정명", true) +
       '<input type="text" data-cs="name" placeholder="my-unique-bucket" class="' + FIELD_INPUT + '" />' +
-      '<p class="mt-1 text-xs text-muted-foreground">전역에서 고유한 이름이어야 합니다.</p>';
+      '<p class="mt-1 text-xs text-muted-foreground">전역에서 고유한 이름이어야 합니다.</p>' +
+      namePolicyHintHtml("storage_object");
     container.appendChild(bucket);
 
     // 리전 — 국가 단일 선택(플랫폼 무관)
@@ -738,7 +864,6 @@
       return state.platforms.every(function (p) {
         var ps = state.providerSpec[p] || {};
         if (!isFilled(ps.region)) return false;
-        if (p === "aws" && !isFilled(ps.keyPairName)) return false;
         if (p === "azure" && (!isFilled(ps.adminUsername) || !isFilled(ps.adminPassword))) return false;
         if (p === "gcp" && !isFilled(ps.sshPublicKey)) return false;
         // ⑤ AWS 이미지가 직접 AMI ID 입력이면 AMI ID 필수
@@ -1134,9 +1259,14 @@
     var providerC = document.getElementById("prov-provider-fields");
 
     // ④ 공통 필드: 입력 변화 → 상태 수집 + 제출 상태 + 다음 단계 노출 갱신
-    function onFieldChange() { collect(); updateSubmitState(); revealSteps(); }
+    function onFieldChange() { sanitizeNameInputs(container); collect(); updateSubmitState(); revealSteps(); }
     container.addEventListener("input", onFieldChange);
     container.addEventListener("change", onFieldChange);
+    // 이름 필드는 입력되는 순간(beforeinput)에 허용 안 되는 문자를 막는다 — 재렌더에도 살아남게
+    // container(고정 노드)에 위임 배선한다.
+    container.addEventListener("beforeinput", function (e) {
+      if (e.target && e.target.matches && e.target.matches('[data-cs="name"]')) guardNameBeforeInput(e);
+    });
     // 동적 행 삭제(위임) — 컨테이너에 1회만 배선(재렌더 시 누적 방지)
     container.addEventListener("click", function (e) {
       var del = e.target.closest("[data-row-del]");
