@@ -33,6 +33,7 @@ from app.db import SessionLocal, get_db
 from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError
 from app.models import CloudAccount, Credential, Notification, ProvisioningJob, Resource, ServiceCatalog, User
+from app.pricing import estimate_monthly_cost_usd
 from app.provisioning import get_runner
 from app.schemas.provisioning import (
     CreateProvisioningJobRequest,
@@ -260,6 +261,10 @@ def _create_resource_from_job(
 
     provider_resource_key = f"{service.provider}:{service.service_code}:{external_id}"
     now = dt.datetime.now(dt.timezone.utc)
+    # 정가 기반 추정치(list_price_estimate) — 실제 CSP 비용 API를 호출하지 않는다(app/pricing.py
+    # 참고). 사용량 기반 서비스(S3/CDN 등)나 허용 목록 밖 스펙은 None을 반환해 값을 지어내지 않는다.
+    estimated_cost = estimate_monthly_cost_usd(service.provider, service.service_code, provider_spec)
+    cost_source = "list_price_estimate" if estimated_cost is not None else None
     existing = (
         db.query(Resource)
         .filter_by(cloud_account_id=account.id, provider_resource_key=provider_resource_key)
@@ -278,6 +283,10 @@ def _create_resource_from_job(
                 name=name,
                 region=region,
                 status=_initial_resource_status(service.provider, service.service_code),
+                estimated_monthly_cost=estimated_cost,
+                cost_currency="USD" if estimated_cost is not None else None,
+                cost_source=cost_source,
+                cost_as_of=now if estimated_cost is not None else None,
                 tags={"managed-by": "multi-cloud-platform", "job-id": str(job.id)},
                 raw_metadata=outputs,
                 first_seen_at=now,
@@ -288,6 +297,10 @@ def _create_resource_from_job(
     else:
         existing.last_collected_by_credential_id = credential.id
         existing.status = _initial_resource_status(service.provider, service.service_code)
+        existing.estimated_monthly_cost = estimated_cost
+        existing.cost_currency = "USD" if estimated_cost is not None else None
+        existing.cost_source = cost_source
+        existing.cost_as_of = now if estimated_cost is not None else None
         existing.last_seen_at = now
         existing.last_synced_at = now
         existing.is_stale = False

@@ -82,13 +82,13 @@
             <p class="mt-1 text-3xl font-extrabold" id="dash-total-regions">—</p>
             <p class="mt-1 text-xs text-muted-foreground">활성 리전 기준</p>
           </div>
-          <div class="rounded-2xl border border-dashed border-border bg-surface p-5">
+          <div class="rounded-2xl border border-border bg-surface p-5">
             <div class="flex items-center justify-between">
               <p class="text-sm text-muted-foreground">예상 총 비용</p>
-              <span class="rounded border border-border px-1.5 text-[11px] text-muted-foreground">준비 중</span>
+              <span class="rounded border border-yellow px-1.5 text-[11px] text-yellow" id="dash-total-cost-badge">추정치</span>
             </div>
-            <p class="mt-1 text-3xl font-extrabold text-muted-foreground">—</p>
-            <p class="mt-1 text-xs text-muted-foreground">비용 수집(Cost Explorer 등) 연동 전이라 아직 집계하지 않습니다.</p>
+            <p class="mt-1 text-3xl font-extrabold" id="dash-total-cost">—</p>
+            <p class="mt-1 text-xs text-muted-foreground" id="dash-total-cost-note">불러오는 중…</p>
           </div>
         </div>
 
@@ -133,10 +133,13 @@
             </div>
           </div>
 
-          <div class="rounded-2xl border border-dashed border-border bg-surface p-5">
-            <p class="font-semibold">서비스별 비용 비중</p>
-            <div class="mt-5 grid h-40 place-items-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
-              비용 수집 기능이 아직 구현되지 않았습니다.
+          <div class="rounded-2xl border border-border bg-surface p-5">
+            <div class="flex items-center justify-between">
+              <p class="font-semibold">서비스별 비용 비중</p>
+              <span class="rounded border border-yellow px-1.5 text-[11px] text-yellow">추정치</span>
+            </div>
+            <div class="mt-4 space-y-3" id="dash-cost-by-category">
+              <p class="text-sm text-muted-foreground">불러오는 중…</p>
             </div>
           </div>
         </div>

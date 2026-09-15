@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from decimal import Decimal
 
 import pytest
 
@@ -498,6 +499,65 @@ def test_process_job_success_creates_resource_and_notification(db_session, make_
     notification = db_session.query(Notification).filter_by(reference_id=job.id).one()
     assert notification.type == "provisioning_succeeded"
     assert notification.message_key == "notif.provisioning.succeeded"
+
+
+def test_process_job_success_estimates_cost_for_known_sku(db_session, make_user, monkeypatch):
+    # _pending_job()의 기본 spec(e2-micro/asia-northeast3)은 app/pricing.py 정가표에 있는
+    # 조합이라, 성공한 job이 만드는 리소스 행에 list_price_estimate가 채워져야 한다.
+    # 0.0101(asia-northeast3 시간당) * 730시간 = 7.373 -> 7.37로 반올림.
+    user = make_user()
+    account = _make_account(db_session, user, "gcp", "proj-1")
+    credential = _make_credential(db_session, account, verified=True)
+    service = _make_service(db_session, "gcp", "compute_engine")
+    job = _pending_job(db_session, user, credential, service)
+    db_session.commit()
+
+    monkeypatch.setattr(
+        provisioning_router,
+        "get_runner",
+        lambda provider, code: type("R", (), {
+            "run": staticmethod(lambda **kwargs: TerraformResult(
+                success=True, outputs={"instance_name": "mcp-web-01", "zone": "asia-northeast3-a"}
+            ))
+        })(),
+    )
+
+    provisioning_router._execute_job(db_session, job)
+
+    resource = db_session.query(Resource).filter_by(cloud_account_id=account.id).one()
+    assert resource.estimated_monthly_cost == Decimal("7.37")
+    assert resource.cost_currency == "USD"
+    assert resource.cost_source == "list_price_estimate"
+    assert resource.cost_as_of is not None
+
+
+def test_process_job_success_leaves_cost_null_for_usage_based_service(db_session, make_user, monkeypatch):
+    # S3처럼 사용량 기반 서비스는 정가표 대상이 아니라 cost 필드가 전부 비어 있어야 한다.
+    user = make_user()
+    account = _make_account(db_session, user, "aws", "111122223333")
+    credential = _make_credential(db_session, account, verified=True)
+    service = _make_service(db_session, "aws", "s3", category="storage_object")
+    job = _pending_job(
+        db_session, user, credential, service,
+        common_spec={"name": "assets"}, provider_spec={"region": "ap-northeast-2"},
+    )
+    db_session.commit()
+
+    monkeypatch.setattr(
+        provisioning_router,
+        "get_runner",
+        lambda provider, code: type("R", (), {
+            "run": staticmethod(lambda **kwargs: TerraformResult(success=True, outputs={"bucket_name": "mcp-assets-1"}))
+        })(),
+    )
+
+    provisioning_router._execute_job(db_session, job)
+
+    resource = db_session.query(Resource).filter_by(cloud_account_id=account.id).one()
+    assert resource.estimated_monthly_cost is None
+    assert resource.cost_currency is None
+    assert resource.cost_source is None
+    assert resource.cost_as_of is None
 
 
 def test_process_job_failure_records_error_and_notification(db_session, make_user, monkeypatch):
