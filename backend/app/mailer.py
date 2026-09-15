@@ -10,13 +10,11 @@
 
 from __future__ import annotations
 
-import logging
 import smtplib
 from email.message import EmailMessage
 
 from app.config import get_settings
-
-logger = logging.getLogger("app.mailer")
+from app.logging_config import log_business_event
 
 
 def send_email(to: str, subject: str, body: str) -> None:
@@ -32,11 +30,20 @@ def send_email(to: str, subject: str, body: str) -> None:
     message["Subject"] = subject
     message.set_content(body)
 
-    with smtplib.SMTP(settings.mail_host, settings.mail_port, timeout=10) as smtp:
-        if settings.mail_use_tls:
-            smtp.starttls()
-        if settings.mail_username:
-            smtp.login(settings.mail_username, settings.mail_password)
-        smtp.send_message(message)
+    # 이 함수는 대부분 BackgroundTasks로 호출된다 — 응답은 이미 나간 뒤라 실패해도 사용자에게
+    # 보이지 않는다. 로그에 남기지 않으면 "인증 메일이 안 온다"를 서버에서 확인할 방법이 없다.
+    try:
+        with smtplib.SMTP(settings.mail_host, settings.mail_port, timeout=10) as smtp:
+            if settings.mail_use_tls:
+                smtp.starttls()
+            if settings.mail_username:
+                smtp.login(settings.mail_username, settings.mail_password)
+            smtp.send_message(message)
+    except Exception as exc:
+        log_business_event(
+            "mail.failed", level="ERROR", exc_info=True,
+            to=to, subject=subject, host=settings.mail_host, error_type=type(exc).__name__,
+        )
+        raise
 
-    logger.info("email_sent to=%s subject=%s", to, subject)
+    log_business_event("mail.sent", to=to, subject=subject)

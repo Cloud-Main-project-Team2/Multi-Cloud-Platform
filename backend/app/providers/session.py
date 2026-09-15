@@ -19,16 +19,14 @@
 from __future__ import annotations
 
 import datetime as dt
-import logging
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.config import get_settings
+from app.logging_config import log_business_event
 from app.providers import AUTH_TYPE_ASSUME_ROLE, auth_type_of
-
-logger = logging.getLogger(__name__)
 
 _TIMEOUT_CONFIG = Config(connect_timeout=5, read_timeout=8, retries={"max_attempts": 1})
 
@@ -108,7 +106,12 @@ def assume_role(
             ) from exc
         if code in ("ExpiredToken", "InvalidClientTokenId", "SignatureDoesNotMatch", "UnrecognizedClientException"):
             # 사용자 잘못이 아니라 우리 플랫폼 자격증명 문제다.
-            logger.error("platform_credentials_invalid", extra={"sts_error_code": code})
+            log_business_event(
+                "credential.assume_role.platform_credentials_invalid",
+                level="ERROR",
+                sts_error_code=code,
+                credential_id=credential_id,
+            )
             raise CredentialResolutionError(
                 "PROVIDER_AUTHENTICATION_FAILED",
                 "서비스의 AWS 자격 증명 설정에 문제가 있습니다. 관리자에게 문의해 주세요.",
