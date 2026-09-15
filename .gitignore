@@ -31,8 +31,12 @@ backend/terraform/.runs/
 backend/terraform/.plugin-cache/
 
 # ---- 로그 ----
-logs/
+# 디렉터리 자체는 유지한다(docker-compose가 ./logs를 컨테이너에 바인드 마운트한다).
+logs/*
+!logs/.gitkeep
+backend/logs/
 *.log
+*.log.[0-9]
 
 # ---- OS / 편집기 잡파일 ----
 .DS_Store

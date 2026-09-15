@@ -44,9 +44,15 @@ services:
       PLATFORM_AWS_SESSION_DURATION_SECONDS: ${PLATFORM_AWS_SESSION_DURATION_SECONDS:-3600}
       TERRAFORM_WORKSPACES_DIR: /app/terraform_workspaces
       TERRAFORM_PLUGIN_CACHE_DIR: /app/terraform_plugin_cache
+      LOG_DIR: ${LOG_DIR:-/app/logs}
     volumes:
       - terraform_workspaces:/app/terraform_workspaces
       - terraform_plugin_cache:/app/terraform_plugin_cache
+      # named volume이 아니라 바인드 마운트인 이유: 관제를 서버에서 직접 한다 —
+      # `docker exec` 없이 호스트에서 바로 `tail -f logs/app.log` 할 수 있어야 한다.
+      # 컨테이너는 uid 1000(appuser)으로 돌므로 리눅스 서버에서는 `chown 1000:1000 logs`가 필요하다.
+      # (쓰기 불가 시 app/logging_config.py가 stderr로 폴백하므로 기동 자체는 막히지 않는다.)
+      - ./logs:/app/logs
     depends_on:
       db:
         condition: service_healthy

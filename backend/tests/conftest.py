@@ -1,5 +1,6 @@
 import base64
 import os
+import tempfile
 from datetime import datetime, timedelta, timezone
 
 import bcrypt
@@ -8,6 +9,10 @@ import sqlalchemy as sa
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+
+# app.logging_config는 import 시점에 파일 핸들러를 만든다 — 앱 모듈을 불러오기 전에 로그
+# 디렉터리를 임시 경로로 돌려, 테스트 실행이 실제 운영 logs/access.log를 오염시키지 않게 한다.
+os.environ.setdefault("LOG_DIR", tempfile.mkdtemp(prefix="mcp-test-logs-"))
 
 import app.main as main_module
 import app.models  # noqa: F401 — register models on Base.metadata
