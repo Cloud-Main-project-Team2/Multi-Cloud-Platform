@@ -39,6 +39,25 @@ class Settings(BaseSettings):
     # 비밀번호 재설정 링크 토큰 만료.
     password_reset_token_ttl_seconds: int = Field(default=1800, alias="PASSWORD_RESET_TOKEN_TTL_SECONDS")
 
+    # app/providers/session.py — AWS 역할 위임(AssumeRole)을 호출할 "출발 신원".
+    # 이 값들은 우리 서비스 자신의 AWS 신원이지, 사용자에게 받는 값이 아니다. 비어 있으면
+    # 위임 방식 credential만 쓸 수 없고(레거시 access key 방식은 그대로 동작) 나머지 기능엔
+    # 영향이 없다. 서버를 AWS 위(EC2 instance role/ECS task role)에 올리면 키 두 개를 비우고
+    # boto3의 기본 자격증명 체인에 맡기면 된다.
+    platform_aws_account_id: str = Field(default="", alias="PLATFORM_AWS_ACCOUNT_ID")
+    platform_aws_access_key_id: str = Field(default="", alias="PLATFORM_AWS_ACCESS_KEY_ID")
+    platform_aws_secret_access_key: str = Field(default="", alias="PLATFORM_AWS_SECRET_ACCESS_KEY")
+    # 우리 플랫폼 키가 빌릴 수 있는 역할의 ARN 패턴(IAM 정책의 Resource와 같은 값을 둔다).
+    # 이름을 하나로 못 박으면 사내 명명 규칙이 있는 계정이 연결 자체를 못 하므로 접두사로 둔다.
+    platform_aws_assumable_role_pattern: str = Field(
+        default="arn:aws:iam::*:role/MultiCloudOps*", alias="PLATFORM_AWS_ASSUMABLE_ROLE_PATTERN"
+    )
+    # AssumeRole 세션 수명(초). 역할의 MaxSessionDuration을 넘으면 STS가 거부한다.
+    # terraform apply 타임아웃(900초)보다 충분히 길어야 한다.
+    platform_aws_session_duration_seconds: int = Field(
+        default=3600, alias="PLATFORM_AWS_SESSION_DURATION_SECONDS"
+    )
+
     # app/terraform_runner.py — 프로비저닝 job마다 독립된 워크스페이스 디렉터리를 이 경로 아래에 둔다.
     terraform_binary_path: str = Field(default="terraform", alias="TERRAFORM_BINARY_PATH")
     terraform_workspaces_dir: str = Field(default="/tmp/terraform-workspaces", alias="TERRAFORM_WORKSPACES_DIR")

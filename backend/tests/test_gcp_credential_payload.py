@@ -14,7 +14,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from google.oauth2 import service_account
 
 from app.errors import ApiError
-from app.providers import REQUIRED_SECRET_FIELDS, validate_secret_payload
+from app.providers import AUTH_TYPE_ACCESS_KEY, REQUIRED_SECRET_FIELDS, validate_secret_payload
 
 
 @pytest.fixture(scope="module")
@@ -46,10 +46,11 @@ def test_full_service_account_json_is_accepted(service_account_json):
 def test_required_fields_alone_are_enough_for_google_auth(service_account_json):
     """우리가 필수로 받는 필드만 있어도 google-auth가 credential을 만들 수 있어야 한다.
 
-    이 테스트가 깨지면 REQUIRED_SECRET_FIELDS["gcp"]에서 google-auth가 필요로 하는 필드를
+    이 테스트가 깨지면 REQUIRED_SECRET_FIELDS[("gcp", access_key)]에서 google-auth가 필요로 하는 필드를
     빼먹었다는 뜻이다(정확히 이번 버그의 형태).
     """
-    minimal = {k: service_account_json[k] for k in REQUIRED_SECRET_FIELDS["gcp"]}
+    # GCP는 장기 키(서비스 계정 JSON) 경로만 지원한다 — 위임 방식은 AWS 전용(2026-09-15).
+    minimal = {k: service_account_json[k] for k in REQUIRED_SECRET_FIELDS[("gcp", AUTH_TYPE_ACCESS_KEY)]}
 
     validate_secret_payload("gcp", minimal)
     service_account.Credentials.from_service_account_info(minimal)
