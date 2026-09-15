@@ -1,6 +1,6 @@
 """여러 provider의 compute 러너가 공유하는 `common_spec` 조각.
 
-`docs/멀티클라우드 3사 기능 맵핑 — 설정값 입력 범위 (2026-09-10).md` 1절 기준으로
+`docs/Multicloud_Provider_Feature_Mapping_2026-09-10.md` 1절 기준으로
 Compute(EC2/Virtual Machines/Compute Engine)의 공통 설정 중, provider마다 다르게 해석해야
 하는 이름·리전·사양·인증을 뺀 나머지(태그, 인바운드 규칙)를 여기 모아 재사용한다.
 """

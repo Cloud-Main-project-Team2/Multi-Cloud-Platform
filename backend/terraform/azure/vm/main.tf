@@ -1,7 +1,7 @@
 # Azure Virtual Machine 생성 전용 모듈.
 #
 # 이 모듈은 "생성"만 담당한다(팀 정책: Terraform은 기존 리소스의 조회·시작·중지·삭제에
-# 쓰지 않는다 — docs/01_API_명세서_v1.1.md 10절). 인증은 azurerm provider의 표준 방식인
+# 쓰지 않는다 — docs/01_API_Specification_v1.1.md 10절). 인증은 azurerm provider의 표준 방식인
 # ARM_CLIENT_ID / ARM_CLIENT_SECRET / ARM_TENANT_ID / ARM_SUBSCRIPTION_ID 환경변수로만
 # 주입한다. 이 변수 파일들에는 secret을 절대 선언하지 않는다.
 

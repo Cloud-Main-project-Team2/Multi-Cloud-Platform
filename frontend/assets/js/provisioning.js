@@ -5,7 +5,7 @@
  * 반영한다. DB/Storage(단위 2), ⑤ 추가 설정(단위 3), 생성하기 활성화 검증(단위 4)은
  * 후속 커밋에서 붙인다.
  *
- * 필드명은 향후 BE 연동 시 01_API_명세서_v1.1.md §10.3의 common_spec/provider_spec 구조로
+ * 필드명은 향후 BE 연동 시 01_API_Specification_v1.1.md §10.3의 common_spec/provider_spec 구조로
  * 거의 그대로 전송할 수 있도록 잡았다(commonSpec: 3사 공통, providerSpec: 플랫폼별).
  */
 (function () {

@@ -69,7 +69,7 @@ resource "azurerm_mssql_server" "this" {
   minimum_tls_version          = "1.2"
 
   # Private Endpoint로만 접근한다 — 퍼블릭 엔드포인트 자체를 끈다(GCP Cloud SQL의 퍼블릭+데모
-  # 구성을 따르지 않는다는 팀 결정, docs/Azure Storage·Database 프로비저닝 구현 결정사항 참고).
+  # 구성을 따르지 않는다는 팀 결정, docs/Azure_Storage_Database_Provisioning_Decisions_2026-09-14.md 참고).
   public_network_access_enabled = false
 
   tags = var.tags
