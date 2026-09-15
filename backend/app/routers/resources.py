@@ -38,6 +38,7 @@ from app.schemas.resources import (
     ResourceSummaryResponse,
     ServiceBrief,
 )
+from app.providers.session import CredentialResolutionError, resolve_secret_payload
 from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json
 from app.serialization import decimal_str, iso_z, str_id
 
@@ -427,6 +428,15 @@ def _process_action_item(
         secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
     except CredentialEncryptionError:
         return _deny("PROVIDER_API_ERROR")
+
+    # 위임 credential이면 임시 자격증명을 발급받는다(레거시는 그대로 통과). 일괄 요청은
+    # 항목별 부분 성공이므로, 실패해도 나머지 리소스 처리는 계속된다.
+    try:
+        secret_payload = resolve_secret_payload(
+            account.provider, secret_payload, credential_id=credential.id
+        )
+    except CredentialResolutionError as exc:
+        return _deny(exc.error_code)
 
     try:
         perform_action(

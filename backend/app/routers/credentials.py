@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 import datetime as dt
+import uuid
 
 import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Query, Request, Response
@@ -21,8 +22,18 @@ from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError, confirmation_required, validation_error
 from app.logging_config import log_business_event
 from app.models import CloudAccount, Credential, ProvisioningJob, ResourceSyncJobItem, User
-from app.providers import PROVIDERS, VerificationResult, validate_secret_payload, verify_credential
+from app.providers import (
+    AUTH_TYPE_ACCESS_KEY,
+    AUTH_TYPE_ASSUME_ROLE,
+    PROVIDERS,
+    VerificationResult,
+    auth_type_of,
+    validate_secret_payload,
+    verify_credential,
+)
 from app.schemas.credentials import (
+    AwsDelegationSetupData,
+    AwsDelegationSetupResponse,
     CloudAccountListData,
     CloudAccountListResponse,
     CloudAccountResponse,
@@ -87,7 +98,34 @@ def _serialize_cloud_account(account: CloudAccount) -> dict:
     }
 
 
-def _serialize_credential(credential: Credential) -> dict:
+# 사용자가 스스로 원인을 좁힐 수 있게 하는 안내 문구. STS는 역할 이름·신뢰 정책의 계정 ID·
+# ExternalId 중 무엇이 틀려도 똑같이 AccessDenied를 주기 때문에 셋을 모두 적는다.
+DELEGATION_TROUBLESHOOTING = [
+    "역할 이름이 허용 접두사로 시작하는지 확인하세요.",
+    "역할의 신뢰 정책 Principal이 이 서비스의 AWS 계정 ID인지 확인하세요.",
+    "신뢰 정책의 ExternalId가 등록한 값과 같은지 확인하세요.",
+]
+
+_VERIFICATION_MESSAGES = {
+    "CLOUD_PERMISSION_DENIED": "역할을 빌릴 수 없습니다. " + " ".join(DELEGATION_TROUBLESHOOTING),
+    "CREDENTIAL_ACCOUNT_MISMATCH": (
+        "역할이 속한 AWS 계정이 등록한 계정 ID와 다릅니다. 다른 계정의 역할이라면 계정을 새로 "
+        "등록해 주세요."
+    ),
+    "PROVIDER_AUTHENTICATION_FAILED": "자격 증명으로 AWS 인증에 실패했습니다.",
+    "PROVIDER_API_ERROR": "AWS 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+}
+
+
+def _verification_message(error_code: str | None) -> str | None:
+    if not error_code:
+        return None
+    return _VERIFICATION_MESSAGES.get(error_code, "자격 증명 검증에 실패했습니다.")
+
+
+def _serialize_credential(credential: Credential, verification: VerificationResult | None = None) -> dict:
+    """`verification`은 방금 수행한 검증 결과다 — 실패 사유를 응답에만 실어 보내기 위한 것이고
+    DB에 저장하지 않는다(목록 조회에서는 항상 None)."""
     return {
         "id": str_id(credential.id),
         "cloud_account_id": str_id(credential.cloud_account_id),
@@ -100,6 +138,11 @@ def _serialize_credential(credential: Credential) -> dict:
         "display_order": credential.display_order,
         "created_at": iso_z(credential.created_at),
         "updated_at": iso_z(credential.updated_at),
+        # 인증 방식은 별도 컬럼을 만들지 않고 tags(JSONB)에 비밀 아닌 힌트로 넣어 둔다 —
+        # 목록 조회에서 payload를 복호화하지 않고도 "레거시 키" 배지를 띄울 수 있어야 한다.
+        "auth_type": (credential.tags or {}).get("auth_type") or AUTH_TYPE_ACCESS_KEY,
+        "verification_error_code": verification.error_code if verification else None,
+        "verification_error_message": _verification_message(verification.error_code) if verification else None,
     }
 
 
@@ -224,6 +267,70 @@ def list_credentials_for_account(
 # --- credentials -------------------------------------------------------------------------
 
 
+@router.get("/credentials/aws/delegation-setup", response_model=AwsDelegationSetupResponse)
+def aws_delegation_setup(
+    current_user: User = Depends(get_current_user),
+) -> AwsDelegationSetupResponse:
+    """AWS 역할 위임 온보딩에 필요한 값을 내려준다.
+
+    사용자는 이 응답을 보고 **자기 AWS 계정에** 역할을 만든다. 우리가 저장하는 건 그 결과로
+    받은 `role_arn`과 여기서 발급한 `external_id`뿐이고, 둘 다 비밀이 아니다.
+
+    `external_id`는 요청할 때마다 새로 발급한다(서버에 보관하지 않는다). 사용자가 이 값을
+    신뢰 정책에 넣고 등록 요청에 그대로 실어 보내면 되는 구조라, 발급 상태를 들고 있을 필요가
+    없다. 등록 요청이 `external_id`를 직접 담아 보내는 것도 허용한다 — 역할을 먼저 만들어 둔
+    경우를 위해서다.
+
+    ⚠️ 이 라우트는 `POST /credentials/{provider}`와 경로 모양이 비슷하지만 메서드가 달라
+    충돌하지 않는다. 다만 순서상 먼저 선언해 `{provider}`가 "aws"를 삼키지 않게 한다.
+    """
+    settings = get_settings()
+    if not settings.platform_aws_account_id:
+        raise ApiError(
+            503,
+            "PLATFORM_AWS_NOT_CONFIGURED",
+            "서비스의 AWS 계정 설정이 없어 역할 위임 연결을 안내할 수 없습니다. 관리자에게 문의해 주세요.",
+        )
+
+    external_id = str(uuid.uuid4())
+    # 허용 패턴(arn:aws:iam::*:role/MultiCloudOps*)에서 역할 이름 접두사만 뽑아 화면에 보여준다.
+    role_name_prefix = settings.platform_aws_assumable_role_pattern.rsplit("/", 1)[-1].rstrip("*")
+
+    trust_policy = {
+        "Version": "2012-10-17",
+        "Statement": [
+            {
+                "Effect": "Allow",
+                # 계정 root를 Principal로 둔다 — IAM 사용자 ARN을 직접 쓰면 그 사용자를 지웠다
+                # 다시 만들었을 때 내부 고유 ID가 달라져 고객 쪽 신뢰가 전부 깨진다.
+                "Principal": {"AWS": f"arn:aws:iam::{settings.platform_aws_account_id}:root"},
+                "Action": "sts:AssumeRole",
+                "Condition": {"StringEquals": {"sts:ExternalId": external_id}},
+            }
+        ],
+    }
+
+    return AwsDelegationSetupResponse(
+        data=AwsDelegationSetupData(
+            platform_account_id=settings.platform_aws_account_id,
+            external_id=external_id,
+            role_name_prefix=role_name_prefix,
+            suggested_role_name=f"{role_name_prefix}Access",
+            trust_policy=trust_policy,
+            managed_policy_arns=[
+                "arn:aws:iam::aws:policy/AmazonEC2FullAccess",
+                "arn:aws:iam::aws:policy/AmazonRDSFullAccess",
+                "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+                "arn:aws:iam::aws:policy/CloudFrontFullAccess",
+            ],
+            # 인벤토리 비용 표시와 permission_scope 자동 판별에 쓰는 읽기 전용 권한.
+            inline_actions=["ce:GetCostAndUsage", "iam:SimulatePrincipalPolicy"],
+            iam_console_url="https://console.aws.amazon.com/iam/home#/roles/create",
+            troubleshooting=DELEGATION_TROUBLESHOOTING,
+        )
+    )
+
+
 @router.post("/credentials/{provider}", response_model=CredentialResponse, status_code=201)
 def create_credential(
     provider: str,
@@ -258,6 +365,11 @@ def create_credential(
     if duplicate is not None:
         raise ApiError(409, "CREDENTIAL_ALREADY_EXISTS", "같은 이름의 자격 증명이 이미 있습니다.")
 
+    # 인증 방식 힌트를 tags에 남긴다(비밀 아님). 사용자가 같은 키로 tags를 보내도 서버 값이
+    # 우선한다 — 화면 배지의 근거라 사용자 입력으로 뒤집히면 안 된다.
+    auth_type = auth_type_of(payload.secret_payload)
+    tags = {**payload.tags, "auth_type": auth_type}
+
     ciphertext, nonce = encrypt_credential_json(payload.secret_payload)
     credential = Credential(
         cloud_account_id=account.id,
@@ -266,7 +378,7 @@ def create_credential(
         encryption_nonce=nonce,
         encryption_key_version=get_settings().credential_encryption_key_version,
         public_identifier=mask_public_identifier(payload.public_identifier) if payload.public_identifier else None,
-        tags=payload.tags,
+        tags=tags,
         display_order=payload.display_order,
     )
     db.add(credential)
@@ -317,7 +429,7 @@ def create_credential(
 
     db.commit()
     db.refresh(credential)
-    return CredentialResponse(data=_serialize_credential(credential))
+    return CredentialResponse(data=_serialize_credential(credential, verification))
 
 
 @router.patch("/credentials/{credential_id}", response_model=CredentialResponse)
@@ -333,6 +445,7 @@ def patch_credential(
     replacing_secret = payload.secret_payload is not None
     if replacing_secret and request.headers.get("X-Action-Confirmed") != "true":
         raise confirmation_required()
+    verification: VerificationResult | None = None
 
     if payload.name is not None and payload.name != credential.name:
         duplicate = (
@@ -357,6 +470,9 @@ def patch_credential(
 
     if replacing_secret:
         validate_secret_payload(account.provider, payload.secret_payload)
+        # 키 교체로 인증 방식이 바뀔 수 있다(레거시 키 → 역할 위임). tags의 힌트도 같이 갱신해야
+        # 화면 배지가 실제 payload와 어긋나지 않는다.
+        credential.tags = {**(credential.tags or {}), "auth_type": auth_type_of(payload.secret_payload)}
         ciphertext, nonce = encrypt_credential_json(payload.secret_payload)
         credential.encrypted_payload = ciphertext
         credential.encryption_nonce = nonce
@@ -383,7 +499,7 @@ def patch_credential(
 
     db.commit()
     db.refresh(credential)
-    return CredentialResponse(data=_serialize_credential(credential))
+    return CredentialResponse(data=_serialize_credential(credential, verification))
 
 
 @router.post("/credentials/{credential_id}/verify", response_model=VerifyResponse)
@@ -429,6 +545,8 @@ def verify_credential_endpoint(
             verified=credential.verified,
             verified_at=iso_z(credential.verified_at),
             permission_scope=credential.permission_scope,
+            verification_error_code=verification.error_code,
+            verification_error_message=_verification_message(verification.error_code),
         )
     )
 

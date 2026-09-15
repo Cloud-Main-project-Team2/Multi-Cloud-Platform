@@ -30,14 +30,36 @@ _DEFAULT_SCOPE = {
     "cost_read": False,
 }
 
-REQUIRED_SECRET_FIELDS: dict[str, set[str]] = {
-    "aws": {"access_key_id", "secret_access_key"},
-    "azure": {"client_id", "client_secret", "tenant_id"},
+# secret_payload는 `auth_type`으로 종류를 구분한다. 필드가 없으면 레거시(장기 키)로 본다 —
+# 기존에 등록된 credential과 `seed_mock_data.py`의 목업이 전부 그 형태라, 이 기본값이 곧
+# "기존 데이터는 하나도 건드리지 않는다"는 보장이다(2026-09-15 결정, CLAUDE.md 참고).
+AUTH_TYPE_ACCESS_KEY = "access_key"
+AUTH_TYPE_ASSUME_ROLE = "assume_role"
+
+REQUIRED_SECRET_FIELDS: dict[tuple[str, str], set[str]] = {
+    ("aws", AUTH_TYPE_ACCESS_KEY): {"access_key_id", "secret_access_key"},
+    # 역할 위임 방식. 여기 담기는 값은 둘 다 그 자체로는 아무 권한이 없다 — 역할을 빌리려면
+    # 우리 플랫폼 신원으로 STS를 호출해야 하고, 그 신원은 payload 안에 없다.
+    ("aws", AUTH_TYPE_ASSUME_ROLE): {"role_arn", "external_id"},
+    ("azure", AUTH_TYPE_ACCESS_KEY): {"client_id", "client_secret", "tenant_id"},
     # GCP는 서비스 계정 키 JSON을 통째로 저장한다. `token_uri`는 google-auth의
     # `from_service_account_info()`가 필수로 요구하는 필드라서 반드시 함께 받아야 한다 —
     # 빠지면 키가 유효해도 `MalformedError`로 검증이 실패한다(2026-09-11 실제로 겪은 버그).
-    "gcp": {"type", "client_email", "private_key_id", "private_key", "token_uri"},
+    ("gcp", AUTH_TYPE_ACCESS_KEY): {"type", "client_email", "private_key_id", "private_key", "token_uri"},
 }
+
+# provider별로 허용하는 auth_type. Azure/GCP는 이번 범위에서 위임 방식을 구현하지 않는다
+# (세 CSP의 위임 모델이 서로 다른 물건이라 "3사 동일 맵핑"을 목표로 두지 않기로 결정).
+SUPPORTED_AUTH_TYPES: dict[str, tuple[str, ...]] = {
+    "aws": (AUTH_TYPE_ACCESS_KEY, AUTH_TYPE_ASSUME_ROLE),
+    "azure": (AUTH_TYPE_ACCESS_KEY,),
+    "gcp": (AUTH_TYPE_ACCESS_KEY,),
+}
+
+
+def auth_type_of(secret_payload: dict) -> str:
+    """payload가 어떤 인증 방식인지 판별한다. 명시가 없으면 레거시(장기 키)."""
+    return secret_payload.get("auth_type") or AUTH_TYPE_ACCESS_KEY
 
 
 @dataclass
@@ -48,8 +70,17 @@ class VerificationResult:
 
 
 def validate_secret_payload(provider: str, secret_payload: dict) -> None:
-    required = REQUIRED_SECRET_FIELDS[provider]
-    missing = sorted(required - secret_payload.keys())
+    auth_type = auth_type_of(secret_payload)
+    if auth_type not in SUPPORTED_AUTH_TYPES[provider]:
+        raise ApiError(
+            422,
+            "VALIDATION_ERROR",
+            f"{provider}는 auth_type={auth_type}을 지원하지 않습니다.",
+            details=[{"field": "secret_payload.auth_type", "reason": "unsupported"}],
+        )
+
+    required = REQUIRED_SECRET_FIELDS[(provider, auth_type)]
+    missing = sorted(f for f in required if not secret_payload.get(f))
     if missing:
         raise ApiError(
             422,

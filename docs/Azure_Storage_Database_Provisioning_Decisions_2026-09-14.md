@@ -1,7 +1,7 @@
 # Azure Storage Account / Database 프로비저닝 구현 결정사항 (2026-09-14)
 
 > 작성자: 이승현(`seunghyun/be-azure-db-storage`). AWS(S3/RDS)·GCP(Cloud SQL/Cloud Storage)
-> 러너 구현 패턴과 `docs/멀티클라우드 3사 기능 맵핑 — 설정값 입력 범위 (2026-09-10).md`를 기준으로
+> 러너 구현 패턴과 `docs/Multicloud_Provider_Feature_Mapping_2026-09-10.md`를 기준으로
 > Azure Storage Account(`storage_account`)·Database(`sql_database`, MySQL/PostgreSQL/SQL Server
 > 3엔진)를 구현하면서, **팀 문서에 명시되지 않아 직접 판단해서 정한 것들**을 정리한다. 문제가
 > 있다고 판단되면 팀 리뷰에서 지적해달라 — 확정된 팀 정책이 아니라 "일단 이렇게 정하고 진행했다"는

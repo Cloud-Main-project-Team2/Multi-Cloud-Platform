@@ -1,7 +1,7 @@
 # terraform
 
 프로비저닝 "생성" 전용 Terraform 모듈 모음. 기존 리소스의 조회·시작·중지·삭제에는 쓰지 않는다
-(`docs/01_API_명세서_v1.1.md` 10절).
+(`docs/01_API_Specification_v1.1.md` 10절).
 
 ```
 terraform/

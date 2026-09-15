@@ -20,8 +20,10 @@ VALID_SECRET = {
     "tenant_id": "tenant-1",
     "client_id": "client-1",
     "client_secret": "supersecretvalue",
-    "subscription_id": "sub-1",
 }
+# 구독 ID는 secret_payload가 아니라 cloud_accounts.external_account_id에서 오고, 라우터가
+# project_id로 넘긴다(2026-09-15 수정 — _credential_env() 참고).
+VALID_PROJECT_ID = "sub-1"
 
 
 def test_validate_spec_accepts_valid_input():
@@ -95,11 +97,13 @@ def test_run_calls_run_apply_with_arm_credential_env_and_password_var(monkeypatc
         common_spec=VALID_COMMON,
         provider_spec=VALID_PROVIDER,
         secret_payload=VALID_SECRET,
+        project_id=VALID_PROJECT_ID,
     )
 
     assert result.success is True
     assert captured["module_dir"].name == "mysql"
     assert captured["credential_env"]["ARM_TENANT_ID"] == "tenant-1"
+    assert captured["credential_env"]["ARM_SUBSCRIPTION_ID"] == VALID_PROJECT_ID
     assert captured["credential_env"]["TF_VAR_admin_password"] == "S3cure!Pass"
     assert "S3cure!Pass" in captured["secrets"]
 
@@ -123,6 +127,23 @@ def test_run_returns_failed_result_on_missing_credential_fields(tmp_path):
         common_spec=VALID_COMMON,
         provider_spec=VALID_PROVIDER,
         secret_payload={"tenant_id": "tenant-1"},
+        project_id=VALID_PROJECT_ID,
     )
     assert result.success is False
     assert result.error_code == "CREDENTIAL_VERIFICATION_FAILED"
+
+
+def test_run_returns_failed_result_when_project_id_missing_even_with_full_secret(tmp_path):
+    # 회귀 테스트(2026-09-15) — secret_payload는 완전해도 project_id(구독 ID)가 안 넘어오면
+    # 실패해야 한다. 마이페이지 UI 경로에서 실제로 겪었던 버그를 고정한다.
+    result = azure_database_provisioning.run(
+        job_id=1,
+        workspace_dir=tmp_path,
+        common_spec=VALID_COMMON,
+        provider_spec=VALID_PROVIDER,
+        secret_payload=VALID_SECRET,
+        project_id=None,
+    )
+    assert result.success is False
+    assert result.error_code == "CREDENTIAL_VERIFICATION_FAILED"
+    assert "subscription_id" in result.error_message
