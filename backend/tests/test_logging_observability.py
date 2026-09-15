@@ -35,7 +35,7 @@ def test_access_line_has_timestamp_level_and_request_fields(client):
         client.get("/health")
 
     line = lines[-1]
-    assert line["ts"].endswith("Z")
+    assert line["ts"].endswith("+09:00")  # 로그는 한국 시간으로 찍는다
     assert line["level"] == "INFO"
     assert line["logger"] == "access"
     assert (line["method"], line["path"], line["status"]) == ("GET", "/health", 200)

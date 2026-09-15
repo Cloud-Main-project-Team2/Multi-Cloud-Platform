@@ -45,6 +45,9 @@ services:
       TERRAFORM_WORKSPACES_DIR: /app/terraform_workspaces
       TERRAFORM_PLUGIN_CACHE_DIR: /app/terraform_plugin_cache
       LOG_DIR: ${LOG_DIR:-/app/logs}
+      # 컨테이너 콘솔 출력용. 로그 파일의 ts는 이 값과 무관하게 app/logging_config.py가
+      # 고정 오프셋(+09:00)으로 찍는다(slim 이미지에 tzdata가 없어도 되도록).
+      TZ: ${TZ:-Asia/Seoul}
     volumes:
       - terraform_workspaces:/app/terraform_workspaces
       - terraform_plugin_cache:/app/terraform_plugin_cache
@@ -71,9 +74,14 @@ services:
   web:
     image: nginx:1.27-alpine
     restart: unless-stopped
+    # nginx의 $time_iso8601은 컨테이너 로컬 시각을 쓴다 — api 로그와 시간대를 맞춘다.
+    environment:
+      TZ: ${TZ:-Asia/Seoul}
     volumes:
       - ./frontend:/usr/share/nginx/html:ro
       - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+      # 엣지 로그도 같은 자리에 모은다 — logs/nginx/access.log (JSON Lines, api와 동일 포맷)
+      - ./logs/nginx:/var/log/nginx
     ports:
       - "8080:80"
     depends_on:

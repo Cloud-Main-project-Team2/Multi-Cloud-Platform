@@ -74,6 +74,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 
 | AWS 인증 방식 전환 — Access Key 저장 → 역할 위임(AssumeRole) 임시 자격증명 | `solcho/be-assume-role` | 조은솔 | in progress |
 | 로깅 보강 Phase 1 — ts/level·예외 로깅·백그라운드 태스크·로그 영속화 | `solcho/be-logging-hardening` | 조은솔 | in progress |
+| 로깅 보강 Phase 2 — 도메인 이벤트·프론트 오류 수집(`/client-logs`)·nginx JSON 로그 | `solcho/be-logging-coverage` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -451,7 +452,13 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   있었으므로(§18) 새로 만들지 않고 **관제에 쓸 수 없게 만들던 구멍들**을 막았다. 관제 방식은
   "우리가 서버에서 로그 파일을 직접 본다"로 확정 — Loki/Grafana나 자체 관제 화면은 도입하지 않는다.
   - **모든 라인에 `ts`/`level`/`logger`를 넣는다**: 포맷터가 `"%(message)s"`뿐이라 그 전까지
-    **어느 줄에도 시각이 없었다**. 시각 없는 로그는 관제에 쓸 수 없다. 포맷은 JSON Lines를 유지
+    **어느 줄에도 시각이 없었다**. 시각 없는 로그는 관제에 쓸 수 없다. `ts`는 **KST(+09:00)**다
+    (2026-09-15 사용자 요청) — 로그는 사람이 읽는 물건이고 관제하는 사람이 서울에 있어 UTC면
+    매번 9시간을 암산해야 한다. `zoneinfo`가 아니라 **고정 오프셋**을 쓴다: 한국은 서머타임이
+    없어 +09:00이 언제나 정확하고 slim 이미지에 tzdata가 없어도 동작한다(`LOG_TZ_OFFSET_HOURS`로
+    조정 가능, nginx는 `TZ` env). **API 응답·DB 시각은 UTC 그대로 둔다**(`serialization.iso_z`)
+    — 그쪽은 기계가 읽는 계약이다. 프론트 리포터의 `occurred_at`도 같은 모양(로컬+오프셋)으로
+    맞춘다 — `toISOString()`(UTC)을 쓰면 한 줄 안에서 `ts`와 9시간 어긋나 보인다. 포맷은 JSON Lines를 유지
     한다 — redaction이 "키 이름" 기준이라 구조화가 필요하고, `jq`로 거르는 쪽이 tail보다 쓸모 있다.
     `access.log`의 `level`은 상태코드로 갈린다(5xx=ERROR, 4xx=WARNING) — `jq 'select(.level=="ERROR")'`
     하나로 장애만 뽑기 위해서다.
@@ -483,8 +490,51 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
     `LOG_DIR`을 임시 디렉터리로 돌려 **테스트 실행이 실제 `logs/`를 오염시키지 않게** 한다.
   - **검증**: backend 테스트 462개 통과, 실 스택 재빌드 후 `service.started`·`http.api_error`(401)·
     `mail.sent`·access 라인(200/401/409)이 호스트 `logs/`에 실제로 쌓이는 것까지 확인.
-  - **Phase 2(미착수)**: 도메인 이벤트 주입(`provisioning.job.*`/`sync.job.*`/`terraform.*`/`auth.*`),
-    프론트 에러 수집(`POST /client-logs` + `window.onerror`, **에러만**), nginx JSON access log.
+  - **Phase 2**: 아래 항목 참고(`solcho/be-logging-coverage`).
+- **로깅/관제 Phase 2(2026-09-15, `solcho/be-logging-coverage`)**: Phase 1이 만든 틀 위에 "무엇을
+  남길지"를 채웠다. 브랜치는 Phase 1 위에 쌓여 있으므로 **`solcho/be-logging-hardening`을 먼저
+  `main`에 병합한 뒤** 이 브랜치를 병합한다.
+  - **기록 대상 선정 기준 — access.log로 이미 보이는 것은 중복 기록하지 않는다**: 모든 오류 응답은
+    Phase 1의 `http.api_error`가 path·status·error_code로 남긴다. 그래서 도메인 이벤트는 *그것만으로
+    알 수 없는 것*만 남긴다 — 로그인 **성공**(access 라인의 user_id가 null이라 누가 들어왔는지 모른다),
+    로그인 **실패의 시도 이메일**(401 줄에는 없다), job 생명주기, terraform 단계별 소요시간.
+  - **종결 지점 하나만 잡는다**: 프로비저닝은 권한·복호화·러너 없음·terraform 실패로 종결 경로가
+    여러 갈래인데 전부 `_finalize_job()`을 지나므로 거기 한 곳에서
+    `provisioning.job.{succeeded,failed}`를 남긴다(취소는 `_finalize_job`을 안 거쳐 별도 2곳).
+  - **terraform stdout/stderr는 로그에 남기지 않는다**: `_run()`에는 redact 대상 목록(`secrets`)이
+    없어 안전하게 자를 수 없다. 여기서는 `terraform.command`로 **어느 단계가·얼마나 걸려·어떤
+    종료코드로** 끝났는지만 남기고, 실패 사유는 호출부가 `_safe_error_message()`로 정제해 job에
+    저장한 값이 `provisioning.job.failed`의 `error_message`로 실린다(이미 redact된 값).
+  - **동기화는 개수까지 같이 남긴다**: `discover_resources()`가 리전/서비스별 예외를 삼켜서
+    **CSP 호출이 통째로 실패해도 대개 "0건 발견 success"로 보인다**(기존 결정 기록 참고). status만
+    남기면 판단이 안 되므로 `sync.item.finished`에 discovered/created/updated/stale 개수를 넣는다.
+  - **프론트 오류 수집 `POST /api/v1/client-logs`**: **에러만** 받는다(행동 추적 없음).
+    - **인증은 선택**이다 — 로그인 화면에서 난 에러도 받아야 하고, 토큰이 썩은 상황 자체가
+      보고 싶은 사건이라 잘못된 토큰도 401로 막지 않고 익명으로 받는다.
+    - **한도 초과는 429가 아니라 204로 조용히 버린다**: 429를 주면 그 응답이 다시
+      `http.api_error` 한 줄을 만들어 **로그 폭탄이 배가된다**. IP당 60건/분(단일 프로세스 전제 —
+      `sync_jobs._CANCEL_REQUESTED`와 같은 종류의 제약).
+    - 브라우저가 보낸 값은 신뢰하지 않는다 — 배치 10건·message 500자·stack 4000자로 스키마에서
+      자른다. 프론트도 같은 에러는 페이지당 1회, 최대 20건만 보낸다.
+    - **`page_url`은 쿼리스트링을 떼고 보낸다** — `password-reset.html?token=...`이 로그에 남으면
+      안 된다.
+  - **프론트에서 보내는 API 실패는 5xx·네트워크 단절·400/422뿐**: 로그인 실패(401)·중복 이메일
+    (409) 같은 정상적인 사용자 오류까지 보내면 백엔드 `http.api_error`와 중복되고 노이즈만 된다.
+    네트워크 단절은 **서버에 아무 기록도 남지 않는 유일한 사건**이라 반드시 포함한다.
+  - **프론트↔백엔드 상관관계**: `api.js`가 실패 응답의 `X-Request-Id`를 읽어 리포트에 실어 보낸다
+    (`server_request_id`). 브라우저에서 본 오류 한 건을 백엔드 로그의 같은 `request_id` 줄과 이어
+    볼 수 있다 — `jq -c 'select(.request_id=="<id>" or .server_request_id=="<id>")' logs/*.log`.
+  - **리포터는 자기 실패를 리포트하지 않는다**: 수집 요청이 실패하면 조용히 버린다. API 서버가
+    죽었을 때 리포트→실패→리포트 무한 루프가 생기기 때문.
+  - **nginx는 파일과 stdout에 이중으로 남긴다**: 공식 이미지가 `/var/log/nginx/access.log`를
+    `/dev/stdout`으로 심볼릭 링크해 둬서, 디렉터리를 바인드 마운트하면 그 링크가 실제 파일로
+    대체돼 `docker compose logs web`이 비게 된다. `access_log` 지시자를 두 줄 써서 둘 다 남긴다.
+    포맷은 백엔드와 같은 JSON Lines(`map $status`로 level까지 동일하게 맞춤).
+  - **검증**: backend 테스트 468개 통과(client-logs 6개 신규), 실 스택에서 `auth.login_failed`
+    (사유 `bad_password`)·`auth.login_succeeded`·`client.error`·nginx 404 라인이 실제로 쌓이는 것
+    확인. 프론트 JS 2개는 `node --check`로 문법 검증(브라우저 실동작은 화면에서 확인 필요).
+  - **남은 것**: 로그 보존/아카이브 정책(현재 회전본 5개 = 약 100MB 상한), 임계치 알림(현재는
+    사람이 `tail`/`jq`로 본다), `agent.py`(AI 어시스턴트) 호출 로깅.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 

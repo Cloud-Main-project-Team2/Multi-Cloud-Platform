@@ -21,7 +21,7 @@ from sqlalchemy.orm import Session
 from app.db import SessionLocal, get_db
 from app.deps import get_current_user
 from app.errors import ApiError, validation_error
-from app.logging_config import log_background_task
+from app.logging_config import log_background_task, log_business_event
 from app.models import CloudAccount, Credential, Resource, ResourceSyncJob, ResourceSyncJobItem, ServiceCatalog, User
 from app.resource_sync import DiscoveredResource, SyncError, discover_resources
 from app.schemas.sync_jobs import (
@@ -302,6 +302,22 @@ def _run_sync_job_inner(job_id: int) -> None:
                 continue
             account = db.get(CloudAccount, item.cloud_account_id)
             _process_sync_item(db, item, account)
+            # 항목별 결과를 한 줄로 남긴다 — CSP 호출 실패는 대부분 "0건 발견"으로 보이기 때문에
+            # (discover_resources가 리전/서비스별로 예외를 삼킨다) 개수까지 같이 봐야 판단이 된다.
+            log_business_event(
+                "sync.item.finished",
+                level="INFO" if item.status == "success" else "ERROR",
+                job_id=job_id,
+                item_id=item.id,
+                provider=account.provider if account else None,
+                cloud_account_id=item.cloud_account_id,
+                status=item.status,
+                error_code=item.error_code,
+                resources_discovered=item.resources_discovered,
+                resources_created=item.resources_created,
+                resources_updated=item.resources_updated,
+                resources_marked_stale=item.resources_marked_stale,
+            )
 
         db.refresh(job)
         if job_id in _CANCEL_REQUESTED:

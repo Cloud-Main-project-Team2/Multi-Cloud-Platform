@@ -7,7 +7,12 @@
 
 두 파일 모두 **JSON Lines**다. 사람이 tail로 훑는 것보다 `jq`로 거르는 쪽이 관제에 쓸모 있고,
 redaction이 "키 이름" 기준이라 구조화된 형태를 유지해야 하기 때문이다. 모든 라인은
-`ts`(UTC ISO8601) / `level` / `logger`로 시작한다 — 시각 없는 로그는 관제에 쓸 수 없다.
+`ts` / `level` / `logger`로 시작한다 — 시각 없는 로그는 관제에 쓸 수 없다.
+
+`ts`는 **한국 시간(+09:00)**이다. 로그는 사람이 읽는 물건이고, 관제하는 사람이 서울에 있으니
+UTC로 적어두면 매번 9시간을 암산해야 한다. 오프셋을 문자열에 그대로 남기므로 나중에 UTC나
+다른 시간대와 비교해도 모호하지 않다. **API 응답·DB의 시각은 UTC 그대로다**(`serialization.iso_z`)
+— 그쪽은 기계가 읽는 계약이라 건드리지 않는다.
 """
 
 from __future__ import annotations
@@ -25,6 +30,25 @@ from logging.handlers import RotatingFileHandler
 from typing import Any
 
 LOG_DIR = os.environ.get("LOG_DIR", "logs")
+# 10MB × 5 = 파일당 최대 약 50MB, 두 로거 합쳐 100MB 정도를 디스크 상한으로 본다.
+MAX_BYTES = 10 * 1024 * 1024
+BACKUP_COUNT = 5
+
+
+def _log_timezone() -> dt.timezone:
+    """로그 타임스탬프의 시간대. 기본 KST(+09:00).
+
+    `zoneinfo`가 아니라 고정 오프셋을 쓰는 이유: 한국은 서머타임이 없어 +09:00이 언제나 정확하고,
+    slim 계열 이미지에 tzdata가 없어도 동작한다.
+    """
+    try:
+        offset_hours = float(os.environ.get("LOG_TZ_OFFSET_HOURS", "9"))
+    except ValueError:
+        offset_hours = 9.0
+    return dt.timezone(dt.timedelta(hours=offset_hours))
+
+
+LOG_TZ = _log_timezone()
 # 10MB × 5 = 파일당 최대 약 50MB, 두 로거 합쳐 100MB 정도를 디스크 상한으로 본다.
 MAX_BYTES = 10 * 1024 * 1024
 BACKUP_COUNT = 5
@@ -64,7 +88,8 @@ def _redact(value: Any) -> Any:
 
 
 def _now() -> str:
-    return dt.datetime.now(dt.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    # 예: 2026-09-15T22:27:40.917+09:00 — 오프셋을 남겨 다른 시간대와 비교해도 모호하지 않게 한다.
+    return dt.datetime.now(LOG_TZ).isoformat(timespec="milliseconds")
 
 
 def _handler(filename: str) -> logging.Handler:

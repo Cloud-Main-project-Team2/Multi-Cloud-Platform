@@ -25,6 +25,7 @@ from app.config import get_settings
 from app.db import get_db
 from app.deps import get_current_user
 from app.errors import ApiError, validation_error
+from app.logging_config import log_business_event
 from app.mailer import send_email
 from app.models import EmailVerification, PasswordResetToken, RefreshToken, User
 from app.schemas.auth import (
@@ -124,12 +125,18 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
     user = db.query(User).filter_by(normalized_email=normalized_email).one_or_none()
 
     if user is None or not user.password_hash or not verify_password(payload.password, user.password_hash):
+        log_business_event(
+            "auth.login_failed", level="WARNING", email=normalized_email,
+            reason="no_such_user" if user is None else "bad_password",
+        )
         raise ApiError(401, "INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.")
     if user.status == "withdrawn":
+        log_business_event("auth.login_failed", level="WARNING", email=normalized_email, reason="withdrawn")
         raise ApiError(401, "USER_WITHDRAWN", "탈퇴한 계정입니다.")
 
     data = _build_session_data(db, user)
     db.commit()
+    log_business_event("auth.login_succeeded", user_id=user.id, email=user.email)
     return LoginResponse(data=data)
 
 
@@ -154,6 +161,7 @@ def refresh(payload: RefreshRequest, db: Session = Depends(get_db)) -> RefreshRe
     row.revoked_at = _now()
     data = _build_session_data(db, user)
     db.commit()
+    log_business_event("auth.refresh_rotated", user_id=user.id)
     return RefreshResponse(data=data)
 
 
@@ -313,6 +321,7 @@ def sign_up(payload: SignUpRequest, db: Session = Depends(get_db)) -> SignUpResp
         raise ApiError(409, "EMAIL_ALREADY_EXISTS", "이미 사용 중인 이메일입니다.") from exc
     db.refresh(user)
 
+    log_business_event("auth.signed_up", user_id=user.id, email=user.email)
     return SignUpResponse(data=_serialize_user(user))
 
 
@@ -381,4 +390,5 @@ def confirm_password_reset(
         rt.revoked_at = now
     db.commit()
 
+    log_business_event("auth.password_reset_completed", user_id=user.id)
     return MessageResponse(data=MessageData(message="비밀번호가 변경되었습니다. 다시 로그인해 주세요."))

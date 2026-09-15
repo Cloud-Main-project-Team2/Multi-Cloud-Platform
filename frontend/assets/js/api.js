@@ -121,11 +121,22 @@ window.MCPApi = (function () {
             e.code = err.code;
             e.details = err.details;
             e.status = res.status;
+            // 서버가 모든 응답에 붙이는 X-Request-Id. 오류 리포트에 실어 보내면 프론트에서 본
+            // 실패 한 건을 백엔드 access.log/app.log의 같은 request_id 줄과 이어볼 수 있다.
+            e.requestId = res.headers.get("X-Request-Id");
             throw e;
           }
           return json ? json.data : null;
         });
     });
+  }
+
+  function reportFailure(path, e) {
+    if (window.MCPErrorReporter && window.MCPErrorReporter.reportApiError) {
+      try {
+        window.MCPErrorReporter.reportApiError(path, e);
+      } catch (ignored) {}
+    }
   }
 
   function request(path, options) {
@@ -144,10 +155,12 @@ window.MCPApi = (function () {
             })
             .catch(function () {
               clearSession();
+              reportFailure(path, e);
               throw e;
             });
         }
       }
+      reportFailure(path, e);
       throw e;
     });
   }

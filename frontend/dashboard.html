@@ -19,6 +19,8 @@
   <!-- 데모 인증 가드: 세션 없으면 login.html로 리다이렉트(본문 렌더 전) -->
   <script src="assets/js/api.js"></script>
   <script src="assets/js/auth-guard.js"></script>
+  <!-- 오류 리포터: window.onerror/rejection을 서버 로그로 보낸다. 다른 스크립트보다 먼저 로드한다. -->
+  <script src="assets/js/error-reporter.js"></script>
 </head>
 <body>
   <div class="app-shell">
