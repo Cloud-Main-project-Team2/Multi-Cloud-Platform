@@ -17,10 +17,13 @@ from app.db import get_db
 from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError, validation_error
 from app.models import CloudAccount, Credential, Resource, ServiceCatalog, User
+from app.providers import aws as aws_provider
 from app.resource_actions import ResourceActionError, perform_action, supported_actions
 from app.schemas.resources import (
     ActionResultError,
     ActionResultItem,
+    CliAccessData,
+    CliAccessResponse,
     CloudAccountBrief,
     CostSummary,
     ProviderCount,
@@ -261,6 +264,93 @@ def get_resource(
         raise ApiError(404, "RESOURCE_NOT_FOUND", "리소스를 찾을 수 없습니다.")
     resource, account, service = row
     return ResourceResponse(data=_serialize_resource(resource, account, service))
+
+
+# --- POST /resources/{id}/cli-access ----------------------------------------------------
+# SSH 키 페어(정적 비밀키)를 새로 만드는 대신, STS GetSessionToken으로 짧게 만료되는 임시
+# AWS CLI 자격증명을 발급해 SSM Session Manager로 접속하게 한다(2026-09-15 결정 — 마이페이지
+# 크리덴셜을 IAM Role/MFA로 옮기려는 방향과 같은 원칙). 인스턴스에 SSM 접속 권한을 주는 IAM
+# 인스턴스 프로파일은 `terraform/aws/ec2/main.tf`(aws_iam_instance_profile.ssm)가 붙인다.
+
+
+@router.post("/resources/{resource_id}/cli-access", response_model=CliAccessResponse)
+def issue_resource_cli_access(
+    resource_id: str,
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+    _confirmed: None = Depends(require_confirmation),
+) -> CliAccessResponse:
+    rid = _parse_id(resource_id)
+    row = (
+        db.query(Resource, CloudAccount, ServiceCatalog)
+        .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
+        .join(ServiceCatalog, Resource.service_catalog_id == ServiceCatalog.id)
+        .filter(Resource.id == rid, CloudAccount.user_id == current_user.id)
+        .one_or_none()
+    )
+    if row is None:
+        raise ApiError(404, "RESOURCE_NOT_FOUND", "리소스를 찾을 수 없습니다.")
+    resource, account, service = row
+
+    # 지금은 AWS EC2 인스턴스만 SSM 인스턴스 프로파일이 붙어 있어 지원 대상이다.
+    if account.provider != "aws" or service.service_code != "ec2" or resource.original_resource_type == "EBS Volume":
+        raise ApiError(422, "UNSUPPORTED_OPERATION", "이 리소스는 AWS CLI 접속을 지원하지 않습니다.")
+    if resource.deleted_at is not None:
+        raise ApiError(409, "RESOURCE_ALREADY_DELETED", "삭제된 리소스입니다.")
+
+    credential = (
+        db.query(Credential)
+        .filter(Credential.cloud_account_id == account.id, Credential.verified.is_(True))
+        .order_by(Credential.display_order, Credential.id)
+        .first()
+    )
+    if credential is None:
+        raise ApiError(422, "CLOUD_PERMISSION_DENIED", "검증된 자격 증명이 없습니다 — 마이페이지에서 검증하세요.")
+
+    try:
+        secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+    except CredentialEncryptionError:
+        raise ApiError(422, "PROVIDER_API_ERROR", "자격 증명을 복호화하지 못했습니다.")
+
+    try:
+        session = aws_provider.issue_cli_session(secret_payload)
+    except ResourceActionError as exc:
+        raise ApiError(502, "PROVIDER_API_ERROR", "AWS에서 임시 자격 증명을 발급받지 못했습니다.") from exc
+    finally:
+        del secret_payload
+
+    region = resource.region or "ap-northeast-2"
+    command = (
+        f"export AWS_ACCESS_KEY_ID={session['access_key_id']}\n"
+        f"export AWS_SECRET_ACCESS_KEY={session['secret_access_key']}\n"
+        f"export AWS_SESSION_TOKEN={session['session_token']}\n"
+        f"aws ssm start-session --target {resource.external_resource_id} --region {region}"
+    )
+
+    record_audit_event(
+        db,
+        actor_user_id=current_user.id,
+        action="resource.cli_access",
+        target_type="resource",
+        target_id=str_id(resource.id),
+        result="success",
+        provider=account.provider,
+        request_id=_request_id(request),
+    )
+    db.commit()
+
+    return CliAccessResponse(
+        data=CliAccessData(
+            access_key_id=session["access_key_id"],
+            secret_access_key=session["secret_access_key"],
+            session_token=session["session_token"],
+            expires_at=iso_z(session["expires_at"]),
+            region=region,
+            instance_id=resource.external_resource_id,
+            command=command,
+        )
+    )
 
 
 # --- POST /resources/action -------------------------------------------------------------

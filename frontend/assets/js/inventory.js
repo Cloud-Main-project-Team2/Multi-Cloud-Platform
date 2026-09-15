@@ -46,6 +46,11 @@
   var modalCost = document.getElementById("inv-modal-cost");
   var modalTags = document.getElementById("inv-modal-tags");
   var modalConsole = document.getElementById("inv-modal-console");
+  var modalCliBtn = document.getElementById("inv-modal-cli-access");
+  var modalCliResult = document.getElementById("inv-modal-cli-result");
+  var modalCliCommand = document.getElementById("inv-modal-cli-command");
+  var modalCliExpiry = document.getElementById("inv-modal-cli-expiry");
+  var modalCliCopy = document.getElementById("inv-modal-cli-copy");
 
   var PROVIDER_LABELS = { aws: "AWS", azure: "Azure", gcp: "GCP" };
   var PROVIDER_ICON = { aws: "assets/imgs/aws.png", azure: "assets/imgs/azure.png", gcp: "assets/imgs/gcp.png" };
@@ -496,6 +501,8 @@
     modalSubtitle.textContent = "";
     [modalIdEl, modalAccount, modalStatus, modalSeen, modalCost, modalTags].forEach(function (el) { el.textContent = "—"; });
     modalConsole.href = "#";
+    modalCliBtn.hidden = true;
+    modalCliResult.classList.add("hidden");
 
     MCPApi.request("/resources/" + id).then(function (r) {
       modalTitle.textContent = r.name || r.external_resource_id;
@@ -508,11 +515,39 @@
       var tagText = Object.keys(r.tags || {}).map(function (k) { return k + ":" + r.tags[k]; }).join(" · ");
       modalTags.textContent = tagText || "없음";
       modalConsole.href = consoleUrl(r);
+      // AWS EC2 인스턴스만 SSM 인스턴스 프로파일이 붙어 있어 CLI 접속을 지원한다.
+      modalCliBtn.hidden = !(r.cloud_account.provider === "aws" && r.service.service_code === "ec2" &&
+        r.original_resource_type !== "EBS Volume");
     }).catch(function (err) {
       modalTitle.textContent = "불러오지 못했습니다";
       modalSubtitle.textContent = errorMessage(err);
     });
   }
+
+  // --- AWS CLI(SSM Session Manager) 접속 ------------------------------------------------
+  // 키 페어를 새로 만들지 않고, STS 단기 자격증명을 그때그때 발급받아 SSM으로 접속하게 한다.
+  function runCliAccess() {
+    if (!currentModalResourceId) return;
+    modalCliBtn.disabled = true;
+    modalCliBtn.textContent = "발급 중…";
+    MCPApi.request("/resources/" + currentModalResourceId + "/cli-access", {
+      method: "POST",
+      headers: { "X-Action-Confirmed": "true" },
+    }).then(function (data) {
+      modalCliCommand.textContent = data.command;
+      modalCliExpiry.textContent = formatDateTime(data.expires_at);
+      modalCliResult.classList.remove("hidden");
+    }).catch(function (err) {
+      window.alert("AWS CLI 접속 정보를 발급받지 못했습니다: " + errorMessage(err));
+    }).finally(function () {
+      modalCliBtn.disabled = false;
+      modalCliBtn.textContent = "AWS CLI로 접속";
+    });
+  }
+  modalCliBtn.addEventListener("click", runCliAccess);
+  modalCliCopy.addEventListener("click", function () {
+    if (navigator.clipboard) navigator.clipboard.writeText(modalCliCommand.textContent || "");
+  });
 
   // --- 이벤트 바인딩 --------------------------------------------------------------------
 
