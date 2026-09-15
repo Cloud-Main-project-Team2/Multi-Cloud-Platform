@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     terraform_plugin_cache_dir: str = Field(default="/tmp/terraform-plugin-cache", alias="TERRAFORM_PLUGIN_CACHE_DIR")
     terraform_apply_timeout_seconds: int = Field(default=900, alias="TERRAFORM_APPLY_TIMEOUT_SECONDS")
 
+    # app/agent.py — AI 비용 어시스턴트(OpenAI Chat Completions API). 키가 비어 있으면
+    # /agent/chat이 503(AGENT_NOT_CONFIGURED)을 반환한다(개발 중 키 없이도 나머지 기능은 그대로
+    # 쓸 수 있게).
+    openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
+
 
 @lru_cache
 def get_settings() -> Settings:

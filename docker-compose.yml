@@ -35,6 +35,8 @@ services:
       MAIL_FROM: ${MAIL_FROM:-no-reply@multicloud.example}
       MAIL_USE_TLS: ${MAIL_USE_TLS:-false}
       FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:8080}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o-mini}
       TERRAFORM_WORKSPACES_DIR: /app/terraform_workspaces
       TERRAFORM_PLUGIN_CACHE_DIR: /app/terraform_plugin_cache
     volumes:

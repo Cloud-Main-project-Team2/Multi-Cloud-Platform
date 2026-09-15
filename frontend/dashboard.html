@@ -216,7 +216,46 @@
     </div>
   </div>
 
+  <!-- ===== AI 비용 어시스턴트 — 대시보드에 떠다니는 진입 버튼 + 채팅 모달 ===== -->
+  <button
+    type="button"
+    data-modal-open="#agent-chat-modal"
+    class="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white shadow-lg hover:opacity-90"
+    aria-label="AI 비용 어시스턴트 열기"
+  >
+    💬 AI 비용 어시스턴트
+  </button>
+
+  <div id="agent-chat-modal" data-modal class="hidden fixed inset-0 z-50 flex items-end justify-end bg-black/40 p-4 sm:items-center sm:justify-center">
+    <div class="flex h-[min(680px,85vh)] w-full max-w-md flex-col rounded-2xl border border-border bg-surface shadow-xl">
+      <div class="flex items-center justify-between border-b border-border p-4">
+        <div>
+          <h2 class="text-base font-bold">AI 비용 어시스턴트</h2>
+          <p class="text-xs text-muted-foreground">플랫폼 비용을 비교하고, 절감 방법을 찾아보세요.</p>
+        </div>
+        <button type="button" data-modal-close class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+      </div>
+
+      <div id="agent-chat-messages" class="flex-1 space-y-3 overflow-y-auto p-4 text-sm"></div>
+
+      <form id="agent-chat-form" class="border-t border-border p-3">
+        <div class="flex items-end gap-2">
+          <textarea
+            id="agent-chat-input"
+            rows="2"
+            placeholder="비용 고민이나 비교할 서비스를 입력하세요…"
+            class="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
+          ></textarea>
+          <button type="submit" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary text-white hover:opacity-90" aria-label="전송">↑</button>
+        </div>
+        <p class="mt-1 text-[11px] text-muted-foreground">Enter 전송 · Shift+Enter 줄바꿈</p>
+      </form>
+    </div>
+  </div>
+
   <script src="assets/js/ui.js"></script>
+  <script src="assets/js/modal.js"></script>
   <script src="assets/js/dashboard.js"></script>
+  <script src="assets/js/agent.js"></script>
 </body>
 </html>
