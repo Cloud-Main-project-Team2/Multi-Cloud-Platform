@@ -32,6 +32,26 @@ window.MCPErrorReporter = (function () {
     }
   }
 
+  /* 서버 로그의 ts와 같은 모양(로컬 시각 + 오프셋)으로 맞춘다. toISOString()은 UTC라
+   * 같은 줄 안에서 ts(+09:00)와 occurred_at(Z)이 9시간 어긋나 보인다. */
+  function localIso() {
+    var now = new Date();
+    var offsetMin = -now.getTimezoneOffset();
+    var sign = offsetMin >= 0 ? "+" : "-";
+    var abs = Math.abs(offsetMin);
+    function pad(n, width) {
+      var s = String(n);
+      while (s.length < width) s = "0" + s;
+      return s;
+    }
+    return (
+      now.getFullYear() + "-" + pad(now.getMonth() + 1, 2) + "-" + pad(now.getDate(), 2) +
+      "T" + pad(now.getHours(), 2) + ":" + pad(now.getMinutes(), 2) + ":" + pad(now.getSeconds(), 2) +
+      "." + pad(now.getMilliseconds(), 3) +
+      sign + pad(Math.floor(abs / 60), 2) + ":" + pad(abs % 60, 2)
+    );
+  }
+
   function truncate(value, max) {
     if (value === null || value === undefined) return null;
     return String(value).slice(0, max);
@@ -79,7 +99,7 @@ window.MCPErrorReporter = (function () {
     sent++;
 
     entry.page_url = pageUrl();
-    entry.occurred_at = new Date().toISOString();
+    entry.occurred_at = localIso();
     queue.push(entry);
     schedule();
   }

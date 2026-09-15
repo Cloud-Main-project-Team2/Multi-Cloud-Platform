@@ -27,6 +27,10 @@ docker compose up -d --build           # db · api · web · mailhog 기동
 
 `api` 컨테이너는 로그를 레포 루트 `logs/`에 **JSON Lines**로 남긴다(`docker-compose.yml`이
 `./logs`를 바인드 마운트하므로 `docker exec` 없이 서버에서 바로 읽을 수 있다).
+모든 `ts`는 **한국 시간(+09:00)**이다 — 사람이 읽는 물건이라 암산이 필요 없게 했고, 오프셋을
+남기므로 다른 시간대와 비교해도 모호하지 않다. **API 응답·DB 시각은 UTC 그대로다**(기계가
+읽는 계약이라 건드리지 않는다). 다른 시간대로 운영하려면 `LOG_TZ_OFFSET_HOURS`(api)와
+`TZ`(web) 환경변수를 바꾼다.
 
 | 파일 | 내용 | 한 줄 = |
 |---|---|---|

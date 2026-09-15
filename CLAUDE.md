@@ -452,7 +452,13 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   있었으므로(§18) 새로 만들지 않고 **관제에 쓸 수 없게 만들던 구멍들**을 막았다. 관제 방식은
   "우리가 서버에서 로그 파일을 직접 본다"로 확정 — Loki/Grafana나 자체 관제 화면은 도입하지 않는다.
   - **모든 라인에 `ts`/`level`/`logger`를 넣는다**: 포맷터가 `"%(message)s"`뿐이라 그 전까지
-    **어느 줄에도 시각이 없었다**. 시각 없는 로그는 관제에 쓸 수 없다. 포맷은 JSON Lines를 유지
+    **어느 줄에도 시각이 없었다**. 시각 없는 로그는 관제에 쓸 수 없다. `ts`는 **KST(+09:00)**다
+    (2026-09-15 사용자 요청) — 로그는 사람이 읽는 물건이고 관제하는 사람이 서울에 있어 UTC면
+    매번 9시간을 암산해야 한다. `zoneinfo`가 아니라 **고정 오프셋**을 쓴다: 한국은 서머타임이
+    없어 +09:00이 언제나 정확하고 slim 이미지에 tzdata가 없어도 동작한다(`LOG_TZ_OFFSET_HOURS`로
+    조정 가능, nginx는 `TZ` env). **API 응답·DB 시각은 UTC 그대로 둔다**(`serialization.iso_z`)
+    — 그쪽은 기계가 읽는 계약이다. 프론트 리포터의 `occurred_at`도 같은 모양(로컬+오프셋)으로
+    맞춘다 — `toISOString()`(UTC)을 쓰면 한 줄 안에서 `ts`와 9시간 어긋나 보인다. 포맷은 JSON Lines를 유지
     한다 — redaction이 "키 이름" 기준이라 구조화가 필요하고, `jq`로 거르는 쪽이 tail보다 쓸모 있다.
     `access.log`의 `level`은 상태코드로 갈린다(5xx=ERROR, 4xx=WARNING) — `jq 'select(.level=="ERROR")'`
     하나로 장애만 뽑기 위해서다.
