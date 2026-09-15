@@ -88,7 +88,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 > API 구현 범위 · 프로비저닝 3사 코드 통합
 > **데이터/기타** — 목업·데모 데이터
 
-- **API 형태(2026-09-10)**: 신규 통합 API 명세(`docs/01_API_명세서_v1.1.md`)가 아니라
+- **API 형태(2026-09-10)**: 신규 통합 API 명세(`docs/01_API_Specification_v1.1.md`)가 아니라
   기존에 구현돼 있던 **provider별 개별 엔드포인트**(`/credentials/{provider}`,
   `/provisioning/{provider}/{service}`, `/resources/action` 형태)를 유지하기로 결정.
   이에 따라 그 통합 API 전용으로만 추가됐던 `provisioning_requests`·`resource_types`
@@ -107,7 +107,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   이후 BE API(키 관리/리소스 조회/대시보드)는 이 데이터 위에서 개발·테스트한다.
 - **Azure VM `admin_password` 정책(2026-09-10)**: `frontend/assets/js/provisioning.js`가
   실제로 수집하는 Azure Compute 인증 방식은 SSH 키가 아니라 사용자명/비밀번호다
-  (`adminUsername`/`adminPassword`). `admin_password`는 `01_API_명세서_v1.1.md` 10.3절이
+  (`adminUsername`/`adminPassword`). `admin_password`는 `01_API_Specification_v1.1.md` 10.3절이
   금지하는 "secret"(CSP 계정 자격증명)과는 다른 값(생성될 리소스 자체의 OS 접속 정보)이라고
   판단해 **secret-필드 금지 검사에서 예외로 허용**하기로 결정. 대신 `provisioning_jobs.spec_json`
   (DB 저장, `GET /provisioning/jobs/{id}` 응답)에는 절대 남기지 않고, Terraform에는
@@ -115,13 +115,12 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   `SENSITIVE_PROVIDER_SPEC_FIELDS`). 같은 패턴으로 AWS/GCP compute나 DB 서비스의 master
   password도 처리할 수 있도록 라우터(`app/routers/provisioning.py`)는 실행기가 선언한
   `SENSITIVE_PROVIDER_SPEC_FIELDS`를 범용으로 참조한다.
-- **Compute 공통 설정 필드 확정(2026-09-10)**: `docs/멀티클라우드 3사 기능 맵핑 — 설정값
-  입력 범위 (2026-09-10).md` 1절 + `provisioning.js` 실제 구현 기준으로 azure/vm의
+- **Compute 공통 설정 필드 확정(2026-09-10)**: `docs/Multicloud_Provider_Feature_Mapping_2026-09-10.md` 1절 + `provisioning.js` 실제 구현 기준으로 azure/vm의
   `provider_spec`을 `region`/`instance_type`/`admin_username`/`admin_password`/`image`
   (curated label, publisher/offer/sku/version은 서버가 내부 매핑)로, `common_spec`을
   `name`/`tags`/`inbound_rules`(포트·CIDR 목록)로 확정. `instance_type`은 프론트가
   `Standard_` 접두사 없이 보내므로(`B1s` 등) 서버가 자동 보정한다.
-- **최소 인증(JWT) 구현(2026-09-10, `solcho/be-credentials-api`)**: `01_API_명세서_v1.1.md`
+- **최소 인증(JWT) 구현(2026-09-10, `solcho/be-credentials-api`)**: `01_API_Specification_v1.1.md`
   §5는 회원가입·로그인·비밀번호 재설정·`/me`까지 전체 인증 스펙을 정의하지만, 백엔드에는
   인증이 전혀 구현돼 있지 않았다(프론트 `auth-guard.js`는 `localStorage` 데모 세션일 뿐 실제
   토큰이 아님). credentials API 전체가 소유권 검사(`current_user`)를 전제로 하므로, 이 세션에서
@@ -427,7 +426,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 
 PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫폼에 따라 동적 렌더링하고 입력값을
 전역 상태(`window.provisioningSpec`)에 반영하는 작업. 서버 통신은 없음(Network 탭 요청 0건).
-필드명은 이후 BE 연동을 위해 `01_API_명세서_v1.1.md` §10.3의 `common_spec`/`provider_spec`
+필드명은 이후 BE 연동을 위해 `01_API_Specification_v1.1.md` §10.3의 `common_spec`/`provider_spec`
 구조에 맞춰 잡음(`assets/js/provisioning.js`).
 
 - **사양 등급 → 실제 SKU 매핑**(추상 3등급, `provisioning.js`의 `SPEC_TIERS` 상수):
@@ -488,8 +487,7 @@ PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫�
   인디케이터가 완료(sky)/현재(primary)/대기(muted)를 표시한다. **CDN은 ④ 공통을 건너뛰어** ③ 다음에
   바로 ⑤가 나타난다(`visibleSteps`). ⑥은 검토(선택 요약) + 비교하기/생성하기.
 - **CDN 실입력 폼**: 공통 설정 스텝 없이 ③에서 CDN 선택 시 곧바로 플랫폼별(⑤) 폼만 렌더
-  (AWS→Azure→GCP 순). 필드 확정 근거는 `docs/멀티클라우드 3사 기능 맵핑 — 설정값 입력 범위
-  (2026-09-10).md` **4절 "구현용 필드 확정"(2026-09-11)** — 원칙은 "Terraform으로 설정 가능한
+  (AWS→Azure→GCP 순). 필드 확정 근거는 `docs/Multicloud_Provider_Feature_Mapping_2026-09-10.md` **4절 "구현용 필드 확정"(2026-09-11)** — 원칙은 "Terraform으로 설정 가능한
   항목은 전부 입력받는다". 제외는 **Endpoint(결과값)·Scope(Global 고정)·Raw status(조회전용)**
   세 가지뿐. 3사 필드셋이 완전히 다름:
   - AWS(CloudFront): Origin(필수)·캐시 정책·Path routing·Compression·Viewer Protocol Policy·
@@ -531,7 +529,7 @@ API 연동 없이 JS만으로 완성 가능한 나머지 데모 기능들. 서�
 
 ## Pointer — where the planning docs live
 
-일부 확정 문서는 이제 `docs/`에 들어와 있다: **API 명세서**(`01_API_명세서_v1.1.md`),
+일부 확정 문서는 이제 `docs/`에 들어와 있다: **API 명세서**(`01_API_Specification_v1.1.md`),
 **DB ERD**(`DB_ERD_v1.1.md`), **기능 명세서**(`기능 명세서.html`), **화면설계서**
 (`화면설계서_멀티클라우드_V1.1.html`), **기술 스택**(`기술 스택.md`), **3사 기능 맵핑**
 (`멀티클라우드 3사 기능 맵핑 …`), 프로비저닝 결정사항 문서, 디자인 스크린샷(`design/`).

@@ -15,7 +15,7 @@ Cloud SQL은 "한 Terraform 리소스 타입 + engine 파라미터"로 멀티 �
 추가하지 않기 위해, 이 러너가 `engine` 값에 따라
 `backend/terraform/azure/database/{mysql,postgresql,sql_server}/` 중 하나의 서브모듈을 선택해서
 실행한다(`terraform_runner.py`는 수정하지 않았다 — 모듈 경로를 호출부가 넘기는 기존 구조 그대로 활용).
-자세한 배경은 `docs/Azure Storage·Database 프로비저닝 구현 결정사항 (2026-09-14).md` 참고.
+자세한 배경은 `docs/Azure_Storage_Database_Provisioning_Decisions_2026-09-14.md` 참고.
 
 ## 네트워크 정책 — 비공개 전용(2026-09-14 결정, GCP Cloud SQL과 다름)
 
