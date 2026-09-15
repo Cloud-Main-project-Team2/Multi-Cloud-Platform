@@ -73,6 +73,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 프로비저닝 위저드·대시보드 실 API 연동 — 위저드 실 연동(#39/#40/#43/#49), 대시보드 실데이터(#45) | — | 조은솔/김종국/이승현 | merged |
 
 | AWS 인증 방식 전환 — Access Key 저장 → 역할 위임(AssumeRole) 임시 자격증명 | `solcho/be-assume-role` | 조은솔 | in progress |
+| 로깅 보강 Phase 1 — ts/level·예외 로깅·백그라운드 태스크·로그 영속화 | `solcho/be-logging-hardening` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -88,7 +89,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 > 리소스 동기화 아키텍처
 > **프로비저닝** — API 형태 · Azure VM `admin_password` 정책 · Compute 공통 설정 필드 · AWS/GCP 프로비저닝
 > API 구현 범위 · 프로비저닝 3사 코드 통합
-> **데이터/기타** — 목업·데모 데이터
+> **데이터/기타** — 목업·데모 데이터 · 로깅/관제(Phase 1)
 
 - **API 형태(2026-09-10)**: 신규 통합 API 명세(`docs/01_API_Specification_v1.1.md`)가 아니라
   기존에 구현돼 있던 **provider별 개별 엔드포인트**(`/credentials/{provider}`,
@@ -446,6 +447,44 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
     폼을 연다(위임 credential을 열었는데 액세스 키 칸이 뜨면 교체가 방식 변경으로 잘못 이어진다).
   - **남는 한계(발표에서 먼저 말할 것)**: "비밀키 0개"가 아니라 **"사용자 수만큼 늘던 영구 키
     N개 → 우리 것 1개"**다. 그 1개는 배포 환경을 AWS 위로 옮기면 사라진다.
+- **로깅/관제 Phase 1(2026-09-15, `solcho/be-logging-hardening`)**: 로거·미들웨어 자체는 이미
+  있었으므로(§18) 새로 만들지 않고 **관제에 쓸 수 없게 만들던 구멍들**을 막았다. 관제 방식은
+  "우리가 서버에서 로그 파일을 직접 본다"로 확정 — Loki/Grafana나 자체 관제 화면은 도입하지 않는다.
+  - **모든 라인에 `ts`/`level`/`logger`를 넣는다**: 포맷터가 `"%(message)s"`뿐이라 그 전까지
+    **어느 줄에도 시각이 없었다**. 시각 없는 로그는 관제에 쓸 수 없다. 포맷은 JSON Lines를 유지
+    한다 — redaction이 "키 이름" 기준이라 구조화가 필요하고, `jq`로 거르는 쪽이 tail보다 쓸모 있다.
+    `access.log`의 `level`은 상태코드로 갈린다(5xx=ERROR, 4xx=WARNING) — `jq 'select(.level=="ERROR")'`
+    하나로 장애만 뽑기 위해서다.
+  - **처리되지 않은 예외를 기록한다**: `@app.exception_handler(Exception)`이 500 JSON만 반환하고
+    로그를 남기지 않아, 500의 원인이 uvicorn 콘솔에만 있었고 컨테이너 재시작과 함께 사라졌다.
+    이제 `http.unhandled_exception`을 `exc`(스택트레이스) 필드와 함께 남긴다. `ApiError`도
+    `http.api_error`로 error code를 남긴다 — access.log의 status만으로는 원인을 알 수 없기 때문.
+  - **⚠️ 500이 난 요청은 access.log에 아예 안 남고 있었다**: Starlette의 `ServerErrorMiddleware`가
+    우리 `@app.middleware("http")` **바깥**에 있어서, 예외가 나면 `call_next`가 raise하고 로깅
+    코드에 도달하지 못한다(이번에 테스트로 발견). 미들웨어에서 예외를 잡아 status 500으로 한 줄
+    남기고 그대로 re-raise한다 — 응답 경로는 그대로다.
+  - **백그라운드 태스크의 예외는 어디에도 안 남았다**: `BackgroundTasks`로 도는
+    `_run_provisioning_job`/`_run_sync_job`은 요청 사이클 밖이라 전역 핸들러가 닿지 않는다.
+    `logging_config.log_background_task(task, **fields)` 컨텍스트 매니저로 감싸 start/finish/crash를
+    남긴다. **예외는 기록만 하고 그대로 올린다**(job 상태 전이 로직 불변).
+  - **로그 파일이 컨테이너와 함께 증발했다**: `docker-compose.yml`에 `./logs:/app/logs` **바인드
+    마운트**(named volume 아님 — 호스트에서 바로 `tail -f` 하려고) + `LOG_DIR` env 추가. 회전은
+    5MB×3 → 10MB×5. 컨테이너가 uid 1000으로 돌아 리눅스 서버에서는 `chown 1000:1000 logs`가
+    필요한데, **쓰기 실패 시 stderr로 폴백**해 로깅 때문에 서비스가 기동 못 하는 일은 없게 했다.
+  - **로깅 관례를 하나로 통일**: `mailer.py`/`routers/auth.py`/`providers/session.py`가 stdlib
+    `logging.getLogger()`를 쓰고 있었는데 root 로거 설정이 없어 **INFO는 통째로 버려지고 있었다**
+    (`logger.info("email_sent")`가 어디에도 안 남음). 셋 다 `log_business_event()`로 옮겼고,
+    메일 발송 실패(`mail.failed`)도 남긴다 — 백그라운드 발송이라 실패해도 사용자에게 안 보인다.
+  - **audit_events와 app.log는 역할이 다르다, 합치지 않는다**: `audit_events`(§14)는 "누가 무엇을
+    했는가"를 DB에 남기는 감사 기록이고 app.log는 운영자가 장애를 추적하는 로그다. 감사 기록은
+    사용자에게 보여줄 수 있어야 하고 보존 정책도 다르다.
+  - **테스트는 파일이 아니라 로거를 검증한다**: `tests/test_logging_observability.py`(5개) —
+    임시 핸들러를 달아 결정적으로 만든다(`test_secret_redaction.py`와 동일 방식). `conftest.py`는
+    `LOG_DIR`을 임시 디렉터리로 돌려 **테스트 실행이 실제 `logs/`를 오염시키지 않게** 한다.
+  - **검증**: backend 테스트 462개 통과, 실 스택 재빌드 후 `service.started`·`http.api_error`(401)·
+    `mail.sent`·access 라인(200/401/409)이 호스트 `logs/`에 실제로 쌓이는 것까지 확인.
+  - **Phase 2(미착수)**: 도메인 이벤트 주입(`provisioning.job.*`/`sync.job.*`/`terraform.*`/`auth.*`),
+    프론트 에러 수집(`POST /client-logs` + `window.onerror`, **에러만**), nginx JSON access log.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 

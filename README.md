@@ -23,6 +23,30 @@ docker compose up -d --build           # db · api · web · mailhog 기동
 - `api` 컨테이너는 기동 시 Alembic 마이그레이션 + 목업 시딩을 자동 실행한다.
 - 환경변수 목록·기본값은 [`backend/.env.example`](./backend/.env.example) 참고.
 
+## 로그 (관제)
+
+`api` 컨테이너는 로그를 레포 루트 `logs/`에 **JSON Lines**로 남긴다(`docker-compose.yml`이
+`./logs`를 바인드 마운트하므로 `docker exec` 없이 서버에서 바로 읽을 수 있다).
+
+| 파일 | 내용 | 한 줄 = |
+|---|---|---|
+| `logs/access.log` | 요청 1건 | `ts` `level` `request_id` `method` `path`(템플릿) `status` `duration_ms` `user_id` `client_ip` |
+| `logs/app.log` | 비즈니스 이벤트·에러 | `ts` `level` `event`(`<도메인>.<동작>`) + 이벤트별 필드, 에러는 `exc`(스택트레이스) |
+
+`level`은 `access.log`에서 상태코드로 갈린다(5xx=ERROR, 4xx=WARNING). 회전은 10MB × 5개
+(두 파일 합쳐 디스크 최대 약 100MB). 로그 파일은 git에 커밋하지 않는다(`logs/.gitkeep`만 추적).
+
+```bash
+tail -f logs/app.log | jq -r '"\(.ts) \(.level) \(.event) \(.error_code // "")"'  # 실시간 관제
+jq -c 'select(.level=="ERROR")' logs/app.log | tail -50                             # 최근 에러
+jq -c 'select(.request_id=="<id>")' logs/*.log                                       # 한 요청 추적
+jq -c 'select(.status>=500)' logs/access.log                                         # 5xx만
+jq -s 'map(.duration_ms) | add/length' logs/access.log                               # 평균 응답시간
+```
+
+> 리눅스 서버에 배포할 때는 `chown 1000:1000 logs`가 필요하다(컨테이너가 uid 1000으로 실행).
+> 쓰기 권한이 없으면 서비스가 죽지 않고 로그만 stderr(`docker compose logs api`)로 폴백한다.
+
 ## 디렉토리 구조
 
 ```
