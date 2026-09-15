@@ -206,6 +206,11 @@ def _resource_attrs(
         # (S3/GCS 버킷과 같은 관례 — region은 azure/vm과 달리 계정 자체엔 zone 개념이 없어 그대로 사용).
         account_name = outputs.get("account_name")
         return account_name, "Microsoft.Storage/storageAccounts", provider_spec.get("region"), account_name
+    if provider == "azure" and service_code == "cdn":
+        # AWS CloudFront/GCP Cloud CDN과 같은 이유로 region=None — Front Door는 전역(global)
+        # 리소스다(리소스 그룹 자체엔 location이 있지만 CDN 서비스 성격상 리전 개념이 아니다).
+        route_name = outputs.get("route_name")
+        return route_name, "Microsoft.Cdn/profiles/afdEndpoints", None, route_name
     if provider == "azure":
         # resource_actions.py는 Azure external_resource_id를 ARM 리소스 ID 전체로 가정한다.
         return outputs.get("vm_id"), "Microsoft.Compute/virtualMachines", provider_spec.get("region"), common_spec.get("name")
@@ -234,6 +239,10 @@ def _initial_resource_status(provider: str, service_code: str) -> str:
     if provider == "azure" and service_code == "storage_account":
         # S3 버킷과 같은 원칙 — 시작/중지 개념이 없는 리소스.
         return "AVAILABLE"
+    if provider == "azure" and service_code == "cdn":
+        # CloudFront/Cloud CDN과 동일 관례 — apply가 Front Door 리소스 5개 생성 완료까지
+        # 기다린 뒤 반환한다(시작/중지 개념이 없는 리소스).
+        return "DEPLOYED"
     if provider == "azure" and service_code == "sql_database":
         # RDS/Cloud SQL과 동일 — apply가 서버 생성 완료까지 기다린 뒤 반환한다.
         return "AVAILABLE"
