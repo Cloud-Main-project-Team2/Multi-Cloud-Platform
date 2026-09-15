@@ -62,38 +62,98 @@
 
   // --- 플랫폼별 입력 템플릿 -------------------------------------------------------------
 
+  // AWS는 인증 방식이 둘이다. 기본은 역할 위임이고, 액세스 키는 기존에 등록해 둔 계정을
+  // 수정할 때를 위해 남겨 둔 레거시 경로다(서버도 두 방식을 모두 받는다 — auth_type 병존).
+  var AWS_ROLE_ARN_RE = /^arn:aws:iam::(\d{12}):role\/(.+)$/;
+
+  var AWS_DELEGATION_TEMPLATE = {
+    // 계정 ID는 Role ARN 안에 이미 들어 있다 — 따로 입력받으면 서로 어긋나 원인 모를
+    // CREDENTIAL_ACCOUNT_MISMATCH가 난다.
+    showAccountId: false,
+    fieldsHtml:
+      '<div id="cred-aws-delegation-guide" class="rounded-lg border border-border bg-muted/40 p-3 text-sm">' +
+        '<p class="text-muted-foreground">연결 안내를 불러오는 중…</p>' +
+      '</div>' +
+      '<div>' +
+        '<label for="cred-aws-role-arn" class="mb-1 block text-sm font-medium">역할 ARN</label>' +
+        '<input id="cred-aws-role-arn" type="text" placeholder="arn:aws:iam::123456789012:role/MultiCloudOpsAccess" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />' +
+        '<p id="cred-aws-role-arn-hint" class="mt-1 text-xs text-muted-foreground">역할을 만든 뒤 표시되는 ARN을 그대로 붙여넣으세요. 계정 ID는 여기서 자동으로 읽습니다.</p>' +
+      '</div>' +
+      '<div>' +
+        '<label for="cred-aws-external-id" class="mb-1 block text-sm font-medium">External ID</label>' +
+        '<input id="cred-aws-external-id" type="text" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />' +
+        '<p class="mt-1 text-xs text-muted-foreground">위 안내에 표시된 값입니다. 역할을 먼저 만들어 뒀다면 그 신뢰 정책에 넣은 값을 입력하세요.</p>' +
+      '</div>',
+    isValid: function () {
+      return AWS_ROLE_ARN_RE.test(val("cred-aws-role-arn")) && nonEmpty("cred-aws-external-id");
+    },
+    hasSecretInput: function () {
+      return nonEmpty("cred-aws-role-arn") || nonEmpty("cred-aws-external-id");
+    },
+    secretPayload: function () {
+      return {
+        auth_type: "assume_role",
+        role_arn: val("cred-aws-role-arn"),
+        external_id: val("cred-aws-external-id"),
+      };
+    },
+    publicIdentifier: function () {
+      var match = AWS_ROLE_ARN_RE.exec(val("cred-aws-role-arn"));
+      return match ? match[2] : "";
+    },
+    externalAccountId: function () {
+      var match = AWS_ROLE_ARN_RE.exec(val("cred-aws-role-arn"));
+      return match ? match[1] : "";
+    },
+  };
+
+  var AWS_ACCESS_KEY_TEMPLATE = {
+    accountIdLabel: "AWS 계정 ID",
+    accountIdPlaceholder: "123456789012",
+    showAccountId: true,
+    fieldsHtml:
+      '<div>' +
+        '<label for="cred-aws-access-key-id" class="mb-1 block text-sm font-medium">Access Key ID</label>' +
+        '<input id="cred-aws-access-key-id" type="text" placeholder="AKIA..." class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />' +
+      '</div>' +
+      '<div>' +
+        '<label for="cred-aws-secret-access-key" class="mb-1 block text-sm font-medium">Secret Access Key</label>' +
+        '<div class="relative">' +
+          '<input id="cred-aws-secret-access-key" type="password" class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary" />' +
+          '<button type="button" onclick="MCUI.togglePassword(\'cred-aws-secret-access-key\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환">👁</button>' +
+        '</div>' +
+        '<p class="mt-1 text-xs text-yellow">장기 Access Key는 만료가 없어 보관 위험이 큽니다. 새로 연결한다면 역할 위임 방식을 권장합니다.</p>' +
+      '</div>',
+    isValid: function () {
+      return nonEmpty("cred-aws-access-key-id") && nonEmpty("cred-aws-secret-access-key");
+    },
+    hasSecretInput: function () {
+      return nonEmpty("cred-aws-access-key-id") || nonEmpty("cred-aws-secret-access-key");
+    },
+    secretPayload: function () {
+      return { access_key_id: val("cred-aws-access-key-id"), secret_access_key: val("cred-aws-secret-access-key") };
+    },
+    publicIdentifier: function () {
+      return val("cred-aws-access-key-id");
+    },
+    externalAccountId: function () {
+      return val("cred-external-account-id");
+    },
+  };
+
   var PROVIDER_TEMPLATES = {
     aws: {
-      accountIdLabel: "AWS 계정 ID",
-      accountIdPlaceholder: "123456789012",
-      showAccountId: true,
+      isAws: true,
+      // 인증 방식 선택기는 재렌더링돼도 남아 있어야 해서 AWS 껍데기에 둔다.
       fieldsHtml:
         '<div>' +
-          '<label for="cred-aws-access-key-id" class="mb-1 block text-sm font-medium">Access Key ID</label>' +
-          '<input id="cred-aws-access-key-id" type="text" placeholder="AKIA..." class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary" />' +
+          '<label for="cred-aws-auth-type" class="mb-1 block text-sm font-medium">인증 방식</label>' +
+          '<select id="cred-aws-auth-type" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">' +
+            '<option value="assume_role">역할 위임 (권장 · 키를 저장하지 않음)</option>' +
+            '<option value="access_key">액세스 키 (레거시)</option>' +
+          '</select>' +
         '</div>' +
-        '<div>' +
-          '<label for="cred-aws-secret-access-key" class="mb-1 block text-sm font-medium">Secret Access Key</label>' +
-          '<div class="relative">' +
-            '<input id="cred-aws-secret-access-key" type="password" class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary" />' +
-            '<button type="button" onclick="MCUI.togglePassword(\'cred-aws-secret-access-key\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환">👁</button>' +
-          '</div>' +
-        '</div>',
-      isValid: function () {
-        return nonEmpty("cred-aws-access-key-id") && nonEmpty("cred-aws-secret-access-key");
-      },
-      hasSecretInput: function () {
-        return nonEmpty("cred-aws-access-key-id") || nonEmpty("cred-aws-secret-access-key");
-      },
-      secretPayload: function () {
-        return { access_key_id: val("cred-aws-access-key-id"), secret_access_key: val("cred-aws-secret-access-key") };
-      },
-      publicIdentifier: function () {
-        return val("cred-aws-access-key-id");
-      },
-      externalAccountId: function () {
-        return val("cred-external-account-id");
-      },
+        '<div id="cred-aws-auth-fields" class="grid gap-3"></div>',
     },
     azure: {
       accountIdLabel: "구독 ID",
@@ -167,10 +227,82 @@
     },
   };
 
+  // 현재 폼이 실제로 쓰고 있는 템플릿. AWS만 인증 방식에 따라 갈린다.
+  function currentTemplate() {
+    if (providerSelect.value !== "aws") return PROVIDER_TEMPLATES[providerSelect.value];
+    return awsAuthType() === "access_key" ? AWS_ACCESS_KEY_TEMPLATE : AWS_DELEGATION_TEMPLATE;
+  }
+
+  function awsAuthType() {
+    var el = document.getElementById("cred-aws-auth-type");
+    return el ? el.value : "assume_role";
+  }
+
+  function escapeHtml(text) {
+    var div = document.createElement("div");
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  // 역할 위임 안내는 서버가 만들어 준다(플랫폼 계정 ID·새 ExternalId·붙여넣을 신뢰 정책).
+  // ExternalId는 요청할 때마다 새로 발급되므로 입력칸에 그대로 채워 준다.
+  function loadDelegationSetup() {
+    var guide = document.getElementById("cred-aws-delegation-guide");
+    if (!guide) return;
+
+    MCPApi.request("/credentials/aws/delegation-setup")
+      .then(function (data) {
+        var externalIdInput = document.getElementById("cred-aws-external-id");
+        if (externalIdInput && !externalIdInput.value) externalIdInput.value = data.external_id;
+
+        var arnInput = document.getElementById("cred-aws-role-arn");
+        if (arnInput && !arnInput.value) {
+          arnInput.placeholder = "arn:aws:iam::<내 계정 ID>:role/" + data.suggested_role_name;
+        }
+
+        guide.innerHTML =
+          '<p class="font-medium">AWS 콘솔에서 역할을 먼저 만들어 주세요</p>' +
+          '<ol class="mt-2 list-decimal space-y-1 pl-5 text-muted-foreground">' +
+            '<li>IAM → 역할 → <b>사용자 지정 신뢰 정책</b>을 선택하고 아래 JSON을 붙여넣습니다.</li>' +
+            '<li>권한: ' + data.managed_policy_arns.map(function (arn) {
+              return escapeHtml(arn.split("/").pop());
+            }).join(", ") + ' + 인라인 <code>' + data.inline_actions.map(escapeHtml).join("</code>, <code>") + '</code></li>' +
+            '<li>역할 이름은 <b>' + escapeHtml(data.role_name_prefix) + '</b>로 시작해야 합니다(예: ' + escapeHtml(data.suggested_role_name) + ').</li>' +
+            '<li>만들어진 <b>역할 ARN</b>을 아래에 붙여넣습니다.</li>' +
+          '</ol>' +
+          '<textarea readonly rows="9" class="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-[11px]">' +
+            escapeHtml(JSON.stringify(data.trust_policy, null, 2)) +
+          '</textarea>' +
+          '<p class="mt-2"><a href="' + escapeHtml(data.iam_console_url) + '" target="_blank" rel="noopener" class="text-primary underline">IAM 콘솔에서 역할 만들기 ↗</a></p>' +
+          '<p class="mt-2 text-xs text-muted-foreground">이 방식에서는 Access Key를 저장하지 않습니다. 저장되는 값은 역할 ARN과 External ID뿐이며, 둘 다 그 자체로는 권한이 없습니다.</p>';
+      })
+      .catch(function (err) {
+        guide.innerHTML = '<p class="text-yellow">' + escapeHtml(errorMessage(err)) + '</p>';
+      });
+  }
+
+  function renderAwsAuthFields() {
+    var container = document.getElementById("cred-aws-auth-fields");
+    if (!container) return;
+    var tpl = currentTemplate();
+    container.innerHTML = tpl.fieldsHtml;
+    accountIdField.hidden = !tpl.showAccountId;
+    if (tpl.showAccountId) {
+      accountIdLabel.textContent = tpl.accountIdLabel;
+      accountIdInput.placeholder = tpl.accountIdPlaceholder;
+    }
+    if (awsAuthType() === "assume_role") loadDelegationSetup();
+  }
+
   function renderProviderFields() {
     var tpl = PROVIDER_TEMPLATES[providerSelect.value];
     fieldsContainer.innerHTML = tpl.fieldsHtml;
     accountIdField.hidden = !tpl.showAccountId;
+    if (tpl.isAws) {
+      var authSelect = document.getElementById("cred-aws-auth-type");
+      if (authSelect) authSelect.addEventListener("change", renderAwsAuthFields);
+      renderAwsAuthFields();
+    }
     if (tpl.showAccountId) {
       accountIdLabel.textContent = tpl.accountIdLabel;
       accountIdInput.placeholder = tpl.accountIdPlaceholder;
@@ -209,6 +341,9 @@
     CREDENTIAL_IN_USE: "진행 중인 작업이 이 자격 증명을 사용하고 있어 삭제할 수 없습니다. 작업이 끝난 뒤 다시 시도해 주세요.",
     CONFIRMATION_REQUIRED: "확인이 필요한 작업입니다.",
     VALIDATION_ERROR: "입력값을 다시 확인해 주세요.",
+    PLATFORM_AWS_NOT_CONFIGURED: "서비스의 AWS 설정이 없어 역할 위임 연결을 안내할 수 없습니다. 관리자에게 문의해 주세요.",
+    CLOUD_PERMISSION_DENIED: "역할을 빌릴 수 없습니다. 역할 이름·신뢰 정책의 계정 ID·External ID를 확인해 주세요.",
+    CREDENTIAL_ACCOUNT_MISMATCH: "역할이 속한 AWS 계정이 등록하려는 계정과 다릅니다.",
     AUTHENTICATION_REQUIRED: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
     INVALID_TOKEN: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
   };
@@ -224,6 +359,16 @@
     providerSelect.value = account.provider;
     providerSelect.disabled = true;
     renderProviderFields();
+
+    // 편집 대상이 어떤 방식으로 등록됐는지에 맞춰 폼을 연다 — 위임 credential을 열었는데
+    // 액세스 키 입력칸이 뜨면 교체가 방식 변경으로 잘못 이어진다.
+    if (account.provider === "aws") {
+      var authSelect = document.getElementById("cred-aws-auth-type");
+      if (authSelect) {
+        authSelect.value = credential.auth_type === "access_key" ? "access_key" : "assume_role";
+        renderAwsAuthFields();
+      }
+    }
 
     nameInput.value = credential.name;
     // 계정 식별자(external_account_id)는 클라우드 계정에 속한 값이라 수정 대상이 아니다.
@@ -287,7 +432,8 @@
         showResult(
           data.verified
             ? "저장되었습니다. 검증에 성공했습니다."
-            : "저장되었습니다. 다만 검증에는 실패했습니다 — 아래 표에서 확인해 주세요.",
+            : "저장되었습니다. 다만 검증에는 실패했습니다 — " +
+              (data.verification_error_message || "아래 표에서 확인해 주세요."),
           data.verified
         );
         loadAccounts();
@@ -328,7 +474,10 @@
           showResult("이름을 수정했습니다.", true);
         } else {
           showResult(
-            data.verified ? "키를 교체하고 검증에 성공했습니다." : "키를 교체했지만 검증에는 실패했습니다 — 값을 다시 확인해 주세요.",
+            data.verified
+              ? "키를 교체하고 검증에 성공했습니다."
+              : "키를 교체했지만 검증에는 실패했습니다 — " +
+                (data.verification_error_message || "값을 다시 확인해 주세요."),
             data.verified
           );
         }
@@ -342,7 +491,7 @@
 
   form.addEventListener("submit", function (e) {
     e.preventDefault();
-    var tpl = PROVIDER_TEMPLATES[providerSelect.value];
+    var tpl = currentTemplate();
     var name = val("cred-name");
     if (editingCredentialId) submitEdit(tpl, name);
     else submitCreate(providerSelect.value, tpl, name);
@@ -380,7 +529,19 @@
     cell(credential.name, "px-3 py-3 font-medium");
     cell(PROVIDER_LABELS[account.provider] || account.provider);
     cell(account.external_account_id);
-    cell(credential.masked_public_identifier || "—");
+    var keyTd = cell(credential.masked_public_identifier || "—");
+    if (account.provider === "aws") {
+      var authBadge = document.createElement("span");
+      var delegated = credential.auth_type === "assume_role";
+      authBadge.className = "ml-1.5 rounded-full px-2 py-0.5 text-[11px] " +
+        (delegated ? "bg-muted text-primary" : "bg-muted text-yellow");
+      // 레거시는 "지금 당장 문제"가 아니라 "바꾸는 게 좋다"는 신호라 경고색까지는 쓰지 않는다.
+      authBadge.textContent = delegated ? "역할 위임" : "레거시 키";
+      authBadge.title = delegated
+        ? "장기 키를 저장하지 않고 필요할 때마다 임시 자격 증명을 발급받습니다."
+        : "장기 Access Key가 저장돼 있습니다. 역할 위임 방식으로 교체하는 것을 권장합니다.";
+      keyTd.appendChild(authBadge);
+    }
 
     var statusTd = cell("");
     var badge = document.createElement("span");

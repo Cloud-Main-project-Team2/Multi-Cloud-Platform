@@ -427,6 +427,24 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
     `SECRET_ACCESS_KEY`/`ASSUMABLE_ROLE_PATTERN`/`SESSION_DURATION_SECONDS`. 키 두 개를 비우면
     boto3 기본 자격증명 체인을 쓴다 — 서버를 EC2/ECS 역할 위에 올리면 **장기 키가 0이 된다**.
     `docker-compose.yml`이 환경변수를 하나씩 명시 전달하는 구조라 거기에도 추가해야 한다.
+  - **온보딩 정보는 서버가 만들어 준다**(`GET /credentials/aws/delegation-setup`): 플랫폼 계정
+    ID·새 ExternalId·붙여넣을 신뢰 정책 JSON·역할 이름 접두사·권한 목록·점검 항목. **ExternalId는
+    서버에 보관하지 않고 매 요청 새로 발급**한다 — 사용자가 신뢰 정책과 등록 요청에 같은 값을
+    쓰기만 하면 되는 구조라 발급 상태를 들고 있을 필요가 없고, 역할을 먼저 만들어 둔 사용자가
+    자기 값을 그대로 넣는 것도 허용된다. CloudFormation Launch URL은 템플릿을 공개 호스팅해야
+    해서 이번엔 빼고 IAM 콘솔 링크로 대체했다(후속 과제).
+  - **인증 방식 노출은 `tags.auth_type` 힌트로**: 목록 조회에서 payload를 복호화하지 않고도
+    마이페이지에 "역할 위임 / 레거시 키" 배지를 띄워야 해서, 비밀이 아닌 힌트를 기존 tags
+    (JSONB)에 넣는다. 사용자가 같은 키로 tags를 보내도 서버 값이 우선하고, 키 교체 시에도 함께
+    갱신해 실제 payload와 어긋나지 않게 한다.
+  - **검증 실패 사유는 응답에만 싣고 저장하지 않는다**: `CredentialOut.verification_error_code`
+    /`_message`는 등록·수정·재검증 응답에만 담기고 목록 조회에서는 항상 null이다. AccessDenied는
+    원인이 구분되지 않아 안내 문구에 점검 항목 3가지를 모두 넣는다.
+  - **마이페이지 AWS 폼은 인증 방식 선택기로 갈린다**(`frontend/assets/js/mypage.js`): 기본이
+    역할 위임이고 액세스 키는 레거시 경로로 남겨 둔다. 위임 모드에서는 **계정 ID를 따로 받지
+    않고 Role ARN에서 읽는다** — 둘을 각각 받으면 서로 어긋나 원인 모를
+    `CREDENTIAL_ACCOUNT_MISMATCH`가 난다. 수정 모드에서는 그 credential이 등록된 방식에 맞춰
+    폼을 연다(위임 credential을 열었는데 액세스 키 칸이 뜨면 교체가 방식 변경으로 잘못 이어진다).
   - **남는 한계(발표에서 먼저 말할 것)**: "비밀키 0개"가 아니라 **"사용자 수만큼 늘던 영구 키
     N개 → 우리 것 1개"**다. 그 1개는 배포 환경을 AWS 위로 옮기면 사라진다.
 
