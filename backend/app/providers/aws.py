@@ -175,8 +175,38 @@ def issue_cli_session(secret_payload: dict, *, duration_seconds: int = 900) -> d
     GetSessionToken으로 짧게 만료되는(기본 15분) 임시 자격증명만 반환한다 — SSH 키 페어처럼
     오래 남는 비밀을 새로 만들지 않는다는 원칙(마이페이지 크리덴셜을 IAM Role/MFA로 옮기려는
     방향과 같은 선상, 2026-09-15).
+
+    **위임(assume_role) credential은 GetSessionToken을 쓸 수 없다.** AWS가 세션 자격증명으로의
+    호출을 거부한다(`AccessDenied: Cannot call GetSessionToken with session credentials`,
+    2026-09-15 실제 계정으로 확인). 그럴 필요도 없다 — AssumeRole 결과 자체가 이미 단기
+    자격증명이라 그대로 내려주면 된다. 다만 사용자 손에 직접 들어가는 값이므로 기본 세션
+    수명(1시간)이 아니라 `duration_seconds`(기본 15분)로 더 짧게 끊는다.
     """
+    from app.providers import AUTH_TYPE_ASSUME_ROLE, auth_type_of
+    from app.providers.session import CredentialResolutionError, assume_role
     from app.resource_actions import ResourceActionError
+
+    if auth_type_of(secret_payload) == AUTH_TYPE_ASSUME_ROLE:
+        role_arn = secret_payload.get("role_arn")
+        external_id = secret_payload.get("external_id")
+        if not role_arn or not external_id:
+            raise ResourceActionError("CREDENTIAL_VERIFICATION_FAILED")
+        try:
+            issued = assume_role(role_arn, external_id, duration_seconds=duration_seconds)
+        except CredentialResolutionError as exc:
+            # 실패 사유(신뢰 정책/ExternalId 문제 vs 플랫폼 설정 문제)를 그대로 올려 보낸다.
+            raise ResourceActionError(exc.error_code) from exc
+        expiration = issued.get("expiration")
+        return {
+            "access_key_id": issued["access_key_id"],
+            "secret_access_key": issued["secret_access_key"],
+            "session_token": issued["session_token"],
+            "expires_at": (
+                dt.datetime.fromisoformat(expiration)
+                if expiration
+                else dt.datetime.now(dt.timezone.utc) + dt.timedelta(seconds=duration_seconds)
+            ),
+        }
 
     try:
         sts = _client(secret_payload, "sts", "us-east-1")

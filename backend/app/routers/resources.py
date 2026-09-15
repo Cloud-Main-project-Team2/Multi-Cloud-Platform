@@ -317,6 +317,19 @@ def issue_resource_cli_access(
     try:
         session = aws_provider.issue_cli_session(secret_payload)
     except ResourceActionError as exc:
+        # 위임 credential은 실패 사유가 사용자가 고칠 수 있는 것(신뢰 정책/ExternalId)일 수
+        # 있어 502로 뭉개지 않는다. STS는 원인을 구분해주지 않으므로 점검 항목을 함께 준다.
+        if exc.code == "CLOUD_PERMISSION_DENIED":
+            raise ApiError(
+                422,
+                exc.code,
+                "역할을 빌릴 수 없어 CLI 자격 증명을 발급하지 못했습니다. 역할 이름·신뢰 정책의 "
+                "계정 ID·External ID를 확인해 주세요.",
+            ) from exc
+        if exc.code == "CREDENTIAL_VERIFICATION_FAILED":
+            raise ApiError(
+                422, exc.code, "자격 증명에 역할 정보가 없습니다. 마이페이지에서 다시 등록해 주세요."
+            ) from exc
         raise ApiError(502, "PROVIDER_API_ERROR", "AWS에서 임시 자격 증명을 발급받지 못했습니다.") from exc
     finally:
         del secret_payload

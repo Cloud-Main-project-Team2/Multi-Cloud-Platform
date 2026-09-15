@@ -254,3 +254,76 @@ def test_verify_surfaces_assume_role_failure(fake_aws, monkeypatch):
 
     assert result.verified is False
     assert result.error_code == "CLOUD_PERMISSION_DENIED"
+
+
+# --- issue_cli_session(): 위임 credential은 GetSessionToken을 쓸 수 없다 -----------------
+
+
+def test_cli_session_legacy_uses_get_session_token(monkeypatch):
+    """레거시 경로는 그대로 GetSessionToken을 쓴다(팀원 구현 회귀 방지)."""
+    from app.providers import aws as aws_provider
+
+    calls = {}
+
+    class _STS:
+        def get_session_token(self, **kwargs):
+            calls.update(kwargs)
+            return {
+                "Credentials": {
+                    "AccessKeyId": "ASIALEGACY",
+                    "SecretAccessKey": "s",
+                    "SessionToken": "t",
+                    "Expiration": dt.datetime(2026, 9, 15, 12, 0, tzinfo=dt.timezone.utc),
+                }
+            }
+
+    monkeypatch.setattr(aws_provider, "_client", lambda payload, service, region: _STS())
+    session = aws_provider.issue_cli_session(LEGACY_AWS, duration_seconds=900)
+
+    assert session["access_key_id"] == "ASIALEGACY"
+    assert calls["DurationSeconds"] == 900
+
+
+def test_cli_session_delegated_uses_assume_role_not_get_session_token(fake_sts, monkeypatch):
+    """위임 credential에 GetSessionToken을 부르면 AWS가 거부한다
+    (`Cannot call GetSessionToken with session credentials`, 2026-09-15 실계정 확인).
+    그래서 AssumeRole 결과를 그대로 내려줘야 한다."""
+    from app.providers import aws as aws_provider
+
+    def _must_not_be_called(*args, **kwargs):
+        raise AssertionError("위임 경로에서 _client()를 부르면 안 된다")
+
+    monkeypatch.setattr(aws_provider, "_client", _must_not_be_called)
+
+    session = aws_provider.issue_cli_session(DELEGATED_AWS, duration_seconds=900)
+
+    assert session["access_key_id"] == "ASIATEMP"
+    assert session["session_token"] == "temp-token"
+    # 사용자 손에 직접 들어가는 값이라 기본 세션 수명(3600)이 아니라 요청한 900초로 끊는다.
+    assert fake_sts.calls[0]["DurationSeconds"] == 900
+    assert isinstance(session["expires_at"], dt.datetime)
+
+
+def test_cli_session_delegated_surfaces_permission_error(monkeypatch):
+    from app.providers import aws as aws_provider
+    from app.resource_actions import ResourceActionError
+
+    sts = _FakeSTS(error=_client_error("AccessDenied"))
+    monkeypatch.setattr(provider_session, "_platform_sts_client", lambda: sts)
+
+    with pytest.raises(ResourceActionError) as exc:
+        aws_provider.issue_cli_session(DELEGATED_AWS)
+
+    # 502로 뭉개지 않고 사용자가 고칠 수 있는 사유임을 라우터까지 전달한다.
+    assert exc.value.code == "CLOUD_PERMISSION_DENIED"
+
+
+def test_cli_session_delegated_without_role_fields_is_rejected(fake_sts):
+    from app.providers import aws as aws_provider
+    from app.resource_actions import ResourceActionError
+
+    with pytest.raises(ResourceActionError) as exc:
+        aws_provider.issue_cli_session({"auth_type": AUTH_TYPE_ASSUME_ROLE})
+
+    assert exc.value.code == "CREDENTIAL_VERIFICATION_FAILED"
+    assert fake_sts.calls == []
