@@ -35,6 +35,7 @@ from app.schemas.sync_jobs import (
     SyncJobListData,
     SyncJobListResponse,
 )
+from app.providers.session import CredentialResolutionError, resolve_secret_payload
 from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json
 from app.serialization import iso_z, str_id
 
@@ -233,6 +234,20 @@ def _process_sync_item(db: Session, item: ResourceSyncJobItem, account: CloudAcc
     except CredentialEncryptionError:
         item.status = "failed"
         item.error_code = "PROVIDER_API_ERROR"
+        item.finished_at = dt.datetime.now(dt.timezone.utc)
+        db.commit()
+        return
+
+    # 위임 credential이면 임시 자격증명을 발급받는다(레거시는 그대로 통과). 계정 단위로
+    # 실패를 기록하므로 다른 계정의 동기화 항목은 계속 진행된다.
+    try:
+        secret_payload = resolve_secret_payload(
+            account.provider, secret_payload, credential_id=credential.id
+        )
+    except CredentialResolutionError as exc:
+        item.status = "failed"
+        item.error_code = exc.error_code
+        item.error_message = exc.message
         item.finished_at = dt.datetime.now(dt.timezone.utc)
         db.commit()
         return

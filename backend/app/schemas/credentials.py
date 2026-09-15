@@ -57,6 +57,13 @@ class CredentialOut(BaseModel):
     display_order: int
     created_at: str
     updated_at: str
+    # 이 자격 증명이 어떤 인증 방식인지. 화면에서 "레거시 키" 배지를 띄우는 데 쓴다.
+    auth_type: str = "access_key"
+    # 방금 수행한 검증이 실패한 이유. **저장하지 않는다** — 등록/수정/재검증 응답에만 담기고
+    # 목록 조회에서는 항상 None이다. AccessDenied는 원인이 구분되지 않아 사용자가 스스로
+    # 좁힐 수 있도록 안내 문구를 함께 내려준다.
+    verification_error_code: str | None = None
+    verification_error_message: str | None = None
 
 
 class CloudAccountResponse(BaseModel):
@@ -92,6 +99,26 @@ class VerifyResponseData(BaseModel):
     verified: bool
     verified_at: str | None
     permission_scope: dict[str, Any]
+    verification_error_code: str | None = None
+    verification_error_message: str | None = None
+
+
+class AwsDelegationSetupData(BaseModel):
+    """AWS 역할 위임 온보딩에 필요한 값. 사용자는 이걸 보고 자기 계정에 역할을 만든다."""
+
+    platform_account_id: str
+    external_id: str
+    role_name_prefix: str
+    suggested_role_name: str
+    trust_policy: dict[str, Any]
+    managed_policy_arns: list[str]
+    inline_actions: list[str]
+    iam_console_url: str
+    troubleshooting: list[str]
+
+
+class AwsDelegationSetupResponse(BaseModel):
+    data: AwsDelegationSetupData
 
 
 class VerifyResponse(BaseModel):
