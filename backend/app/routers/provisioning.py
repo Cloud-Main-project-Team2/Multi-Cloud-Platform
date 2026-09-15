@@ -32,7 +32,7 @@ from app.config import get_settings
 from app.db import SessionLocal, get_db
 from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError
-from app.logging_config import log_background_task
+from app.logging_config import log_background_task, log_business_event
 from app.models import CloudAccount, Credential, Notification, ProvisioningJob, Resource, ServiceCatalog, User
 from app.pricing import estimate_monthly_cost_usd
 from app.provisioning import get_runner
@@ -412,6 +412,19 @@ def _finalize_job(db: Session, job: ProvisioningJob, service: ServiceCatalog | N
         provider=service.provider if service else None,
         metadata={"workspace_name": job.workspace_name, "status": job.status, "error_code": job.error_code},
     )
+    # 종결 경로가 여러 갈래(권한·복호화·러너 없음·terraform 실패)라도 여기 한 곳을 지나간다.
+    log_business_event(
+        "provisioning.job.succeeded" if job.status == "success" else "provisioning.job.failed",
+        level="INFO" if job.status == "success" else "ERROR",
+        job_id=job.id,
+        user_id=job.user_id,
+        provider=service.provider if service else None,
+        service=service.service_code if service else None,
+        workspace_name=job.workspace_name,
+        error_code=job.error_code,
+        # error_message는 terraform stderr를 redact·요약한 값이라 로그에 안전하다(terraform_runner).
+        error_message=(job.error_message or "")[:300] or None,
+    )
     db.commit()
 
 
@@ -434,6 +447,7 @@ def _execute_job(
         job.status = "cancelled"
         job.finished_at = dt.datetime.now(dt.timezone.utc)
         _CANCEL_REQUESTED.discard(job.id)
+        log_business_event("provisioning.job.cancelled", job_id=job.id, user_id=job.user_id, phase="before_start")
         db.commit()
         return
 
@@ -513,6 +527,7 @@ def _execute_job(
         job.status = "cancelled"
         job.finished_at = dt.datetime.now(dt.timezone.utc)
         _CANCEL_REQUESTED.discard(job.id)
+        log_business_event("provisioning.job.cancelled", job_id=job.id, user_id=job.user_id, phase="running")
         db.commit()
         return
     if result.success:
@@ -648,6 +663,16 @@ def create_provisioning_job(
     db.commit()
     db.refresh(job)
 
+    log_business_event(
+        "provisioning.job.queued",
+        job_id=job.id,
+        user_id=current_user.id,
+        provider=provider,
+        service=service,
+        credential_id=credential.id,
+        workspace_name=job.workspace_name,
+        request_id=_request_id(request),
+    )
     background_tasks.add_task(_run_provisioning_job, job.id, payload.common_spec, payload.provider_spec)
 
     return ProvisioningJobCreateResponse(

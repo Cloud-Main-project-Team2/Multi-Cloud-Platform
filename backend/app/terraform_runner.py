@@ -39,11 +39,13 @@ import stat
 import subprocess
 import tempfile
 import threading
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
 from app.config import get_settings
+from app.logging_config import log_business_event
 
 _STDERR_TAIL_CHARS = 2000
 
@@ -143,7 +145,32 @@ def _write_credentials_file(workspace_dir: Path, credentials_json: dict) -> Path
 
 
 def _run(cmd: list[str], *, cwd: Path, env: dict, timeout: int) -> subprocess.CompletedProcess:
-    return subprocess.run(cmd, cwd=str(cwd), env=env, capture_output=True, text=True, timeout=timeout)
+    """terraform 하위 명령 1회 실행 + 로깅.
+
+    **stdout/stderr는 로그에 남기지 않는다** — 여기에는 redact 대상 목록(`secrets`)이 없어서
+    안전하게 자를 수 없다. 실패 사유는 호출부가 `_safe_error_message()`로 정제해 job에 저장하고,
+    그 정제된 값이 `provisioning.job.failed` 이벤트에 실린다. 여기서는 어느 단계가 얼마나 걸려
+    어떤 종료코드로 끝났는지만 남긴다(프로비저닝이 느리거나 멈출 때 가장 먼저 보는 지표).
+    """
+    started_at = time.monotonic()
+    try:
+        completed = subprocess.run(cmd, cwd=str(cwd), env=env, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        log_business_event(
+            "terraform.command.timeout", level="ERROR",
+            command=cmd[1] if len(cmd) > 1 else cmd[0], workspace=cwd.name, timeout_seconds=timeout,
+        )
+        raise
+
+    log_business_event(
+        "terraform.command",
+        level="INFO" if completed.returncode == 0 else "ERROR",
+        command=cmd[1] if len(cmd) > 1 else cmd[0],
+        workspace=cwd.name,
+        returncode=completed.returncode,
+        duration_ms=round((time.monotonic() - started_at) * 1000, 2),
+    )
+    return completed
 
 
 def _base_env(credential_env: dict[str, str], plugin_cache_dir: Path) -> dict[str, str]:
