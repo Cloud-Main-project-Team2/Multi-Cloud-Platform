@@ -32,8 +32,10 @@ SECRET_PAYLOAD = {
     "tenant_id": "tenant-1234",
     "client_id": "client-1234",
     "client_secret": "s3cr3t-value-long",
-    "subscription_id": "subscription-1234",
 }
+# 구독 ID는 secret_payload가 아니라 cloud_accounts.external_account_id에서 오고, 라우터가
+# project_id로 넘긴다(2026-09-15 수정 — run() 참고).
+PROJECT_ID = "subscription-1234"
 
 
 def test_run_success_passes_credentials_via_env_not_tfvars(monkeypatch, tmp_path):
@@ -53,6 +55,7 @@ def test_run_success_passes_credentials_via_env_not_tfvars(monkeypatch, tmp_path
         common_spec=COMMON_SPEC,
         provider_spec=PROVIDER_SPEC,
         secret_payload=SECRET_PAYLOAD,
+        project_id=PROJECT_ID,
     )
 
     assert result.success is True
@@ -84,11 +87,35 @@ def test_run_missing_secret_field_fails_without_calling_terraform(monkeypatch, t
         workspace_dir=tmp_path / "ws",
         common_spec=COMMON_SPEC,
         provider_spec=PROVIDER_SPEC,
-        secret_payload={"tenant_id": "t-long-enough", "client_id": "c", "subscription_id": "sub"},
+        secret_payload={"tenant_id": "t-long-enough", "client_id": "c"},  # client_secret 없음
+        project_id=PROJECT_ID,
     )
 
     assert result.success is False
     assert result.error_code == "PROVIDER_AUTHENTICATION_FAILED"
+
+
+def test_run_missing_project_id_fails_even_with_full_secret(monkeypatch, tmp_path):
+    # 회귀 테스트(2026-09-15) — secret_payload는 완전해도 project_id(구독 ID)가 안 넘어오면
+    # 실패해야 한다. 마이페이지 UI 경로에서 실제로 겪었던 버그(구독 ID가 secret_payload가
+    # 아니라 cloud_accounts.external_account_id에만 저장됨)를 고정한다.
+    def _unexpected(*args, **kwargs):
+        raise AssertionError("project_id 없으면 terraform을 호출해서는 안 된다")
+
+    monkeypatch.setattr(azure, "run_apply", _unexpected)
+
+    result = azure.run(
+        job_id=1,
+        workspace_dir=tmp_path / "ws",
+        common_spec=COMMON_SPEC,
+        provider_spec=PROVIDER_SPEC,
+        secret_payload=SECRET_PAYLOAD,
+        project_id=None,
+    )
+
+    assert result.success is False
+    assert result.error_code == "PROVIDER_AUTHENTICATION_FAILED"
+    assert "subscription_id" in result.error_message
 
 
 def test_run_propagates_terraform_failure(monkeypatch, tmp_path):
@@ -103,6 +130,7 @@ def test_run_propagates_terraform_failure(monkeypatch, tmp_path):
         common_spec=COMMON_SPEC,
         provider_spec=PROVIDER_SPEC,
         secret_payload=SECRET_PAYLOAD,
+        project_id=PROJECT_ID,
     )
 
     assert result.success is False
@@ -144,5 +172,6 @@ def test_run_uses_workspace_name_for_resource_group(monkeypatch, tmp_path):
         common_spec=COMMON_SPEC,
         provider_spec=PROVIDER_SPEC,
         secret_payload=SECRET_PAYLOAD,
+        project_id=PROJECT_ID,
     )
     assert captured["rg"] == "rg-user-1-job-7"

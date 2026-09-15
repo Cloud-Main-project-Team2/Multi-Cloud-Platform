@@ -1,10 +1,11 @@
 """API 명세서 v1.1 §10 프로비저닝 API 검증 (GCP Cloud CDN, `app/gcp_cdn_provisioning.py`).
 
 일반 계약(헤더/소유권/멱등성/취소)은 `test_provisioning_api.py`(gcp/compute_engine 기준)가 이미
-검증한다. 여기서는 Cloud CDN 고유의 것만 다룬다: `lb_stack_ack` 필수(버킷은 사용자 입력이 아니라
-CDN 전용으로 자동 생성되므로 `backend_bucket_name`은 더 이상 없음), `_execute_job()`이
+검증한다. 여기서는 Cloud CDN 고유의 것만 다룬다: `lb_stack_ack` 필수, `_execute_job()`이
 Compute/Cloud SQL/Cloud Storage와 다른 리소스 유형("Cloud CDN (HTTP LB)")·region=None으로
-리소스행을 만드는지, 초기 상태가 "DEPLOYED"인지.
+리소스행을 만드는지, 초기 상태가 "DEPLOYED"인지, 백엔드 버킷 자동 생성(`create_bucket`, 기본
+True)일 때만 연결된 "Cloud Storage Bucket" 인벤토리 행이 함께 만들어지는지(기존 버킷을 쓰는
+경우는 만들지 않음).
 """
 
 from __future__ import annotations
@@ -104,6 +105,38 @@ def test_create_job_rejects_missing_lb_stack_ack(client, make_user, auth_header,
 
     resp = client.post(
         "/api/v1/provisioning/gcp/cloud_cdn", json=_body(credential.id, lb_stack_ack=False),
+        headers={**auth_header(user), **_HEADERS},
+    )
+
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_create_job_success_with_existing_bucket_choice(client, make_user, auth_header, db_session):
+    user = make_user()
+    _service, _account, credential = _setup(db_session, user)
+
+    resp = client.post(
+        "/api/v1/provisioning/gcp/cloud_cdn",
+        json=_body(
+            credential.id,
+            create_bucket=False,
+            backend_bucket_name="my-existing-bucket",
+            existing_bucket_public_ack=True,
+        ),
+        headers={**auth_header(user), **_HEADERS},
+    )
+
+    assert resp.status_code == 202
+
+
+def test_create_job_rejects_existing_bucket_without_public_ack(client, make_user, auth_header, db_session):
+    user = make_user()
+    _service, _account, credential = _setup(db_session, user)
+
+    resp = client.post(
+        "/api/v1/provisioning/gcp/cloud_cdn",
+        json=_body(credential.id, create_bucket=False, backend_bucket_name="my-existing-bucket"),
         headers={**auth_header(user), **_HEADERS},
     )
 
@@ -220,3 +253,50 @@ def test_execute_job_success_also_creates_linked_storage_bucket_resource(monkeyp
         .one()
     )
     assert cdn_resource.external_resource_id == "mcp-cdn-01-fwd-rule"
+
+
+def test_execute_job_existing_bucket_does_not_create_linked_storage_resource(monkeypatch, make_user, db_session):
+    """`create_bucket=False`(기존 버킷 사용)면 그 버킷은 우리가 만든 게 아니므로 소유를 주장하는
+    "Cloud Storage Bucket" 행을 새로 만들지 않는다 — terraform output의
+    `backend_bucket_created=False`로 판별한다."""
+    user = make_user()
+    service, account, credential = _setup(db_session, user)
+    _make_service(
+        db_session, service_code="cloud_storage", category="storage_object", display_name="Cloud Storage",
+    )
+    job = _create_queued_job(db_session, user, credential, service)
+
+    monkeypatch.setattr(
+        provisioning_router,
+        "get_runner",
+        lambda provider, service_code: type(
+            "R",
+            (),
+            {
+                "run": staticmethod(
+                    lambda **kwargs: TerraformResult(
+                        success=True,
+                        outputs={
+                            "forwarding_rule_name": "mcp-cdn-01-fwd-rule",
+                            "ip_address": "34.1.2.3",
+                            "backend_bucket_name": "my-existing-bucket",
+                            "backend_bucket_created": False,
+                        },
+                    )
+                )
+            },
+        ),
+    )
+
+    provisioning_router._execute_job(db_session, job)
+
+    db_session.refresh(job)
+    assert job.status == "success"
+    assert job.created_resource_count == 1
+
+    bucket_rows = (
+        db_session.query(Resource)
+        .filter_by(cloud_account_id=account.id, provider_resource_key="gcp:cloud_storage:my-existing-bucket")
+        .all()
+    )
+    assert bucket_rows == []

@@ -158,16 +158,18 @@ def test_create_job_not_provisionable_service_is_422(client, make_user, auth_hea
 
 def test_create_job_without_runner_is_501(client, make_user, auth_header, db_session):
     user = make_user()
-    # provisionable하지만 러너가 등록되지 않은 조합(azure/cdn). ec2/vm/storage_account/sql_database/
-    # compute_engine/cloud_sql/cloud_storage 조합은 전부 러너가 있으므로 러너 없는 서비스로 검증한다
-    # (2026-09-14: azure/sql_database에 러너가 추가되면서 이 예시를 azure/cdn으로 교체함).
-    _make_service(db_session, "azure", "cdn", provisionable=True)
+    # provisionable하지만 러너가 등록되지 않은 조합(azure/waf, 가상의 예시). 실제 service_catalog
+    # 12개 조합(ec2/rds/s3/cloudfront, vm/sql_database/storage_account/cdn, compute_engine/
+    # cloud_sql/cloud_storage/cloud_cdn)이 2026-09-15 azure/cdn 러너 추가로 전부 러너를 갖게 돼,
+    # 러너 없는 서비스를 검증하려면 존재하지 않는 조합을 새로 만들어야 한다(과거엔 azure/cdn을
+    # 이 예시로 썼으나 2026-09-15 azure/cdn에 러너가 추가되면서 azure/waf로 교체함).
+    _make_service(db_session, "azure", "waf", provisionable=True)
     account = _make_account(db_session, user, "azure", "sub-1")
     credential = _make_credential(db_session, account)
     db_session.commit()
 
     resp = client.post(
-        "/api/v1/provisioning/azure/cdn",
+        "/api/v1/provisioning/azure/waf",
         json={"credential_id": str(credential.id), "common_spec": VALID_COMMON_SPEC, "provider_spec": VALID_PROVIDER_SPEC},
         headers={**auth_header(user), **HEADERS_BASE},
     )

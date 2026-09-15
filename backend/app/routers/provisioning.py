@@ -33,6 +33,7 @@ from app.db import SessionLocal, get_db
 from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError
 from app.models import CloudAccount, Credential, Notification, ProvisioningJob, Resource, ServiceCatalog, User
+from app.pricing import estimate_monthly_cost_usd
 from app.provisioning import get_runner
 from app.schemas.provisioning import (
     CreateProvisioningJobRequest,
@@ -44,6 +45,7 @@ from app.schemas.provisioning import (
     ProvisioningJobOut,
     ProvisioningJobResponse,
 )
+from app.providers.session import CredentialResolutionError, resolve_secret_payload
 from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json
 from app.serialization import iso_z, str_id
 
@@ -206,6 +208,11 @@ def _resource_attrs(
         # (S3/GCS 버킷과 같은 관례 — region은 azure/vm과 달리 계정 자체엔 zone 개념이 없어 그대로 사용).
         account_name = outputs.get("account_name")
         return account_name, "Microsoft.Storage/storageAccounts", provider_spec.get("region"), account_name
+    if provider == "azure" and service_code == "cdn":
+        # AWS CloudFront/GCP Cloud CDN과 같은 이유로 region=None — Front Door는 전역(global)
+        # 리소스다(리소스 그룹 자체엔 location이 있지만 CDN 서비스 성격상 리전 개념이 아니다).
+        route_name = outputs.get("route_name")
+        return route_name, "Microsoft.Cdn/profiles/afdEndpoints", None, route_name
     if provider == "azure":
         # resource_actions.py는 Azure external_resource_id를 ARM 리소스 ID 전체로 가정한다.
         return outputs.get("vm_id"), "Microsoft.Compute/virtualMachines", provider_spec.get("region"), common_spec.get("name")
@@ -234,6 +241,10 @@ def _initial_resource_status(provider: str, service_code: str) -> str:
     if provider == "azure" and service_code == "storage_account":
         # S3 버킷과 같은 원칙 — 시작/중지 개념이 없는 리소스.
         return "AVAILABLE"
+    if provider == "azure" and service_code == "cdn":
+        # CloudFront/Cloud CDN과 동일 관례 — apply가 Front Door 리소스 5개 생성 완료까지
+        # 기다린 뒤 반환한다(시작/중지 개념이 없는 리소스).
+        return "DEPLOYED"
     if provider == "azure" and service_code == "sql_database":
         # RDS/Cloud SQL과 동일 — apply가 서버 생성 완료까지 기다린 뒤 반환한다.
         return "AVAILABLE"
@@ -260,6 +271,10 @@ def _create_resource_from_job(
 
     provider_resource_key = f"{service.provider}:{service.service_code}:{external_id}"
     now = dt.datetime.now(dt.timezone.utc)
+    # 정가 기반 추정치(list_price_estimate) — 실제 CSP 비용 API를 호출하지 않는다(app/pricing.py
+    # 참고). 사용량 기반 서비스(S3/CDN 등)나 허용 목록 밖 스펙은 None을 반환해 값을 지어내지 않는다.
+    estimated_cost = estimate_monthly_cost_usd(service.provider, service.service_code, provider_spec)
+    cost_source = "list_price_estimate" if estimated_cost is not None else None
     existing = (
         db.query(Resource)
         .filter_by(cloud_account_id=account.id, provider_resource_key=provider_resource_key)
@@ -278,6 +293,10 @@ def _create_resource_from_job(
                 name=name,
                 region=region,
                 status=_initial_resource_status(service.provider, service.service_code),
+                estimated_monthly_cost=estimated_cost,
+                cost_currency="USD" if estimated_cost is not None else None,
+                cost_source=cost_source,
+                cost_as_of=now if estimated_cost is not None else None,
                 tags={"managed-by": "multi-cloud-platform", "job-id": str(job.id)},
                 raw_metadata=outputs,
                 first_seen_at=now,
@@ -288,21 +307,30 @@ def _create_resource_from_job(
     else:
         existing.last_collected_by_credential_id = credential.id
         existing.status = _initial_resource_status(service.provider, service.service_code)
+        existing.estimated_monthly_cost = estimated_cost
+        existing.cost_currency = "USD" if estimated_cost is not None else None
+        existing.cost_source = cost_source
+        existing.cost_as_of = now if estimated_cost is not None else None
         existing.last_seen_at = now
         existing.last_synced_at = now
         existing.is_stale = False
     job.created_resource_count = 1
 
-    # GCP Cloud CDN은 전용 버킷을 함께 만드는데(app/gcp_cdn_provisioning.py 참고), 그 버킷이
-    # 인벤토리 어디에도 안 보이면 사용자가 나중에 뭘 지워야 하는지 찾을 방법이 없다(2026-09-14
-    # 실사용 중 지적받아 발견) — CDN 리소스 행과 별도로 "Cloud Storage Bucket" 행도 upsert한다.
-    # 실제 Storage 프로비저닝으로 만든 버킷과 같은 (gcp, cloud_storage) service_catalog로 묶어야
-    # 인벤토리의 "서비스 종류" 필터에서도 Storage로 정상 분류된다 — 삭제 버튼은 다른 GCP Storage
-    # 버킷과 동일하게 여전히 미지원(resource_actions.py에 (gcp, cloud_storage) 없음)이라, 이건
-    # "보이게"만 해결하는 것이지 "인벤토리에서 지울 수 있게"까지는 아니다.
+    # GCP Cloud CDN이 버킷을 새로 만든 경우(app/gcp_cdn_provisioning.py 참고), 그 버킷이 인벤토리
+    # 어디에도 안 보이면 사용자가 나중에 뭘 지워야 하는지 찾을 방법이 없다(2026-09-14 실사용 중
+    # 지적받아 발견) — CDN 리소스 행과 별도로 "Cloud Storage Bucket" 행도 upsert한다. 실제 Storage
+    # 프로비저닝으로 만든 버킷과 같은 (gcp, cloud_storage) service_catalog로 묶어야 인벤토리의
+    # "서비스 종류" 필터에서도 Storage로 정상 분류된다 — 삭제 버튼은 다른 GCP Storage 버킷과
+    # 동일하게 여전히 미지원(resource_actions.py에 (gcp, cloud_storage) 없음)이라, 이건 "보이게"만
+    # 해결하는 것이지 "인벤토리에서 지울 수 있게"까지는 아니다.
+    # 사용자가 "기존 버킷 사용"을 선택했다면(`backend_bucket_created=False`) 이 버킷은 우리가 만든
+    # 게 아니므로 소유를 주장하는 행을 만들지 않는다 — 이미 그 계정 인벤토리에 있거나(동기화로
+    # 보임) 우리가 관리하지 않는 외부 버킷이다. 출력에 이 키가 없으면(예: 구버전 테스트) 기존
+    # 동작대로 True로 간주한다.
     if service.provider == "gcp" and service.service_code == "cloud_cdn":
         bucket_name = outputs.get("backend_bucket_name")
-        if bucket_name:
+        bucket_created_by_us = outputs.get("backend_bucket_created", True)
+        if bucket_name and bucket_created_by_us:
             storage_service = (
                 db.query(ServiceCatalog).filter_by(provider="gcp", service_code="cloud_storage").one_or_none()
             )
@@ -448,6 +476,20 @@ def _execute_job(
         job.status = "failed"
         job.error_code = "PROVIDER_API_ERROR"
         job.error_message = "자격 증명을 복호화하지 못했습니다."
+        _finalize_job(db, job, service)
+        return
+
+    # 위임(assume_role) credential이면 여기서 1시간짜리 임시 자격증명을 발급받는다. 레거시
+    # 장기 키는 그대로 통과한다. terraform apply 타임아웃(900초)이 세션 수명보다 훨씬 짧아
+    # 실행 도중 만료될 여지는 없다.
+    try:
+        secret_payload = resolve_secret_payload(
+            account.provider, secret_payload, credential_id=credential.id
+        )
+    except CredentialResolutionError as exc:
+        job.status = "failed"
+        job.error_code = exc.error_code
+        job.error_message = exc.message
         _finalize_job(db, job, service)
         return
 

@@ -72,6 +72,8 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 프로비저닝 서비스 확장 — AWS S3/CloudFront/RDS(#43), GCP Cloud SQL/Storage(#44), Azure 프로비저닝(#46)·Storage/DB(#49), GCP Cloud SQL 네트워크(#47) | — | 김종국/안권형/이승현/조은솔 | merged |
 | 프로비저닝 위저드·대시보드 실 API 연동 — 위저드 실 연동(#39/#40/#43/#49), 대시보드 실데이터(#45) | — | 조은솔/김종국/이승현 | merged |
 
+| AWS 인증 방식 전환 — Access Key 저장 → 역할 위임(AssumeRole) 임시 자격증명 | `solcho/be-assume-role` | 조은솔 | in progress |
+
 > Keep this table updated as branches open, progress, and merge.
 
 ## Key architectural decisions
@@ -88,7 +90,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 > API 구현 범위 · 프로비저닝 3사 코드 통합
 > **데이터/기타** — 목업·데모 데이터
 
-- **API 형태(2026-09-10)**: 신규 통합 API 명세(`docs/01_API_명세서_v1.1.md`)가 아니라
+- **API 형태(2026-09-10)**: 신규 통합 API 명세(`docs/01_API_Specification_v1.1.md`)가 아니라
   기존에 구현돼 있던 **provider별 개별 엔드포인트**(`/credentials/{provider}`,
   `/provisioning/{provider}/{service}`, `/resources/action` 형태)를 유지하기로 결정.
   이에 따라 그 통합 API 전용으로만 추가됐던 `provisioning_requests`·`resource_types`
@@ -107,7 +109,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   이후 BE API(키 관리/리소스 조회/대시보드)는 이 데이터 위에서 개발·테스트한다.
 - **Azure VM `admin_password` 정책(2026-09-10)**: `frontend/assets/js/provisioning.js`가
   실제로 수집하는 Azure Compute 인증 방식은 SSH 키가 아니라 사용자명/비밀번호다
-  (`adminUsername`/`adminPassword`). `admin_password`는 `01_API_명세서_v1.1.md` 10.3절이
+  (`adminUsername`/`adminPassword`). `admin_password`는 `01_API_Specification_v1.1.md` 10.3절이
   금지하는 "secret"(CSP 계정 자격증명)과는 다른 값(생성될 리소스 자체의 OS 접속 정보)이라고
   판단해 **secret-필드 금지 검사에서 예외로 허용**하기로 결정. 대신 `provisioning_jobs.spec_json`
   (DB 저장, `GET /provisioning/jobs/{id}` 응답)에는 절대 남기지 않고, Terraform에는
@@ -115,13 +117,12 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   `SENSITIVE_PROVIDER_SPEC_FIELDS`). 같은 패턴으로 AWS/GCP compute나 DB 서비스의 master
   password도 처리할 수 있도록 라우터(`app/routers/provisioning.py`)는 실행기가 선언한
   `SENSITIVE_PROVIDER_SPEC_FIELDS`를 범용으로 참조한다.
-- **Compute 공통 설정 필드 확정(2026-09-10)**: `docs/멀티클라우드 3사 기능 맵핑 — 설정값
-  입력 범위 (2026-09-10).md` 1절 + `provisioning.js` 실제 구현 기준으로 azure/vm의
+- **Compute 공통 설정 필드 확정(2026-09-10)**: `docs/Multicloud_Provider_Feature_Mapping_2026-09-10.md` 1절 + `provisioning.js` 실제 구현 기준으로 azure/vm의
   `provider_spec`을 `region`/`instance_type`/`admin_username`/`admin_password`/`image`
   (curated label, publisher/offer/sku/version은 서버가 내부 매핑)로, `common_spec`을
   `name`/`tags`/`inbound_rules`(포트·CIDR 목록)로 확정. `instance_type`은 프론트가
   `Standard_` 접두사 없이 보내므로(`B1s` 등) 서버가 자동 보정한다.
-- **최소 인증(JWT) 구현(2026-09-10, `solcho/be-credentials-api`)**: `01_API_명세서_v1.1.md`
+- **최소 인증(JWT) 구현(2026-09-10, `solcho/be-credentials-api`)**: `01_API_Specification_v1.1.md`
   §5는 회원가입·로그인·비밀번호 재설정·`/me`까지 전체 인증 스펙을 정의하지만, 백엔드에는
   인증이 전혀 구현돼 있지 않았다(프론트 `auth-guard.js`는 `localStorage` 데모 세션일 뿐 실제
   토큰이 아님). credentials API 전체가 소유권 검사(`current_user`)를 전제로 하므로, 이 세션에서
@@ -390,6 +391,62 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   - **검증**: 전체 backend 테스트 202개 통과, `docker compose build api` 후 컨테이너 정상 기동
     (`/health` 200, `POST /provisioning/aws/ec2` 무인증 401). 세 러너 모두 레지스트리에 연결됨.
 
+- **AWS 인증 방식을 역할 위임으로 전환(2026-09-15, `solcho/be-assume-role`)**: 강사 피드백
+  ("Access Key를 그대로 저장하지 말 것")에 대한 대응. 사용자가 붙여넣은 장기 Access Key를
+  저장하는 대신, 사용자 계정의 IAM Role을 우리 플랫폼 신원으로 `sts:AssumeRole` 해 1시간짜리
+  임시 자격증명을 매번 발급해 쓴다. 개념·발표용 설명은 `docs/AWS_AssumeRole_Delegation_Explainer.md`,
+  구현 설계는 `docs/IAM_Delegation_and_Team_Budget_Design_2026-09-15.md`.
+  - **범위는 AWS만. Azure·GCP는 코드를 건드리지 않는다**: 세 CSP의 위임 모델이 서로 다른
+    물건이라(AWS AssumeRole / GCP impersonation / Azure Lighthouse) "3사 동일 맵핑"을 목표로
+    두지 않기로 결정. GCP는 기술적으로 대등하게 가능하지만 어댑터 3곳 + 러너 4개를 바꿔야 해
+    후속으로, Azure는 검증에 테넌트가 2개 필요해 설계 문서만 남긴다.
+  - **교체가 아니라 추가다**: `secret_payload`에 `auth_type`(`access_key`|`assume_role`)을 두고
+    **없으면 레거시로 간주**한다. 기존에 등록된 3사 credential과 `seed_mock_data.py` 목업이
+    전부 auth_type 없는 형태라, 이 기본값이 곧 "기존 데이터는 안 건드린다"는 보장이다.
+    원본 키를 서버가 보관하지 않으므로 자동 마이그레이션은 불가능 — 사용자가 역할을 만들어
+    다시 등록해야 하고, 그때까지 레거시 credential은 그대로 동작한다.
+  - **`app/providers/session.py`의 `resolve_secret_payload()`가 단일 삽입 지점**: 복호화 호출부
+    5곳(`routers/{credentials,provisioning,resources,sync_jobs}.py`, `dev_destroy_job.py`)이
+    모두 "복호화 → dict → 어댑터/러너" 모양이라 그 사이에 한 줄만 끼운다. 반환 dict의 키 이름을
+    레거시와 **똑같이**(`access_key_id`/`secret_access_key` + `session_token`) 맞춰서, 하류가
+    두 방식을 구분하지 않게 했다 — `providers/aws.py:_client()`와 AWS 러너 4개의
+    `_credential_env()`가 이미 `session_token`을 지원하고 있어 **하류 수정이 0**이다.
+  - **DB 스키마 변경 없음**: `encrypted_payload`가 자유형 JSON이라 컬럼을 늘리지 않는다.
+    조회·필터 요구가 생기면 그때 `credentials.auth_type` 컬럼으로 승격한다.
+  - **신뢰 정책 Principal은 계정 root, 역할 이름은 접두사 제한**: IAM 사용자 ARN을 Principal에
+    직접 쓰면 그 사용자를 지웠다 같은 이름으로 다시 만들었을 때 내부 고유 ID가 달라져 **고객
+    전원의 신뢰가 깨진다**. 역할 이름은 하나로 고정하지 않고 `MultiCloudOps*` 접두사로 두되
+    패턴을 `.env`(`PLATFORM_AWS_ASSUMABLE_ROLE_PATTERN`)로 빼 코드 수정 없이 조정 가능하게 했다.
+    이 제한은 **우리 키 유출 시 blast radius 축소**가 목적이고, 실제 관문은 고객 쪽 신뢰 정책이다.
+  - **AccessDenied는 원인이 구분되지 않는다**: 역할 이름·계정 ID·ExternalId 중 무엇이 틀려도
+    STS는 같은 에러를 준다. 그래서 `CLOUD_PERMISSION_DENIED` 메시지에 점검 항목 세 가지를 모두
+    적는다. 반대로 우리 플랫폼 자격증명 문제(`InvalidClientTokenId` 등)는 사용자 탓으로 보이지
+    않게 `PROVIDER_AUTHENTICATION_FAILED` + "관리자 문의"로 분리한다.
+  - **플랫폼 신원 설정**(`app/config.py`): `PLATFORM_AWS_ACCOUNT_ID`/`ACCESS_KEY_ID`/
+    `SECRET_ACCESS_KEY`/`ASSUMABLE_ROLE_PATTERN`/`SESSION_DURATION_SECONDS`. 키 두 개를 비우면
+    boto3 기본 자격증명 체인을 쓴다 — 서버를 EC2/ECS 역할 위에 올리면 **장기 키가 0이 된다**.
+    `docker-compose.yml`이 환경변수를 하나씩 명시 전달하는 구조라 거기에도 추가해야 한다.
+  - **온보딩 정보는 서버가 만들어 준다**(`GET /credentials/aws/delegation-setup`): 플랫폼 계정
+    ID·새 ExternalId·붙여넣을 신뢰 정책 JSON·역할 이름 접두사·권한 목록·점검 항목. **ExternalId는
+    서버에 보관하지 않고 매 요청 새로 발급**한다 — 사용자가 신뢰 정책과 등록 요청에 같은 값을
+    쓰기만 하면 되는 구조라 발급 상태를 들고 있을 필요가 없고, 역할을 먼저 만들어 둔 사용자가
+    자기 값을 그대로 넣는 것도 허용된다. CloudFormation Launch URL은 템플릿을 공개 호스팅해야
+    해서 이번엔 빼고 IAM 콘솔 링크로 대체했다(후속 과제).
+  - **인증 방식 노출은 `tags.auth_type` 힌트로**: 목록 조회에서 payload를 복호화하지 않고도
+    마이페이지에 "역할 위임 / 레거시 키" 배지를 띄워야 해서, 비밀이 아닌 힌트를 기존 tags
+    (JSONB)에 넣는다. 사용자가 같은 키로 tags를 보내도 서버 값이 우선하고, 키 교체 시에도 함께
+    갱신해 실제 payload와 어긋나지 않게 한다.
+  - **검증 실패 사유는 응답에만 싣고 저장하지 않는다**: `CredentialOut.verification_error_code`
+    /`_message`는 등록·수정·재검증 응답에만 담기고 목록 조회에서는 항상 null이다. AccessDenied는
+    원인이 구분되지 않아 안내 문구에 점검 항목 3가지를 모두 넣는다.
+  - **마이페이지 AWS 폼은 인증 방식 선택기로 갈린다**(`frontend/assets/js/mypage.js`): 기본이
+    역할 위임이고 액세스 키는 레거시 경로로 남겨 둔다. 위임 모드에서는 **계정 ID를 따로 받지
+    않고 Role ARN에서 읽는다** — 둘을 각각 받으면 서로 어긋나 원인 모를
+    `CREDENTIAL_ACCOUNT_MISMATCH`가 난다. 수정 모드에서는 그 credential이 등록된 방식에 맞춰
+    폼을 연다(위임 credential을 열었는데 액세스 키 칸이 뜨면 교체가 방식 변경으로 잘못 이어진다).
+  - **남는 한계(발표에서 먼저 말할 것)**: "비밀키 0개"가 아니라 **"사용자 수만큼 늘던 영구 키
+    N개 → 우리 것 1개"**다. 그 1개는 배포 환경을 AWS 위로 옮기면 사라진다.
+
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 
 이번 정적 UI 작업의 확정/가정 항목. **화면설계서에 "[확인 필요]"로 남았지만 프로토타입 개발 프롬프트에서 이미 확정된 것**이라 다시 묻지 않음:
@@ -427,7 +484,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 
 PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫폼에 따라 동적 렌더링하고 입력값을
 전역 상태(`window.provisioningSpec`)에 반영하는 작업. 서버 통신은 없음(Network 탭 요청 0건).
-필드명은 이후 BE 연동을 위해 `01_API_명세서_v1.1.md` §10.3의 `common_spec`/`provider_spec`
+필드명은 이후 BE 연동을 위해 `01_API_Specification_v1.1.md` §10.3의 `common_spec`/`provider_spec`
 구조에 맞춰 잡음(`assets/js/provisioning.js`).
 
 - **사양 등급 → 실제 SKU 매핑**(추상 3등급, `provisioning.js`의 `SPEC_TIERS` 상수):
@@ -488,8 +545,7 @@ PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫�
   인디케이터가 완료(sky)/현재(primary)/대기(muted)를 표시한다. **CDN은 ④ 공통을 건너뛰어** ③ 다음에
   바로 ⑤가 나타난다(`visibleSteps`). ⑥은 검토(선택 요약) + 비교하기/생성하기.
 - **CDN 실입력 폼**: 공통 설정 스텝 없이 ③에서 CDN 선택 시 곧바로 플랫폼별(⑤) 폼만 렌더
-  (AWS→Azure→GCP 순). 필드 확정 근거는 `docs/멀티클라우드 3사 기능 맵핑 — 설정값 입력 범위
-  (2026-09-10).md` **4절 "구현용 필드 확정"(2026-09-11)** — 원칙은 "Terraform으로 설정 가능한
+  (AWS→Azure→GCP 순). 필드 확정 근거는 `docs/Multicloud_Provider_Feature_Mapping_2026-09-10.md` **4절 "구현용 필드 확정"(2026-09-11)** — 원칙은 "Terraform으로 설정 가능한
   항목은 전부 입력받는다". 제외는 **Endpoint(결과값)·Scope(Global 고정)·Raw status(조회전용)**
   세 가지뿐. 3사 필드셋이 완전히 다름:
   - AWS(CloudFront): Origin(필수)·캐시 정책·Path routing·Compression·Viewer Protocol Policy·
@@ -531,7 +587,7 @@ API 연동 없이 JS만으로 완성 가능한 나머지 데모 기능들. 서�
 
 ## Pointer — where the planning docs live
 
-일부 확정 문서는 이제 `docs/`에 들어와 있다: **API 명세서**(`01_API_명세서_v1.1.md`),
+일부 확정 문서는 이제 `docs/`에 들어와 있다: **API 명세서**(`01_API_Specification_v1.1.md`),
 **DB ERD**(`DB_ERD_v1.1.md`), **기능 명세서**(`기능 명세서.html`), **화면설계서**
 (`화면설계서_멀티클라우드_V1.1.html`), **기술 스택**(`기술 스택.md`), **3사 기능 맵핑**
 (`멀티클라우드 3사 기능 맵핑 …`), 프로비저닝 결정사항 문서, 디자인 스크린샷(`design/`).

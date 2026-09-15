@@ -17,6 +17,7 @@ from pathlib import Path
 from app.config import get_settings
 from app.db import SessionLocal
 from app.models import Credential, ProvisioningJob
+from app.providers.session import resolve_secret_payload
 from app.security.credential_crypto import decrypt_credential_json
 from app.terraform_runner import run_destroy
 
@@ -39,6 +40,8 @@ def main() -> None:
 
         credential = db.get(Credential, job.credential_id)
         payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+        # 이 도구는 AWS 워크스페이스 정리 전용이라 provider를 aws로 고정한다.
+        payload = resolve_secret_payload("aws", payload, credential_id=credential.id)
         env = {"AWS_ACCESS_KEY_ID": payload["access_key_id"], "AWS_SECRET_ACCESS_KEY": payload["secret_access_key"]}
         if payload.get("session_token"):
             env["AWS_SESSION_TOKEN"] = payload["session_token"]

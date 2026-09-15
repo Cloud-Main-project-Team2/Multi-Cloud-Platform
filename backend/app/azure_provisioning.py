@@ -33,8 +33,10 @@ from app.terraform_runner import TerraformResult, run_apply
 
 MODULE_DIR = Path(__file__).resolve().parent.parent / "terraform" / "azure" / "vm"
 
-# credentials.encrypted_payload에 이 4개 키가 모두 있어야 azurerm provider를 인증할 수 있다.
-REQUIRED_SECRET_FIELDS = ("tenant_id", "client_id", "client_secret", "subscription_id")
+# credentials.encrypted_payload에 이 3개 키가 모두 있어야 azurerm provider를 인증할 수 있다.
+# 구독 ID는 여기 없다 — cloud_accounts.external_account_id로 저장되고 run()의 project_id로
+# 넘어온다(2026-09-15 수정, run() 주석 참고).
+REQUIRED_SECRET_FIELDS = ("tenant_id", "client_id", "client_secret")
 
 # 라우터가 secret-필드 금지 검사에서 예외로 둘 provider_spec 필드(위 "admin_password 정책" 참고).
 SENSITIVE_PROVIDER_SPEC_FIELDS: frozenset[str] = frozenset({"admin_password"})
@@ -136,7 +138,13 @@ def run(
     provider_spec: dict,
     secret_payload: dict,
     workspace_name: str | None = None,
-    project_id: str | None = None,  # 라우터가 모든 러너에 동일 시그니처로 넘긴다 — Azure는 안 씀
+    # 라우터가 `account.external_account_id`를 넘긴다 — 마이페이지에서 Azure 자격 증명을 등록할
+    # 때 "구독 ID" 입력칸이 이 필드로 저장되고(REQUIRED_SECRET_FIELDS엔 안 들어감), secret_payload
+    # 안에는 절대 안 들어있다(2026-09-15 발견·수정: 예전엔 여기서 secret_payload["subscription_id"]를
+    # 찾았는데, 그 키가 마이페이지 폼/목업 시딩 어디서도 채워진 적이 없어 Azure 프로비저닝이 UI
+    # 경로로는 항상 CREDENTIAL_VERIFICATION_FAILED로 실패했다 — GCP가 이미 project_id를 이렇게
+    # 쓰는 것과 같은 패턴으로 통일했다).
+    project_id: str | None = None,
     cancel_check: Callable[[], bool] = lambda: False,
 ) -> TerraformResult:
     """백그라운드 job에서 호출된다 — raise 대신 `TerraformResult`로 실패를 표현한다.
@@ -145,6 +153,8 @@ def run(
     sanitize 버전이 아니다.
     """
     missing = [f for f in REQUIRED_SECRET_FIELDS if not secret_payload.get(f)]
+    if not project_id:
+        missing.append("subscription_id(cloud_account.external_account_id)")
     if missing:
         return TerraformResult(
             success=False,
@@ -165,14 +175,15 @@ def run(
         "ARM_TENANT_ID": secret_payload["tenant_id"],
         "ARM_CLIENT_ID": secret_payload["client_id"],
         "ARM_CLIENT_SECRET": secret_payload["client_secret"],
-        "ARM_SUBSCRIPTION_ID": secret_payload["subscription_id"],
+        "ARM_SUBSCRIPTION_ID": project_id,
         "TF_VAR_admin_password": provider.admin_password,
     }
     secrets = [
         secret_payload["client_secret"],
         secret_payload["tenant_id"],
         secret_payload["client_id"],
-        secret_payload["subscription_id"],
+        # 구독 ID(project_id)는 AWS 계정 ID/GCP 프로젝트 ID와 같은 식별자일 뿐 비밀값이 아니라
+        # redact 대상에서 뺀다(에러 메시지에 남아도 무방).
         provider.admin_password,
     ]
 

@@ -119,7 +119,7 @@ docker compose run --rm api python -m app.seed
 
 ## 프로비저닝 — Azure VM 생성 (`POST /provisioning/azure/vm`)
 
-`docs/01_API_명세서_v1.1.md` 10절 계약대로 구현. 자세한 요청/응답 형식은 그 문서를 따르고,
+`docs/01_API_Specification_v1.1.md` 10절 계약대로 구현. 자세한 요청/응답 형식은 그 문서를 따르고,
 여기서는 구현 세부사항과 한계만 정리한다.
 
 - 코드: `app/routers/provisioning.py`(라우터) → `app/services/provisioning/azure_vm.py`(실행기)
@@ -129,7 +129,7 @@ docker compose run --rm api python -m app.seed
   "subscription_id"}` (Azure Service Principal). `POST /credentials/azure` 구현 시 이 필드명을
   맞춰야 한다.
 - **`provider_spec`/`common_spec` 필드는 실제 `frontend/assets/js/provisioning.js`에 맞춰
-  확정했다** (`docs/멀티클라우드 3사 기능 맵핑 — 설정값 입력 범위 (2026-09-10).md` 참고):
+  확정했다** (`docs/Multicloud_Provider_Feature_Mapping_2026-09-10.md` 참고):
   - `provider_spec`: `region`, `instance_type`(예: `B1s` — `Standard_` 접두사는 서버가 자동
     보정), `admin_username`, `admin_password`, `image`(`"Ubuntu 22.04"` 또는
     `"Windows Server 2022"` — publisher/offer/sku/version은 서버 내부 매핑)
