@@ -293,16 +293,21 @@ def _create_resource_from_job(
         existing.is_stale = False
     job.created_resource_count = 1
 
-    # GCP Cloud CDN은 전용 버킷을 함께 만드는데(app/gcp_cdn_provisioning.py 참고), 그 버킷이
-    # 인벤토리 어디에도 안 보이면 사용자가 나중에 뭘 지워야 하는지 찾을 방법이 없다(2026-09-14
-    # 실사용 중 지적받아 발견) — CDN 리소스 행과 별도로 "Cloud Storage Bucket" 행도 upsert한다.
-    # 실제 Storage 프로비저닝으로 만든 버킷과 같은 (gcp, cloud_storage) service_catalog로 묶어야
-    # 인벤토리의 "서비스 종류" 필터에서도 Storage로 정상 분류된다 — 삭제 버튼은 다른 GCP Storage
-    # 버킷과 동일하게 여전히 미지원(resource_actions.py에 (gcp, cloud_storage) 없음)이라, 이건
-    # "보이게"만 해결하는 것이지 "인벤토리에서 지울 수 있게"까지는 아니다.
+    # GCP Cloud CDN이 버킷을 새로 만든 경우(app/gcp_cdn_provisioning.py 참고), 그 버킷이 인벤토리
+    # 어디에도 안 보이면 사용자가 나중에 뭘 지워야 하는지 찾을 방법이 없다(2026-09-14 실사용 중
+    # 지적받아 발견) — CDN 리소스 행과 별도로 "Cloud Storage Bucket" 행도 upsert한다. 실제 Storage
+    # 프로비저닝으로 만든 버킷과 같은 (gcp, cloud_storage) service_catalog로 묶어야 인벤토리의
+    # "서비스 종류" 필터에서도 Storage로 정상 분류된다 — 삭제 버튼은 다른 GCP Storage 버킷과
+    # 동일하게 여전히 미지원(resource_actions.py에 (gcp, cloud_storage) 없음)이라, 이건 "보이게"만
+    # 해결하는 것이지 "인벤토리에서 지울 수 있게"까지는 아니다.
+    # 사용자가 "기존 버킷 사용"을 선택했다면(`backend_bucket_created=False`) 이 버킷은 우리가 만든
+    # 게 아니므로 소유를 주장하는 행을 만들지 않는다 — 이미 그 계정 인벤토리에 있거나(동기화로
+    # 보임) 우리가 관리하지 않는 외부 버킷이다. 출력에 이 키가 없으면(예: 구버전 테스트) 기존
+    # 동작대로 True로 간주한다.
     if service.provider == "gcp" and service.service_code == "cloud_cdn":
         bucket_name = outputs.get("backend_bucket_name")
-        if bucket_name:
+        bucket_created_by_us = outputs.get("backend_bucket_created", True)
+        if bucket_name and bucket_created_by_us:
             storage_service = (
                 db.query(ServiceCatalog).filter_by(provider="gcp", service_code="cloud_storage").one_or_none()
             )

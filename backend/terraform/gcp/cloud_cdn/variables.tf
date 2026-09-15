@@ -9,7 +9,13 @@ variable "instance_name" {
 }
 
 variable "bucket_name" {
-  description = "이 CDN 전용으로 새로 만들 GCS 버킷 이름(mcp-cdn-{job_id} — job_id 기반이라 전역에서 항상 유일)"
+  description = "백엔드로 쓸 GCS 버킷 이름 — create_bucket=true면 새로 만들 이름(mcp-cdn-{job_id}), false면 이미 있는 버킷 이름"
   type        = string
+}
+
+variable "create_bucket" {
+  description = "true면 이 CDN 전용 버킷을 새로 생성, false면 bucket_name의 기존 버킷을 그대로 사용"
+  type        = bool
+  default     = true
 }
 
