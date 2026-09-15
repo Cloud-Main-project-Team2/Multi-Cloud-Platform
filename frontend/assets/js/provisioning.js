@@ -44,12 +44,13 @@
 
   // 실 API 연동: (리소스 종류, 플랫폼)별로 백엔드 러너가 있는 조합만 실제 job을 만든다(§10).
   // 2026-09-14: azure(storage_account/sql_database)·gcp(cloud_storage/cloud_sql) 러너가 추가돼
-  // db/storage_object도 3사 다 실 연동됐다 — 이제 CDN(cloudfront만 있음)만 러너가 없어 501이 뻔하므로
-  // 그 대상만 기존 진행률 시뮬레이션을 대신 돌린다(startProvisioning()의 simulateTarget 참고).
+  // db/storage_object도 3사 다 실 연동됐다. 2026-09-15: azure(cdn, Front Door Standard)에 이어
+  // gcp(cloud_cdn, #51 안권형님 백엔드 러너 — 이 프론트 매핑만 누락돼 있었음)까지 연결해 CDN도
+  // 3사 전부 실 연동 완료. CDN은 이제 시뮬레이션 대상이 없다.
   var SERVICE_CODE = {
     compute: { aws: "ec2", azure: "vm", gcp: "compute_engine" },
     storage_object: { aws: "s3", azure: "storage_account", gcp: "cloud_storage" },
-    cdn: { aws: "cloudfront" },
+    cdn: { aws: "cloudfront", azure: "cdn", gcp: "cloud_cdn" },
     db: { aws: "rds", azure: "sql_database", gcp: "cloud_sql" },
   };
   function hasRealRunner(kind, platform) {
@@ -89,6 +90,15 @@
   };
   // aws 실 API용 engine 값 매핑(표시 라벨 → provider_spec.engine).
   var DB_ENGINE_CODE = { MySQL: "mysql", PostgreSQL: "postgres" };
+  // azure CDN(Front Door) 실 API용 값 매핑(한글 표시 라벨 → app/azure_cdn_provisioning.py가
+  // 받는 코드). "지정 파라미터만"은 특정 파라미터를 입력받는 필드가 화면에 없어 IgnoreSpecifiedQueryStrings
+  // (빈 목록 취급)로 정규화한다.
+  var AZURE_CDN_QUERY_STRING_CODE = {
+    "전체 무시": "IgnoreQueryString",
+    "전체 사용": "UseQueryString",
+    "지정 파라미터만": "IgnoreSpecifiedQueryStrings",
+  };
+  var AZURE_CDN_PROTOCOL_CODE = { "HTTPS만": "https_only", "HTTP+HTTPS": "http_and_https" };
   var WARN_STYLE = 'style="color:#b45309"'; // amber-700, 경고 문구용
 
   // ⑤ 추가 설정 옵션.
@@ -116,7 +126,10 @@
     awsPathRouting: ["기본 동작만 사용", "정적 콘텐츠 캐시 우선"],
     awsViewerProtocol: ["Redirect to HTTPS", "HTTPS Only", "Allow All"],
     awsPriceClass: ["전체 리전", "북미·유럽만", "북미·유럽·아시아"],
-    azSku: ["Standard", "Premium"],
+    // Premium은 월 기본료가 Standard($35)의 약 10배($330, Microsoft Learn 가격 비교)라 이 프로젝트가
+    // 쓰지 않는 WAF/Private Link 오리진 때문에 실수로 고르면 순수 손해다 — 2026-09-15 결정으로
+    // Standard만 선택 가능하게 뺐다(app/azure_cdn_provisioning.py도 동일하게 서버에서 거부).
+    azSku: ["Standard"],
     azQueryString: ["전체 무시", "전체 사용", "지정 파라미터만"],
     azProtocols: ["HTTPS만", "HTTP+HTTPS"],
     gcpBackendType: ["백엔드 서비스", "백엔드 버킷"],
@@ -567,7 +580,9 @@
           cdnNumber("azure", "healthProbeIntervalSec", "Health Probe 간격(초)", false, 240) +
           "</div>" +
           cdnToggle("azure", "compression", "Compression", true) +
-          cdnToggle("azure", "httpsRedirect", "HTTPS 리다이렉트", true);
+          cdnToggle("azure", "httpsRedirect", "HTTPS 리다이렉트", true) +
+          '<p class="text-xs" ' + WARN_STYLE + '>Azure Front Door(Standard)는 무료 한도가 없습니다 — ' +
+          "월 기본료 약 $35(데이터 전송량 별도)가 생성 즉시 발생합니다. 테스트 후 즉시 삭제하세요.</p>";
       } else if (p === "gcp") {
         html += '<div class="grid gap-3 sm:grid-cols-2">' +
           cdnText("gcp", "backend", "Backend/Backend Bucket", true, "my-backend") +
@@ -916,6 +931,29 @@
     }
     if (kind === "cdn") {
       if (p === "aws") return { origin_domain_name: ps.origin }; // app/aws_cloudfront_provisioning.py
+      if (p === "azure") {
+        // app/azure_cdn_provisioning.py(Front Door Standard) — resourceGroup은 그대로 새 리소스
+        // 그룹 이름으로 쓰인다(다른 Azure 러너처럼 서버 자동생성이 아님, 2026-09-15 결정).
+        return {
+          origin: ps.origin,
+          resource_group: ps.resourceGroup,
+          sku: ps.sku,
+          query_string_caching_behavior: AZURE_CDN_QUERY_STRING_CODE[ps.queryStringCaching] || "IgnoreQueryString",
+          protocol: AZURE_CDN_PROTOCOL_CODE[ps.supportedProtocols] || "http_and_https",
+          health_probe_path: ps.healthProbePath || "/",
+          health_probe_interval_seconds: ps.healthProbeIntervalSec ? Number(ps.healthProbeIntervalSec) : 240,
+          compression: !!ps.compression,
+          https_redirect: !!ps.httpsRedirect,
+        };
+      }
+      if (p === "gcp") {
+        // app/gcp_cdn_provisioning.py — 러너가 실제로 쓰는 값은 lb_stack_ack 하나뿐이다.
+        // backend/backendType/cacheMode/compression 입력칸은 화면엔 있지만(맵핑 문서 4절 초안)
+        // 러너가 아직 안 받는다(1차 범위=Backend Bucket 고정, 값은 서버가 항상 CACHE_ALL_STATIC/
+        // AUTOMATIC으로 고정 — #51 결정) — validate()는 여전히 backend 입력을 필수로 요구하지만
+        // (화면 안내용) 실제 페이로드엔 안 실어 보낸다.
+        return { lb_stack_ack: ps.lbStackAck === true };
+      }
       return {};
     }
     if (kind === "db") {
