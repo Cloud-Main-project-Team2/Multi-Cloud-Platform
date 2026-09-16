@@ -27,12 +27,23 @@ window.MCErr = (function () {
       cause: "원인을 확인하지 못했습니다.",
       remedy: "잠시 후 다시 시도하고, 계속되면 아래 코드와 함께 문의하세요.",
     },
-    // 백엔드 error_catalog에 아직 없는 코드(S3/GCS 삭제 시 비어있지 않은 버킷). 서버가 unknown
-    // 설명을 주므로 아래 규칙(category==="unknown"이면 폴백)에 의해 이 문구가 쓰인다.
+    // 백엔드 error_catalog에 아직 없는 코드(실행 3종 범위 밖). 서버가 unknown 설명을 주므로
+    // 아래 규칙(category==="unknown"이면 폴백)에 의해 이 문구가 쓰인다.
     BucketNotEmpty: {
       symptom: "버킷이 비어 있어야 삭제할 수 있습니다.",
       cause: "버킷 안에 객체가 남아 있습니다.",
       remedy: "버킷을 비운 뒤 다시 삭제하거나, 강제 삭제 옵션으로 다시 시도하세요.",
+    },
+    // AI 에이전트(agent) — 카탈로그 범위 밖이라 여기서 폴백 문구를 관리한다.
+    AGENT_NOT_CONFIGURED: {
+      symptom: "AI 에이전트가 아직 설정되지 않았습니다.",
+      cause: "관리자가 API 키를 등록해야 사용할 수 있습니다.",
+      remedy: "관리자에게 AI 에이전트 설정을 요청하세요.",
+    },
+    AGENT_UPSTREAM_ERROR: {
+      symptom: "AI 응답을 가져오지 못했습니다.",
+      cause: "AI 서비스 호출이 일시적으로 실패했습니다.",
+      remedy: "잠시 후 다시 시도하세요.",
     },
   };
 
