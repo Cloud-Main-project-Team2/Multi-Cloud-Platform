@@ -468,8 +468,12 @@
         "<div>" + labelHtml("비밀번호", true) +
         '<input type="password" data-ps-platform="azure" data-ps="adminPassword" class="' + FIELD_INPUT + '" /></div></div>';
     } else if (p === "gcp") {
-      inner += labelHtml("SSH 공개키", true) +
-        '<textarea data-ps-platform="gcp" data-ps="sshPublicKey" rows="2" placeholder="ssh-rsa AAAA..." class="' + FIELD_INPUT + '"></textarea>';
+      // 2026-09-16: SSH 공개키 입력을 없앴다 — 이전엔 필수 입력칸이었지만 백엔드/Terraform
+      // 어디에도 전달되지 않는 죽은 필드였다(실사용 테스트로 발견). AWS의 SSM 전환(2026-09-15)과
+      // 같은 원칙으로, GCP는 IAP + OS Login으로 접속한다 — 키 관리 자체가 필요 없다.
+      inner += '<p class="text-xs text-muted-foreground">SSH 키 없이 생성됩니다 — 접속은 GCP ' +
+        "콘솔의 <b>SSH</b> 버튼이나 <code>gcloud compute ssh --tunnel-through-iap</code>로 " +
+        "가능합니다(접속 권한은 이 GCP 프로젝트 소유자가 IAM에서 부여).</p>";
     }
     f.innerHTML = inner;
     return f;
@@ -711,13 +715,27 @@
       } else if (p === "gcp") {
         html +=
           // 백엔드 버킷을 CDN 전용으로 새로 만들지, 이미 있는 버킷을 그대로 쓸지 선택
-          // (app/gcp_cdn_provisioning.py의 provider_spec.create_bucket과 1:1 대응).
+          // (app/gcp_cdn_provisioning.py의 provider_spec.create_bucket과 1:1 대응). 설명이 길어서
+          // 기본은 한 줄 요약만 보여주고 "상세히 보기"를 눌러야 전체(+ 왜 이렇게 설계했는지)가
+          // 펼쳐지게 했다 — 토글은 체크박스 밖에 별도 버튼으로 둬서 클릭해도 체크 상태는 안 바뀐다.
           '<label class="flex items-start gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">' +
           '<input type="checkbox" data-ps-platform="gcp" data-ps="createBucket" data-gcp-create-bucket class="mt-0.5" checked />' +
-          "<span>CDN 전용 버킷을 자동으로 생성합니다(권장). 이 CDN만을 위한 공개 버킷을 새로 만들어 " +
-          "연결하므로 이름이 겹칠 걱정이나 기존 파일이 함께 공개될 위험이 없습니다. 체크를 해제하면 " +
-          "이미 가지고 있는 버킷을 연결할 수 있습니다 — 단, 그 버킷의 공개 읽기 권한은 저희가 " +
-          "대신 설정해 드리지 않으니, GCP 콘솔에서 미리 직접 설정해 두셔야 합니다.</span></label>" +
+          "<span>CDN 전용 버킷을 자동으로 생성합니다(권장). 체크를 해제하면 이미 가지고 있는 버킷을 " +
+          "연결할 수도 있습니다.</span></label>" +
+          '<button type="button" data-gcp-bucket-detail-toggle class="ml-6 text-xs font-medium text-primary underline">' +
+          "상세히 보기</button>" +
+          '<div data-gcp-bucket-detail hidden class="ml-6 space-y-2 rounded-lg bg-muted/60 p-3 text-xs text-muted-foreground">' +
+          "<p><b>자동 생성(권장)</b> — 이 CDN만을 위한 공개 버킷을 새로 만들어 연결하므로, 이름이 " +
+          "겹칠 걱정이나 기존 파일이 함께 공개될 위험이 없습니다.</p>" +
+          "<p><b>기존 버킷 연결</b> — 이미 가지고 있는 버킷을 연결할 수 있습니다. 단, 그 버킷의 " +
+          "공개 읽기 권한은 저희가 대신 설정해 드리지 않으니 GCP 콘솔에서 미리 직접 설정해 두셔야 " +
+          "합니다.</p>" +
+          "<p><b>왜 권한을 자동으로 안 바꾸나요</b> — 저희가 만들지 않은(이미 다른 용도로 쓰이고 " +
+          "있었을 수도 있는) 버킷의 보안 설정을 자동으로 바꾸면, 버킷 이름을 잘못 입력하는 작은 " +
+          "실수만으로 엉뚱한 버킷이 실수로 공개될 수 있습니다. 그래서 같은 실수를 해도 \"정보 " +
+          "유출\"이 아니라 \"생성 실패\"로 끝나도록, 기존 버킷의 권한 변경은 항상 사용자가 직접 " +
+          "하도록 설계했습니다.</p>" +
+          "</div>" +
           '<div data-gcp-existing-bucket-wrap hidden class="grid gap-3 sm:grid-cols-2">' +
           cdnText("gcp", "backendBucketName", "연결할 기존 버킷 이름", true, "my-existing-bucket") +
           "</div>" +
@@ -756,6 +774,14 @@
       var ackInput = ackWrap && ackWrap.querySelector('[data-ps="existingBucketPublicAck"]');
       if (ackInput) ackInput.checked = false; // 다시 자동 생성으로 바꾸면 동의도 초기화
     }
+  }
+
+  // "상세히 보기" 버튼 — 버킷 자동생성/기존연결 설명의 짧은 요약 ↔ 전체 설명을 토글한다.
+  function toggleGcpBucketDetail(btn) {
+    var detail = btn.nextElementSibling;
+    if (!detail || !detail.hasAttribute("data-gcp-bucket-detail")) return;
+    detail.hidden = !detail.hidden;
+    btn.textContent = detail.hidden ? "상세히 보기" : "간략히 보기";
   }
 
   // ── ⑤ 플랫폼별 추가 설정 렌더링 ──────────────────────────────────────────
@@ -865,7 +891,7 @@
         var ps = state.providerSpec[p] || {};
         if (!isFilled(ps.region)) return false;
         if (p === "azure" && (!isFilled(ps.adminUsername) || !isFilled(ps.adminPassword))) return false;
-        if (p === "gcp" && !isFilled(ps.sshPublicKey)) return false;
+        // GCP는 SSH 키 입력을 안 받는다(IAP+OS Login으로 접속, 2026-09-16) — 필수 검증 없음.
         // ⑤ AWS 이미지가 직접 AMI ID 입력이면 AMI ID 필수
         if (p === "aws" && ps.image === AMI_CUSTOM && !isFilled(ps.amiId)) return false;
         return true;
@@ -1286,6 +1312,8 @@
       providerC.addEventListener("click", function (e) {
         var del = e.target.closest("[data-row-del]");
         if (del) { del.parentElement.remove(); onFieldChange(); }
+        var detailToggle = e.target.closest("[data-gcp-bucket-detail-toggle]");
+        if (detailToggle) toggleGcpBucketDetail(detailToggle);
       });
     }
 
