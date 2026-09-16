@@ -36,6 +36,7 @@ from app.logging_config import log_background_task, log_business_event
 from app.models import CloudAccount, Credential, Notification, ProvisioningJob, Resource, ServiceCatalog, User
 from app.pricing import estimate_monthly_cost_usd
 from app.provisioning import get_runner
+from app.schemas.errors import explanation_for, specific_reason_for
 from app.schemas.provisioning import (
     CreateProvisioningJobRequest,
     ProvisioningJobCreateData,
@@ -122,7 +123,16 @@ def _request_id(request: Request) -> str | None:
 
 def _serialize_job(job: ProvisioningJob) -> ProvisioningJobOut:
     spec = job.spec_json or {}
-    error = ProvisioningJobError(code=job.error_code, message=job.error_message) if job.error_code else None
+    error = (
+        ProvisioningJobError(
+            code=job.error_code,
+            message=job.error_message,
+            explanation=explanation_for(job.error_code),
+            specific_reason=specific_reason_for(job.error_code, job.error_message),
+        )
+        if job.error_code
+        else None
+    )
     return ProvisioningJobOut(
         id=str_id(job.id),
         credential_id=str_id(job.credential_id),

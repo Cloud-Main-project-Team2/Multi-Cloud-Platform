@@ -19,6 +19,7 @@ from app.errors import ApiError, validation_error
 from app.models import CloudAccount, Credential, Resource, ServiceCatalog, User
 from app.providers import aws as aws_provider
 from app.resource_actions import ResourceActionError, perform_action, supported_actions
+from app.schemas.errors import explanation_for, specific_reason_for
 from app.schemas.resources import (
     ActionResultError,
     ActionResultItem,
@@ -370,12 +371,23 @@ def issue_resource_cli_access(
 # --- POST /resources/action -------------------------------------------------------------
 
 
-def _rejected(resource_id: str, code: str) -> ActionResultItem:
-    return ActionResultItem(resource_id=resource_id, status="rejected", error=ActionResultError(code=code))
+def _action_error(code: str, message: str | None = None) -> ActionResultError:
+    # 사전 검사 실패는 code만(message=None) → 카탈로그 고정 설명. perform_action 실패는 SDK 원문
+    # (message)까지 있어 구체 원인 번역을 시도한다.
+    return ActionResultError(
+        code=code,
+        message=message,
+        explanation=explanation_for(code),
+        specific_reason=specific_reason_for(code, message),
+    )
 
 
-def _failed(resource_id: str, code: str) -> ActionResultItem:
-    return ActionResultItem(resource_id=resource_id, status="failed", error=ActionResultError(code=code))
+def _rejected(resource_id: str, code: str, message: str | None = None) -> ActionResultItem:
+    return ActionResultItem(resource_id=resource_id, status="rejected", error=_action_error(code, message))
+
+
+def _failed(resource_id: str, code: str, message: str | None = None) -> ActionResultItem:
+    return ActionResultItem(resource_id=resource_id, status="failed", error=_action_error(code, message))
 
 
 def _process_action_item(
@@ -475,7 +487,7 @@ def _process_action_item(
             metadata={"error_code": exc.code},
             request_id=_request_id(request),
         )
-        return _failed(resource_id_str, exc.code)
+        return _failed(resource_id_str, exc.code, exc.message)
     finally:
         del secret_payload
 

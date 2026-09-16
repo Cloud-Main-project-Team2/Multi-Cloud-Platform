@@ -24,6 +24,7 @@ from app.errors import ApiError, validation_error
 from app.logging_config import log_background_task, log_business_event
 from app.models import CloudAccount, Credential, Resource, ResourceSyncJob, ResourceSyncJobItem, ServiceCatalog, User
 from app.resource_sync import DiscoveredResource, SyncError, discover_resources
+from app.schemas.errors import explanation_for, specific_reason_for
 from app.schemas.sync_jobs import (
     ProviderSummary,
     SyncJobCreateData,
@@ -94,7 +95,16 @@ def _get_owned_job(db: Session, user_id: int, raw_id: str) -> ResourceSyncJob:
 
 
 def _serialize_item(item: ResourceSyncJobItem) -> SyncJobItemOut:
-    error = SyncJobItemError(code=item.error_code, message=item.error_message) if item.error_code else None
+    error = (
+        SyncJobItemError(
+            code=item.error_code,
+            message=item.error_message,
+            explanation=explanation_for(item.error_code),
+            specific_reason=specific_reason_for(item.error_code, item.error_message),
+        )
+        if item.error_code
+        else None
+    )
     return SyncJobItemOut(
         id=str_id(item.id),
         cloud_account_id=str_id(item.cloud_account_id),

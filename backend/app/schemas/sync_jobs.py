@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
+from app.schemas.errors import ErrorExplanationOut
+
 
 class SyncJobCreateRequest(BaseModel):
     # null/생략 = 인증 사용자의 검증 완료 연결 계정 전체, 배열 = 지정한 내 계정만(§9.2)
@@ -22,6 +24,8 @@ class SyncJobCreateResponse(BaseModel):
 class SyncJobItemError(BaseModel):
     code: str
     message: str | None = None
+    explanation: ErrorExplanationOut | None = None  # code별 고정 설명
+    specific_reason: str | None = None  # 원문을 번역한 구체 원인(없으면 null)
 
 
 class SyncJobItemOut(BaseModel):

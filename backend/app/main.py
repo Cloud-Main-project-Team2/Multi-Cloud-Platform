@@ -10,6 +10,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import engine
+from app.error_catalog import explain
 from app.errors import ApiError
 from app.logging_config import log_access, log_business_event
 from app.routers import agent, auth, client_logs, credentials, provisioning, resources, sync_jobs
@@ -85,10 +86,20 @@ async def request_context_middleware(request: Request, call_next):
 
 
 def _error_body(request: Request, code: str, message: str, details: list[dict] | None = None) -> dict:
+    # code별 자연어 설명(증상·원인·해결책)을 함께 실어 프론트가 코드→문구 매핑을 각자 들고 있지
+    # 않아도 되게 한다. 동기 오류의 message는 우리가 만든 한글 문구라, 원문(terraform stderr) 기반의
+    # '구체 원인' 번역은 여기가 아니라 잡 serializer(프로비저닝/동기화)에서 붙인다.
+    exp = explain(code)
     error: dict = {
         "code": code,
         "message": message,
         "request_id": getattr(request.state, "request_id", None),
+        "explanation": {
+            "symptom": exp.symptom,
+            "cause": exp.cause,
+            "remedy": exp.remedy,
+            "category": exp.category,
+        },
     }
     if details:
         error["details"] = details

@@ -23,9 +23,40 @@ from __future__ import annotations
 
 
 class ResourceActionError(Exception):
-    def __init__(self, code: str) -> None:
+    def __init__(self, code: str, message: str | None = None) -> None:
         self.code = code
+        # CSP SDK 예외의 원문(사용자에게 보여줄 구체 원인의 재료). secret은 제거된 상태로 담는다.
+        # code만 있는 사전 검사 실패(UNSUPPORTED_OPERATION 등)는 None.
+        self.message = message
         super().__init__(code)
+
+
+_SDK_MESSAGE_MAX = 1000
+
+
+def _secret_values(payload) -> list[str]:
+    """secret_payload에 담긴 모든 문자열 값을 평탄화한다(원문 redact용)."""
+    values: list[str] = []
+
+    def _walk(value) -> None:
+        if isinstance(value, str):
+            values.append(value)
+        elif isinstance(value, dict):
+            for item in value.values():
+                _walk(item)
+        elif isinstance(value, (list, tuple)):
+            for item in value:
+                _walk(item)
+
+    _walk(payload)
+    return values
+
+
+def _redact_sdk_message(message: str, secret_payload: dict) -> str:
+    """SDK 예외 원문에서 secret을 제거하고 길이를 제한한다."""
+    from app.terraform_runner import redact
+
+    return redact(message, _secret_values(secret_payload)).strip()[:_SDK_MESSAGE_MAX]
 
 
 def supported_actions(provider: str, service_code: str, original_resource_type: str) -> set[str]:
@@ -78,7 +109,14 @@ def perform_action(
             )
         else:
             raise ResourceActionError("UNSUPPORTED_OPERATION")
-    except ResourceActionError:
+    except ResourceActionError as err:
+        # provider 어댑터가 `raise ResourceActionError(code) from exc`로 감쌀 때, 원문 SDK 예외는
+        # __cause__에 남아 있다. 코드만으로는 알 수 없는 구체 원인을 여기서 한 번에 채운다(§18 —
+        # 원문을 그대로 흘리지 않고 secret을 제거해 담는다).
+        if err.message is None and err.__cause__ is not None:
+            err.message = _redact_sdk_message(str(err.__cause__), secret_payload)
         raise
     except Exception as exc:  # noqa: BLE001 — provider adapter는 원문 SDK 예외를 밖으로 흘리지 않는다(§18).
-        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+        raise ResourceActionError(
+            "PROVIDER_API_ERROR", _redact_sdk_message(str(exc), secret_payload)
+        ) from exc

@@ -436,9 +436,39 @@ def test_action_provider_error_maps_to_failed(client, make_user, auth_header, db
     result = resp.json()["data"]["results"][0]
     assert result["status"] == "failed"
     assert result["error"]["code"] == "PROVIDER_API_ERROR"
+    # code만 있는 실패라도 카탈로그 고정 설명은 실린다.
+    assert set(result["error"]["explanation"]) == {"symptom", "cause", "remedy", "category"}
+    assert result["error"]["specific_reason"] is None
 
     audit = db_session.query(AuditEvent).filter_by(target_type="resource", target_id=str(resource.id)).one()
     assert audit.result == "failure"
+
+
+def test_action_failure_message_becomes_specific_reason(client, make_user, auth_header, db_session, monkeypatch):
+    import app.routers.resources as resources_router
+
+    def _raise(**kwargs):
+        # SDK가 권한 오류 원문과 함께 실패한 상황.
+        raise ResourceActionError(
+            "PROVIDER_API_ERROR",
+            "AccessDenied: User is not authorized to perform: ec2:StopInstances",
+        )
+
+    monkeypatch.setattr(resources_router, "perform_action", _raise)
+    user = make_user()
+    _, _, _, resource = _setup_aws_ec2(db_session, user)
+    db_session.commit()
+
+    resp = client.post(
+        "/api/v1/resources/action",
+        json={"action": "stop", "resource_ids": [str(resource.id)]},
+        headers={**auth_header(user), "X-Action-Confirmed": "true"},
+    )
+
+    error = resp.json()["data"]["results"][0]["error"]
+    assert "AccessDenied" in error["message"]  # 원문 보존
+    assert error["specific_reason"] is not None
+    assert "권한" in error["specific_reason"]  # 원문 번역
 
 
 def test_action_partial_success_across_multiple_resources(client, make_user, auth_header, db_session, monkeypatch):
