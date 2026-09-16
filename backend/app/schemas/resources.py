@@ -4,6 +4,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.schemas.errors import ErrorExplanationOut
+
 
 class CloudAccountBrief(BaseModel):
     id: str
@@ -88,6 +90,9 @@ class ResourceActionRequest(BaseModel):
 
 class ActionResultError(BaseModel):
     code: str
+    message: str | None = None  # CSP SDK 원문(redact됨) — 사전 검사 실패는 null
+    explanation: ErrorExplanationOut | None = None  # code별 고정 설명
+    specific_reason: str | None = None  # 원문을 번역한 구체 원인(없으면 null)
 
 
 class ActionResultItem(BaseModel):
