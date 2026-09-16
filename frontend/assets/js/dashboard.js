@@ -409,6 +409,200 @@
     });
   }
 
+  // ── 클라우드 콘솔 런처 ──────────────────────────────────────────────────────────
+  // 3사 Cloud Shell을 한 카드에서 탭으로 골라 새 창으로 연다. 임베드(iframe)는
+  // X-Frame-Options/CSP로 불가하므로 여기서는 "여는 링크"만 만든다. 계정/구독/프로젝트·리전은
+  // 셸을 여는 데 필수가 아니라 "어디로 열지 사용자가 고르고, 로그인 계정을 확인"하기 위한
+  // 값이며 로그인과는 무관하다(로그인은 사용자 브라우저 세션 몫). URL엔 토큰·비밀키를 넣지 않는다.
+  var AWS_REGION_FALLBACK = "ap-northeast-2";
+  // 정책 허용 리전(프로비저닝 폼과 동일 집합). Azure는 Cloud Shell URL에 리전 파라미터가 없어 제외.
+  var CONSOLE_REGIONS = {
+    aws: [["ap-northeast-2", "서울"], ["us-east-1", "미국 버지니아"]],
+    gcp: [["asia-northeast3", "서울"], ["us-central1", "미국 아이오와"]],
+  };
+  var _consoleAccounts = { aws: [], azure: [], gcp: [] }; // { <provider>: [{value,label}] }
+  var _consoleInferredRegion = { aws: "", gcp: "" };
+  var _consoleSel = { aws: {}, azure: {}, gcp: {} }; // { <provider>: {account, region} }
+  var _consoleTab = "aws";
+
+  function consoleUrlFor(provider) {
+    var sel = _consoleSel[provider] || {};
+    if (provider === "aws") {
+      return "https://console.aws.amazon.com/cloudshell/home?region=" +
+        encodeURIComponent(sel.region || AWS_REGION_FALLBACK);
+    }
+    if (provider === "azure") {
+      // 테넌트 ID는 계정 컬럼에 없고 암호화 payload 안에만 있어 쓰지 않는다.
+      return "https://portal.azure.com/#cloudshell/";
+    }
+    // gcp: 선택한 프로젝트로 진입 + Cloud Shell 자동 오픈 시도.
+    if (sel.account) {
+      return "https://console.cloud.google.com/home/dashboard?project=" +
+        encodeURIComponent(sel.account) + "&cloudshell=true";
+    }
+    return "https://shell.cloud.google.com/";
+  }
+
+  function accountOptionsHtml(provider) {
+    var sel = (_consoleSel[provider] || {}).account;
+    return _consoleAccounts[provider].map(function (a) {
+      return '<option value="' + escHtml(a.value) + '"' + (a.value === sel ? " selected" : "") + ">" + escHtml(a.label) + "</option>";
+    }).join("");
+  }
+
+  function regionOptionsHtml(provider) {
+    var sel = (_consoleSel[provider] || {}).region;
+    var opts = (CONSOLE_REGIONS[provider] || []).slice();
+    // 유추 리전이 허용 목록 밖이면 실제 값을 반영할 수 있게 옵션으로 추가한다.
+    if (sel && opts.map(function (o) { return o[0]; }).indexOf(sel) < 0) opts.unshift([sel, sel]);
+    return opts.map(function (o) {
+      return '<option value="' + escHtml(o[0]) + '"' + (o[0] === sel ? " selected" : "") +
+        ">" + escHtml(o[1]) + " (" + escHtml(o[0]) + ")</option>";
+    }).join("");
+  }
+
+  function selectHtml(id, optionsHtml) {
+    return '<select id="' + id + '" class="rounded-md border border-border bg-surface px-2 py-1 text-sm">' + optionsHtml + "</select>";
+  }
+
+  function consoleBodyHtml(provider) {
+    var sel = _consoleSel[provider] || {};
+    var hasAccount = _consoleAccounts[provider].length > 0;
+    var accountLabel = provider === "azure" ? "대상 구독" : provider === "gcp" ? "대상 프로젝트" : "대상 계정";
+    var accountField = hasAccount
+      ? accountLabel + " " + selectHtml("console-account-select", accountOptionsHtml(provider))
+      : '<span class="text-muted-foreground">' + accountLabel + " 미연결</span>";
+
+    var regionField = "";
+    var copyBtn = "";
+    if (provider === "aws") {
+      regionField = " · region " + selectHtml("console-region-select", regionOptionsHtml(provider));
+    } else if (provider === "gcp") {
+      regionField = " · region " + selectHtml("console-region-select", regionOptionsHtml(provider));
+      if (sel.region) copyBtn = consoleCopyBtnHtml("gcloud config set compute/region " + sel.region);
+    } else if (provider === "azure") {
+      if (sel.account) copyBtn = consoleCopyBtnHtml('az account set --subscription "' + sel.account + '"');
+    }
+
+    var note = '<p class="mt-1 text-xs text-muted-foreground">ⓘ 로그인은 브라우저에서 직접 하세요.' +
+      (provider === "gcp"
+        ? " Cloud Shell 패널이 자동으로 안 열리면 우측 상단 Cloud Shell 아이콘을 눌러주세요."
+        : "") + "</p>";
+
+    return (
+      '<div class="flex flex-wrap items-end justify-between gap-3">' +
+        '<div>' +
+          '<div class="flex flex-wrap items-center gap-1.5">' + accountField + regionField + "</div>" +
+          note +
+          (copyBtn ? '<div class="mt-2">' + copyBtn + "</div>" : "") +
+        "</div>" +
+        '<button type="button" id="console-open-btn" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">' +
+          escHtml(PLATFORM_LABEL[provider]) + " Cloud Shell 새 창으로 열기 ↗</button>" +
+      "</div>"
+    );
+  }
+
+  function consoleCopyBtnHtml(cmd) {
+    return '<button type="button" class="console-copy rounded-lg border border-border bg-surface px-2.5 py-1 text-xs hover:bg-muted" ' +
+      'data-copy="' + escHtml(cmd) + '"><code>' + escHtml(cmd) + "</code> · 복사</button>";
+  }
+
+  function renderConsoleLauncher() {
+    var tabs = document.getElementById("console-launcher-tabs");
+    var body = document.getElementById("console-launcher-body");
+    if (!tabs || !body) return;
+
+    // 탭 활성 스타일 반영.
+    tabs.querySelectorAll(".console-tab").forEach(function (btn) {
+      var active = btn.getAttribute("data-console-tab") === _consoleTab;
+      btn.setAttribute("aria-selected", active ? "true" : "false");
+      btn.classList.toggle("bg-primary", active);
+      btn.classList.toggle("text-white", active);
+      btn.classList.toggle("border", !active);
+      btn.classList.toggle("border-border", !active);
+      btn.classList.toggle("hover:bg-muted", !active);
+    });
+
+    body.innerHTML = consoleBodyHtml(_consoleTab);
+
+    var accountSel = document.getElementById("console-account-select");
+    if (accountSel) {
+      accountSel.addEventListener("change", function () {
+        _consoleSel[_consoleTab].account = accountSel.value;
+        renderConsoleLauncher(); // 복사 명령·열기 URL을 갱신.
+      });
+    }
+    var regionSel = document.getElementById("console-region-select");
+    if (regionSel) {
+      regionSel.addEventListener("change", function () {
+        _consoleSel[_consoleTab].region = regionSel.value;
+        renderConsoleLauncher();
+      });
+    }
+
+    var openBtn = document.getElementById("console-open-btn");
+    if (openBtn) {
+      openBtn.addEventListener("click", function () {
+        // 사용자 제스처 내에서 동기적으로 연다(팝업 차단 회피). opener 접근 차단.
+        window.open(consoleUrlFor(_consoleTab), "_blank", "noopener,noreferrer");
+      });
+    }
+    body.querySelectorAll(".console-copy").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var cmd = btn.getAttribute("data-copy") || "";
+        var done = function () {
+          var original = btn.innerHTML;
+          btn.textContent = "복사됨 ✓";
+          setTimeout(function () { btn.innerHTML = original; }, 1500);
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(cmd).then(done, function () {});
+        }
+      });
+    });
+  }
+
+  function initConsoleLauncher(accounts, items) {
+    // provider별 계정 목록(= /cloud-accounts는 id 오름차순). 라벨은 account_label 우선.
+    (accounts || []).forEach(function (a) {
+      if (!_consoleAccounts[a.provider]) return;
+      var label = a.account_label ? a.account_label + " · " + a.external_account_id : a.external_account_id;
+      _consoleAccounts[a.provider].push({ value: a.external_account_id, label: label });
+    });
+    // provider별 최빈 region을 리소스에서 유추.
+    var counts = { aws: {}, azure: {}, gcp: {} };
+    (items || []).forEach(function (r) {
+      var p = r.cloud_account && r.cloud_account.provider;
+      if (!counts[p] || !r.region) return;
+      counts[p][r.region] = (counts[p][r.region] || 0) + 1;
+    });
+    ["aws", "gcp"].forEach(function (p) {
+      var best = "", bestN = 0;
+      Object.keys(counts[p]).forEach(function (region) {
+        if (counts[p][region] > bestN) { best = region; bestN = counts[p][region]; }
+      });
+      _consoleInferredRegion[p] = best;
+    });
+
+    // 초기 선택값: 계정=첫 계정, 리전=유추값(없으면 AWS는 폴백, GCP는 허용목록 첫 값).
+    PLATFORMS.forEach(function (p) {
+      _consoleSel[p].account = _consoleAccounts[p].length ? _consoleAccounts[p][0].value : "";
+    });
+    _consoleSel.aws.region = _consoleInferredRegion.aws || AWS_REGION_FALLBACK;
+    _consoleSel.gcp.region = _consoleInferredRegion.gcp || (CONSOLE_REGIONS.gcp[0] && CONSOLE_REGIONS.gcp[0][0]) || "";
+
+    var tabs = document.getElementById("console-launcher-tabs");
+    if (tabs) {
+      tabs.querySelectorAll(".console-tab").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          _consoleTab = btn.getAttribute("data-console-tab");
+          renderConsoleLauncher();
+        });
+      });
+    }
+    renderConsoleLauncher();
+  }
+
   function init() {
     if (!window.MCPApi) return;
 
@@ -419,13 +613,16 @@
     Promise.all([
       MCPApi.request("/resources/summary").catch(function () { return null; }),
       MCPApi.request("/resources").catch(function () { return null; }),
+      MCPApi.request("/cloud-accounts").catch(function () { return null; }),
     ]).then(function (results) {
       var summary = results[0];
       var items = (results[1] && results[1].items) || [];
+      var accounts = (results[2] && results[2].items) || [];
       var costInfo = computeCostAggregates(items);
       renderResourceSummary(summary, costInfo);
       renderCategoriesAndRegions(items);
       renderCostBreakdown(costInfo);
+      initConsoleLauncher(accounts, items);
     });
 
     loadRecentActivity();
