@@ -29,6 +29,8 @@
   background:linear-gradient(90deg, transparent, rgba(86,165,221,.45), transparent); }
 
 .sidebar__foot{ border-top:1px solid rgba(255,255,255,.08); padding:.85rem 1rem; font-size:.8rem; }
+.sidebar__remaining{ margin-bottom:.4rem; font-size:.72rem; color:#8fa3b6; display:flex; align-items:baseline; gap:.15rem; }
+.sidebar__remaining-value{ color:#c3d2e0; font-variant-numeric:tabular-nums; }
 .sidebar__email{ color:#aebfd0; word-break:break-all; }
 .sidebar__logout{ margin-top:.5rem; width:100%; text-align:left; color:#c3d2e0; background:transparent; border:0; padding:.35rem 0; cursor:pointer; font-size:.85rem; }
 .sidebar__logout:hover{ color:#fff; }

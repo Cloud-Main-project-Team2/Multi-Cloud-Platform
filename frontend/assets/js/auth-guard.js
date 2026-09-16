@@ -19,7 +19,54 @@
     return;
   }
 
+  // 남은 시간 표시: access token 만료(issuedAt + expiresIn)까지 카운트다운.
+  // 매 tick마다 세션을 다시 읽으므로, 다른 요청이 401→refresh로 토큰을 갱신하면 값이 리셋된다.
+  function formatRemaining(ms) {
+    if (ms <= 0) return "만료됨";
+    var total = Math.floor(ms / 1000);
+    var h = Math.floor(total / 3600);
+    var m = Math.floor((total % 3600) / 60);
+    var s = total % 60;
+    var pad = function (n) { return n < 10 ? "0" + n : "" + n; };
+    return (h > 0 ? h + ":" + pad(m) : m + "") + ":" + pad(s);
+  }
+
+  function wireRemaining() {
+    document.querySelectorAll(".sidebar__foot").forEach(function (foot) {
+      var email = foot.querySelector(".sidebar__email");
+      if (!email) return;
+      // 자리(높이)는 정적 마크업이 미리 잡아 둔다 — 삽입으로 인한 레이아웃 시프트(메뉴 딸칵거림)를
+      // 피하기 위해서다. 마크업에 없으면(구버전 페이지) 생성해 하위 호환한다.
+      var value = foot.querySelector(".sidebar__remaining-value");
+      if (!value) {
+        var box = document.createElement("div");
+        box.className = "sidebar__remaining";
+        var label = document.createElement("span");
+        label.className = "sidebar__remaining-label";
+        label.textContent = "세션 남은 시간 ";
+        value = document.createElement("span");
+        value.className = "sidebar__remaining-value";
+        box.appendChild(label);
+        box.appendChild(value);
+        foot.insertBefore(box, email);
+      }
+
+      function tick() {
+        var s = window.MCPApi ? window.MCPApi.getSession() : null;
+        if (!s || !s.issuedAt || !s.expiresIn) {
+          value.textContent = "-";
+          return;
+        }
+        var expiresAt = new Date(s.issuedAt).getTime() + s.expiresIn * 1000;
+        value.textContent = formatRemaining(expiresAt - Date.now());
+      }
+      tick();
+      setInterval(tick, 1000);
+    });
+  }
+
   function wire() {
+    wireRemaining();
     document.querySelectorAll(".sidebar__email").forEach(function (el) {
       el.textContent = (session.user && session.user.email) || "";
     });

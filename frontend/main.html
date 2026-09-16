@@ -20,6 +20,9 @@
   <link rel="stylesheet" href="assets/css/theme.css" />
   <!-- 오류 리포터: window.onerror/rejection을 서버 로그로 보낸다. 다른 스크립트보다 먼저 로드한다. -->
   <script src="assets/js/error-reporter.js"></script>
+  <!-- 세션 조회용(로그인 상태면 헤더/히어로 CTA를 이름+대시보드로 교체). MAIN-01은 보호 화면이
+       아니므로 auth-guard 없이 세션 존재 여부만 확인한다. -->
+  <script src="assets/js/api.js"></script>
 </head>
 <body class="min-h-screen">
 
@@ -55,8 +58,16 @@
         <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()"
           class="grid h-9 w-9 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="테마 전환">🌙</button>
 
-        <a href="login.html" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">로그인</a>
-        <a href="signup.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">회원가입</a>
+        <!-- 게스트 상태: 로그인/회원가입 -->
+        <span data-auth="guest" class="contents">
+          <a href="login.html" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">로그인</a>
+          <a href="signup.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">회원가입</a>
+        </span>
+        <!-- 로그인 상태: 사용자 이름 + 대시보드 (JS가 hidden 토글) -->
+        <span data-auth="user" class="hidden items-center gap-1 sm:gap-2">
+          <a href="mypage.html" data-user-name class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted"></a>
+          <a href="dashboard.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">대시보드</a>
+        </span>
       </nav>
     </div>
   </header>
@@ -75,8 +86,16 @@
         콘솔을 넘나들 필요 없이 <span data-service-name>MultiCloud Ops</span> 하나로.
       </p>
       <div class="mt-8 flex flex-wrap items-center gap-3">
-        <a href="signup.html" class="rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white shadow-sm hover:opacity-90">무료로 시작하기 →</a>
-        <a href="login.html" class="rounded-xl border border-border bg-surface px-6 py-3 text-base font-semibold hover:bg-muted">로그인</a>
+        <!-- 게스트 상태 CTA -->
+        <span data-auth="guest" class="contents">
+          <a href="signup.html" class="rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white shadow-sm hover:opacity-90">무료로 시작하기 →</a>
+          <a href="login.html" class="rounded-xl border border-border bg-surface px-6 py-3 text-base font-semibold hover:bg-muted">로그인</a>
+        </span>
+        <!-- 로그인 상태 CTA (JS가 hidden 토글) -->
+        <span data-auth="user" class="hidden flex-wrap items-center gap-3">
+          <a href="dashboard.html" class="rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white shadow-sm hover:opacity-90">대시보드로 이동 →</a>
+          <a href="inventory.html" class="rounded-xl border border-border bg-surface px-6 py-3 text-base font-semibold hover:bg-muted">리소스 조회</a>
+        </span>
       </div>
     </div>
   </section>
@@ -130,5 +149,29 @@
   </footer>
 
   <script src="assets/js/ui.js"></script>
+  <!-- 로그인 상태 반영: 유효한 세션이 있으면 로그인/회원가입 → 사용자 이름 + 대시보드로 교체.
+       세션은 localStorage(mcp_session)에 그대로 남아 있으므로 메인 홈으로 와도 로그인이 유지된다. -->
+  <script>
+    (function () {
+      "use strict";
+      var api = window.MCPApi;
+      var session = api ? api.getSession() : null;
+      var loggedIn = api && api.isSessionValid(session);
+      document.querySelectorAll('[data-auth="guest"]').forEach(function (el) {
+        el.classList.toggle("hidden", loggedIn);
+        el.classList.toggle("contents", !loggedIn);
+      });
+      document.querySelectorAll('[data-auth="user"]').forEach(function (el) {
+        el.classList.toggle("hidden", !loggedIn);
+        el.classList.toggle("flex", loggedIn);
+      });
+      if (loggedIn) {
+        var name = (session.user && (session.user.name || session.user.email)) || "사용자";
+        document.querySelectorAll("[data-user-name]").forEach(function (el) {
+          el.textContent = name + "님";
+        });
+      }
+    })();
+  </script>
 </body>
 </html>
