@@ -146,6 +146,30 @@ def test_get_sync_job_detail_with_provider_summary(client, make_user, auth_heade
     assert summary_by_provider["azure"]["completed"] == 1
 
 
+def test_sync_item_error_carries_explanation(client, make_user, auth_header, db_session):
+    user = make_user()
+    now = dt.datetime.now(dt.timezone.utc)
+    job = ResourceSyncJob(user_id=user.id, status="failed", requested_at=now, started_at=now, finished_at=now)
+    db_session.add(job)
+    db_session.flush()
+    account = _make_account(db_session, user, "aws", "111122223333")
+    db_session.add(ResourceSyncJobItem(
+        sync_job_id=job.id, cloud_account_id=account.id, provider="aws", status="failed",
+        error_code="CLOUD_PERMISSION_DENIED",
+    ))
+    db_session.commit()
+
+    resp = client.get(f"/api/v1/sync-jobs/{job.id}", headers=auth_header(user))
+
+    assert resp.status_code == 200
+    item = resp.json()["data"]["items"][0]
+    assert item["error"]["code"] == "CLOUD_PERMISSION_DENIED"
+    assert set(item["error"]["explanation"]) == {"symptom", "cause", "remedy", "category"}
+    assert item["error"]["explanation"]["remedy"]
+    # 원문 메시지가 없으니 구체 원인은 null.
+    assert item["error"]["specific_reason"] is None
+
+
 def test_get_sync_job_not_found_for_other_user(client, make_user, auth_header, db_session):
 
     owner = make_user(email="owner2@example.com")

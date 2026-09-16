@@ -350,7 +350,43 @@ def test_get_job_detail_serializes_spec_and_error(client, make_user, auth_header
     data = resp.json()["data"]
     assert data["common_spec"] == {"name": "web-01"}
     assert data["provider_spec"] == {"region": "asia-northeast3"}
-    assert data["error"] == {"code": "TERRAFORM_ERROR", "message": "boom"}
+    error = data["error"]
+    assert error["code"] == "TERRAFORM_ERROR"
+    assert error["message"] == "boom"
+    # code별 고정 설명이 함께 실린다.
+    assert set(error["explanation"]) == {"symptom", "cause", "remedy", "category"}
+    assert error["explanation"]["category"] == "provisioning"
+    # "boom"은 어떤 원문 패턴에도 안 걸리므로 구체 원인은 null.
+    assert error["specific_reason"] is None
+
+
+def test_get_job_detail_translates_uppercase_name_failure(client, make_user, auth_header, db_session):
+    # 사용자 예시: 이름에 대문자를 써서 실패한 terraform 원문이 저장된 잡.
+    user = make_user()
+    account = _make_account(db_session, user, "aws", "1234")
+    credential = _make_credential(db_session, account)
+    service = _make_service(db_session, "aws", "s3")
+    job = ProvisioningJob(
+        user_id=user.id, credential_id=credential.id, service_catalog_id=service.id,
+        workspace_name="ws-upper", idempotency_key="k-upper",
+        spec_json={"common_spec": {"name": "MyBucketNAME"}, "provider_spec": {}},
+        status="failed", error_code="TERRAFORM_ERROR",
+        error_message=(
+            'Error: expected name to contain only lowercase alphanumeric characters '
+            'and hyphens, got "MyBucketNAME"'
+        ),
+    )
+    db_session.add(job)
+    db_session.commit()
+
+    resp = client.get(f"/api/v1/provisioning/jobs/{job.id}", headers=auth_header(user))
+
+    assert resp.status_code == 200
+    error = resp.json()["data"]["error"]
+    # 원문은 그대로 보존되고, 위에 친절한 구체 원인이 얹힌다.
+    assert "MyBucketNAME" in error["message"]
+    assert error["specific_reason"] is not None
+    assert "소문자" in error["specific_reason"]
 
 
 # --- POST /provisioning/jobs/{id}/cancel ----------------------------------------------------

@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from app.schemas.errors import ErrorExplanationOut
+
 
 class CreateProvisioningJobRequest(BaseModel):
     credential_id: str
@@ -24,7 +26,9 @@ class ProvisioningJobCreateResponse(BaseModel):
 
 class ProvisioningJobError(BaseModel):
     code: str
-    message: str | None = None
+    message: str | None = None  # 저장된 실패 원문(terraform/CSP stderr, redact됨)
+    explanation: ErrorExplanationOut | None = None  # code별 고정 설명
+    specific_reason: str | None = None  # 원문을 번역한 구체 원인(없으면 null)
 
 
 class ProvisioningJobOut(BaseModel):
