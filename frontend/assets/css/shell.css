@@ -23,6 +23,10 @@
 .nav-item.active{ background:var(--sidebar-accent); color:#fff; font-weight:600; }
 .nav-item.disabled{ color:#6f86a0; cursor:not-allowed; }
 .nav-item .badge{ margin-left:auto; font-size:.62rem; border:1px solid currentColor; border-radius:.35rem; padding:0 .3rem; opacity:.8; }
+/* 메뉴 아이콘(이모지 → 아웃라인 SVG). currentColor를 상속해 기본/hover/active 색을 그대로 따른다. */
+.nav-item .nav-ico{ flex:0 0 auto; opacity:.9; }
+.nav-item:hover .nav-ico, .nav-item.active .nav-ico{ opacity:1; }
+.sidebar__utils .bell-ico{ flex:0 0 auto; }
 
 /* 확장 기능(비용 관리·보고서 작성)을 기본 메뉴와 구분하는 은은한 하늘색 구분선 */
 .sidebar__divider{ margin:.6rem .9rem; height:1px; border:0;
@@ -51,12 +55,24 @@
   color:#c3d2e0; cursor:pointer; font-size:1rem;
 }
 .sidebar__utils .topbar__btn:hover{ background:rgba(255,255,255,.12); color:#fff; }
-.sidebar__utils .lang-toggle{
-  display:inline-flex; overflow:hidden; font-size:.72rem;
-  border:1px solid rgba(255,255,255,.12); border-radius:999px; background:rgba(255,255,255,.06);
+/* 언어 선택 — 지구본 아이콘 클릭 → 드롭다운(한국어/English). 메뉴는 ui.js가 동적 생성. */
+.sidebar__utils .lang-dd{ position:relative; }
+.sidebar__utils .lang-dd__btn{ display:inline-flex; align-items:center; gap:.35rem; font-size:.72rem; }
+.sidebar__utils .lang-dd__globe{ opacity:.85; flex:0 0 auto; }
+.lang-dd__menu{
+  position:absolute; bottom:calc(100% + .5rem); left:0;
+  min-width:132px; padding:.25rem;
+  background:var(--surface); color:var(--foreground);
+  border:1px solid var(--border); border-radius:.7rem;
+  box-shadow:0 12px 30px rgba(0,0,0,.28); z-index:60; overflow:hidden;
 }
-.sidebar__utils .lang-toggle span{ padding:.3rem .55rem; color:#8098af; cursor:pointer; }
-.sidebar__utils .lang-toggle span.active{ background:rgba(255,255,255,.14); color:#fff; font-weight:600; }
+.lang-dd__item{
+  display:block; width:100%; text-align:left; cursor:pointer;
+  padding:.45rem .6rem; border:0; border-radius:.45rem;
+  background:transparent; color:var(--foreground); font-size:.82rem;
+}
+.lang-dd__item:hover{ background:var(--muted); }
+.lang-dd__item.active{ background:var(--muted); font-weight:600; }
 .sidebar__utils .bell{ position:relative; }
 .bell__badge{ position:absolute; top:2px; right:2px; min-width:15px; height:15px; padding:0 3px; border-radius:9999px; background:var(--yellow); color:var(--cta-text); font-size:.62rem; font-weight:700; display:grid; place-items:center; }
 

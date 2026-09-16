@@ -33,18 +33,23 @@
         <span data-service-name>MultiCloud Ops</span>
       </a>
       <nav class="sidebar__nav">
-        <a href="dashboard.html" class="nav-item">📊 대시보드</a>
-        <a href="inventory.html" class="nav-item">🗂️ 인벤토리</a>
-        <a href="provisioning.html" class="nav-item">⚡ 프로비저닝</a>
-        <a href="mypage.html" class="nav-item active">👤 마이페이지</a>
+        <a href="dashboard.html" class="nav-item"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="nav-ico"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg>대시보드</a>
+        <a href="inventory.html" class="nav-item"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="nav-ico"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>인벤토리</a>
+        <a href="provisioning.html" class="nav-item"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="nav-ico"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>프로비저닝</a>
+        <a href="mypage.html" class="nav-item active"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="nav-ico"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>마이페이지</a>
         <div class="sidebar__divider" aria-hidden="true"></div>
-        <a href="cost.html" class="nav-item">💰 비용 관리</a>
-        <a href="reports.html" class="nav-item">📝 보고서 작성</a>
+        <a href="cost.html" class="nav-item"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="nav-ico"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg>비용 관리</a>
+        <a href="reports.html" class="nav-item"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="nav-ico"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>보고서 작성</a>
       </nav>
       <div class="sidebar__utils">
         <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="topbar__btn" aria-label="테마 전환">🌙</button>
-        <div class="lang-toggle"><span class="active">KOR</span><span>EN</span></div>
-        <span class="bell topbar__btn" role="button" aria-label="알림">🔔<span class="bell__badge">3</span></span>
+        <div class="lang-dd">
+          <button type="button" class="lang-dd__btn topbar__btn" aria-haspopup="listbox" aria-expanded="false" aria-label="언어 선택">
+            <svg class="lang-dd__globe" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+            <span class="lang-dd__current">KOR</span>
+          </button>
+        </div>
+        <span class="bell topbar__btn" role="button" aria-label="알림"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="bell-ico"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="bell__badge">3</span></span>
       </div>
 
       <div class="sidebar__foot">
@@ -109,8 +114,9 @@
               <div class="flex items-center gap-3">
                 <button id="cred-submit" type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">저장 및 검증</button>
                 <button id="cred-cancel-edit" type="button" hidden class="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted">수정 취소</button>
-                <span id="cred-result" class="hidden text-sm"></span>
               </div>
+              <!-- 결과 문구는 버튼과 같은 flex 줄에 두면 긴 검증 실패 메시지가 버튼을 밀어 깨뜨린다 → 별도 줄로 분리 -->
+              <span id="cred-result" class="hidden text-sm"></span>
               <p class="text-xs text-muted-foreground">검증에 실패해도 자격 증명은 저장되며, 아래 표에서 검증 실패로 표시됩니다. 언제든 "재검증"할 수 있습니다.</p>
             </form>
           </section>
@@ -156,7 +162,27 @@
     </div>
   </div>
 
+  <!-- 자격 증명 검증 실패/오류 팝업 — 콘텐츠 영역 중앙(pl-[220px]) + 빨간 포인트 + 에러 아이콘 -->
+  <div id="cred-error-modal" data-modal class="hidden fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 py-10 pr-4 pl-[220px]">
+    <div class="w-full max-w-md rounded-2xl border border-border bg-surface shadow-xl" style="border-top:4px solid #c0392b">
+      <div class="flex items-start justify-between gap-3 border-b border-border p-5">
+        <div class="flex items-center gap-3">
+          <span class="grid h-9 w-9 flex-none place-items-center rounded-full" style="background:rgba(192,57,43,.12);color:#c0392b">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </span>
+          <h2 id="cred-error-modal-title" class="text-lg font-bold" style="color:#c0392b">검증에 실패했습니다</h2>
+        </div>
+        <button type="button" data-modal-close class="grid h-8 w-8 flex-none place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+      </div>
+      <p id="cred-error-modal-body" class="whitespace-pre-wrap break-words p-5 text-sm text-foreground"></p>
+      <div class="flex justify-end gap-2 border-t border-border p-5">
+        <button type="button" data-modal-close class="rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">닫기</button>
+      </div>
+    </div>
+  </div>
+
   <script src="assets/js/ui.js"></script>
+  <script src="assets/js/modal.js"></script>
   <script src="assets/js/dropdown.js"></script>
   <script src="assets/js/mypage.js"></script>
 </body>

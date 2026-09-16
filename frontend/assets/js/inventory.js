@@ -22,6 +22,18 @@
   var syncBanner = document.getElementById("sync-banner");
   var syncReasons = document.getElementById("sync-reasons");
   var invNotice = document.getElementById("inv-notice");
+  var errModalTitle = document.getElementById("inv-error-modal-title");
+  var errModalBody = document.getElementById("inv-error-modal-body");
+
+  // CSP/액션 오류를 인라인 배너 대신 팝업으로 띄운다. MCErr 패널을 그대로 담아 정보 손실이 없다
+  // (증상·원인·해결 방법·"상세 정보" 펼치기·요청ID·복사). 닫기 버튼/배경 클릭/ESC는 modal.js가 처리.
+  function openErrorModal(title, bodyHtml) {
+    if (!errModalBody) return;
+    if (errModalTitle) errModalTitle.textContent = title;
+    errModalBody.innerHTML = bodyHtml;
+    MCErr.wire(errModalBody);
+    MCPModal.open("#inv-error-modal");
+  }
   var refreshBtn = document.getElementById("refresh-btn");
   var selCount = document.getElementById("sel-count");
   var selectAll = document.getElementById("select-all");
@@ -487,14 +499,16 @@
       var problems = data.results.filter(function (r) { return r.status !== "success"; });
       // 성공 요약은 텍스트로, 실패/거부는 각각 원인 패널로 보여준다.
       var summary = succeeded + "개 성공" + (problems.length ? ", " + problems.length + "개 실패/거부" : "");
-      invNotice.innerHTML =
-        '<p class="text-sm font-medium text-foreground">' + MCErr.escapeHtml(summary) + "</p>" +
-        problems.map(function (p) {
-          return '<div class="mt-2"><p class="mb-1 text-xs text-muted-foreground">#' +
+      // 성공 요약은 인라인에 조용히 남기고, 실패/거부 원인은 팝업으로 띄운다.
+      invNotice.innerHTML = '<p class="text-sm font-medium text-foreground">' + MCErr.escapeHtml(summary) + "</p>";
+      invNotice.hidden = false;
+      if (problems.length) {
+        var body = problems.map(function (p) {
+          return '<div><p class="mb-1 text-xs text-muted-foreground">#' +
             MCErr.escapeHtml(p.resource_id) + "</p>" + MCErr.panelHtml(p.error || {}) + "</div>";
         }).join("");
-      invNotice.hidden = false;
-      MCErr.wire(invNotice);
+        openErrorModal(succeeded ? "일부 작업이 실패했습니다" : "작업이 실패했습니다", body);
+      }
       selectedIds.clear();
       loadResources();
       loadSummary();
@@ -502,7 +516,7 @@
         MCPModal.close("#inv-modal");
       }
     }).catch(function (err) {
-      MCErr.renderInto(invNotice, err);
+      openErrorModal("작업을 처리하지 못했습니다", MCErr.panelHtml(err));
     });
   }
 

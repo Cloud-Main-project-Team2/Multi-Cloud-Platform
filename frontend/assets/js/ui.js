@@ -14,11 +14,15 @@
     return document.documentElement.dataset.theme === "dark" ? "dark" : "light";
   }
 
+  // 선(아웃라인) 아이콘 — 이모지(🌙/☀️) 대신 서비스 로고와 결을 맞춘 SVG를 넣는다.
+  var SUN_SVG = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>';
+  var MOON_SVG = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>';
+
   function syncThemeIcons() {
-    var icon = currentTheme() === "dark" ? "☀️" : "🌙";
+    var dark = currentTheme() === "dark";
     document.querySelectorAll("[data-theme-toggle]").forEach(function (b) {
-      b.textContent = icon;
-      b.setAttribute("aria-label", currentTheme() === "dark" ? "라이트 모드로" : "다크 모드로");
+      b.innerHTML = dark ? SUN_SVG : MOON_SVG;
+      b.setAttribute("aria-label", dark ? "라이트 모드로" : "다크 모드로");
     });
   }
 
@@ -103,7 +107,64 @@
     });
   }
 
+  // 🌐 언어 선택 드롭다운 — 사이드바 유틸 바의 지구본 버튼을 누르면 언어 목록이 열린다.
+  // 지원 언어는 한국어/English 2개(코드상 그것뿐). 실제 i18n은 아직 없어 선택만 저장·표시한다
+  // (기존 KOR/EN 토글도 번역 동작은 없었다 — UI 형태만 지구본+드롭다운으로 바꾼 것).
+  function initLangDropdown() {
+    var wrap = document.querySelector(".sidebar__utils .lang-dd");
+    var btn = wrap && wrap.querySelector(".lang-dd__btn");
+    if (!wrap || !btn) return;
+
+    var LANGS = [
+      { code: "ko", label: "한국어", short: "KOR" },
+      { code: "en", label: "English", short: "EN" }
+    ];
+    var current = "ko";
+    try { current = localStorage.getItem("mcp_lang") || "ko"; } catch (e) {}
+
+    var currentEl = btn.querySelector(".lang-dd__current");
+    var menu = document.createElement("div");
+    menu.className = "lang-dd__menu hidden";
+    menu.setAttribute("role", "listbox");
+    menu.innerHTML = LANGS.map(function (l) {
+      return '<button type="button" class="lang-dd__item" role="option" data-lang="' + l.code + '">' + l.label + "</button>";
+    }).join("");
+    wrap.appendChild(menu);
+
+    function render() {
+      var found = LANGS.filter(function (l) { return l.code === current; })[0] || LANGS[0];
+      if (currentEl) currentEl.textContent = found.short;
+      Array.prototype.forEach.call(menu.querySelectorAll(".lang-dd__item"), function (it) {
+        it.classList.toggle("active", it.getAttribute("data-lang") === current);
+      });
+    }
+    function closeMenu() { menu.classList.add("hidden"); btn.setAttribute("aria-expanded", "false"); }
+    render();
+
+    btn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var willOpen = menu.classList.contains("hidden");
+      menu.classList.toggle("hidden", !willOpen);
+      btn.setAttribute("aria-expanded", String(willOpen));
+    });
+    menu.addEventListener("click", function (e) {
+      var item = e.target.closest(".lang-dd__item");
+      if (!item) return;
+      current = item.getAttribute("data-lang");
+      try { localStorage.setItem("mcp_lang", current); } catch (e2) {}
+      render();
+      closeMenu();
+    });
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest(".lang-dd")) closeMenu();
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") closeMenu();
+    });
+  }
+
   injectServiceName();
   syncThemeIcons();
   initNotifications();
+  initLangDropdown();
 })();
