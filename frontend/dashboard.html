@@ -61,17 +61,28 @@
     <div class="main-area">
 
       <div class="content">
-        <!-- 제목 + 콘솔 열기 버튼 -->
+        <!-- 제목 -->
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h1 class="text-2xl font-bold">대시보드</h1>
             <p class="mt-1 text-sm text-muted-foreground">AWS·Azure·GCP는 실시간 연동입니다</p>
           </div>
-          <div class="flex flex-wrap gap-2">
-            <a href="https://console.aws.amazon.com" target="_blank" rel="noopener" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-muted">AWS 콘솔 열기 ↗</a>
-            <a href="https://portal.azure.com" target="_blank" rel="noopener" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-muted">Azure 포털 열기 ↗</a>
-            <a href="https://console.cloud.google.com" target="_blank" rel="noopener" class="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-muted">GCP 콘솔 열기 ↗</a>
+        </div>
+
+        <!-- 클라우드 콘솔 런처: 3사 Cloud Shell을 한 카드에서 탭으로 골라 새 창으로 연다.
+             임베드(iframe)는 X-Frame-Options/CSP로 불가하므로 "여는 조작"만 여기 모으고
+             실제 터미널은 새 브라우저 탭으로 뜬다. 로그인·인증은 전적으로 사용자 브라우저 몫. -->
+        <div id="console-launcher" class="mt-4 rounded-2xl border border-border bg-surface p-4">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h2 class="text-sm font-semibold">클라우드 콘솔</h2>
+            <div id="console-launcher-tabs" class="flex gap-1" role="tablist" aria-label="클라우드 선택">
+              <button type="button" data-console-tab="aws" role="tab" aria-selected="true" class="console-tab rounded-lg px-3 py-1.5 text-sm font-medium">AWS</button>
+              <button type="button" data-console-tab="azure" role="tab" aria-selected="false" class="console-tab rounded-lg px-3 py-1.5 text-sm font-medium">Azure</button>
+              <button type="button" data-console-tab="gcp" role="tab" aria-selected="false" class="console-tab rounded-lg px-3 py-1.5 text-sm font-medium">GCP</button>
+            </div>
           </div>
+          <!-- 활성 탭 내용(대상 정보·안내·복사·열기 버튼)은 dashboard.js가 렌더한다 -->
+          <div id="console-launcher-body" class="mt-3 text-sm text-muted-foreground">불러오는 중…</div>
         </div>
 
         <!-- 요약 카드 3 -->
