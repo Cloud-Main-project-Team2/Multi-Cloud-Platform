@@ -361,6 +361,16 @@
     resultEl.classList.add("hidden");
   }
 
+  // 검증 실패·등록 오류는 인라인 문구가 아니라 팝업으로 띄운다(2026-09-16). 성공/안내는 인라인 유지.
+  var errModalTitle = document.getElementById("cred-error-modal-title");
+  var errModalBody = document.getElementById("cred-error-modal-body");
+  function showErrorPopup(title, message) {
+    if (errModalTitle) errModalTitle.textContent = title;
+    if (errModalBody) errModalBody.textContent = message;
+    if (window.MCPModal) window.MCPModal.open("#cred-error-modal");
+    else showResult(message, false); // modal.js가 없으면 인라인으로 폴백
+  }
+
   var ERROR_MESSAGES = {
     CREDENTIAL_ALREADY_EXISTS: "같은 이름의 자격 증명이 이미 있습니다. 다른 이름을 사용해 주세요.",
     CREDENTIAL_NOT_FOUND: "자격 증명을 찾을 수 없습니다. 목록을 새로고침해 주세요.",
@@ -458,17 +468,20 @@
         form.reset();
         providerSelect.value = provider;
         renderProviderFields();
-        showResult(
-          data.verified
-            ? "저장되었습니다. 검증에 성공했습니다."
-            : "저장되었습니다. 다만 검증에는 실패했습니다 — " +
-              (data.verification_error_message || "아래 표에서 확인해 주세요."),
-          data.verified
-        );
+        if (data.verified) {
+          showResult("저장되었습니다. 검증에 성공했습니다.", true);
+        } else {
+          showResult("저장되었습니다. 다만 검증에는 실패했습니다 — 자세한 내용은 팝업과 아래 표를 확인해 주세요.", false);
+          showErrorPopup(
+            "검증에 실패했습니다",
+            "자격 증명은 저장되었지만 검증에 실패했습니다.\n\n" +
+              (data.verification_error_message || "아래 표에서 상태를 확인하고 키 값·권한을 점검한 뒤 재검증해 주세요.")
+          );
+        }
         loadAccounts();
       })
       .catch(function (err) {
-        showResult(errorMessage(err), false);
+        showErrorPopup("저장하지 못했습니다", errorMessage(err));
       })
       .then(function () { setSubmitting(false); });
   }
@@ -501,19 +514,20 @@
         exitEditMode();
         if (!replacingSecret) {
           showResult("이름을 수정했습니다.", true);
+        } else if (data.verified) {
+          showResult("키를 교체하고 검증에 성공했습니다.", true);
         } else {
-          showResult(
-            data.verified
-              ? "키를 교체하고 검증에 성공했습니다."
-              : "키를 교체했지만 검증에는 실패했습니다 — " +
-                (data.verification_error_message || "값을 다시 확인해 주세요."),
-            data.verified
+          showResult("키를 교체했지만 검증에는 실패했습니다 — 자세한 내용은 팝업과 아래 표를 확인해 주세요.", false);
+          showErrorPopup(
+            "검증에 실패했습니다",
+            "키를 교체했지만 검증에 실패했습니다.\n\n" +
+              (data.verification_error_message || "값을 다시 확인한 뒤 재검증해 주세요.")
           );
         }
         loadAccounts();
       })
       .catch(function (err) {
-        showResult(errorMessage(err), false);
+        showErrorPopup("수정하지 못했습니다", errorMessage(err));
       })
       .then(function () { setSubmitting(false); });
   }
@@ -628,16 +642,18 @@
     setRowButtonBusy(btn, true, "검증 중…", "재검증");
     MCPApi.request("/credentials/" + credential.id + "/verify", { method: "POST" })
       .then(function (data) {
-        showResult(
-          data.verified
-            ? "'" + credential.name + "' 검증에 성공했습니다."
-            : "'" + credential.name + "' 검증에 실패했습니다. 키 값이나 권한을 확인해 주세요.",
-          data.verified
-        );
+        if (data.verified) {
+          showResult("'" + credential.name + "' 검증에 성공했습니다.", true);
+        } else {
+          showErrorPopup(
+            "검증에 실패했습니다",
+            "'" + credential.name + "' 검증에 실패했습니다.\n\n키 값이나 권한을 확인한 뒤 다시 시도해 주세요."
+          );
+        }
         loadAccounts();
       })
       .catch(function (err) {
-        showResult(errorMessage(err), false);
+        showErrorPopup("검증하지 못했습니다", errorMessage(err));
         setRowButtonBusy(btn, false, "검증 중…", "재검증");
       });
   }

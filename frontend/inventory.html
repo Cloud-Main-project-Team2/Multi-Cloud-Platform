@@ -190,6 +190,26 @@
     </div>
   </div>
 
+  <!-- CSP/액션 오류 팝업 — 인라인 배너 대신 MCErr 패널(증상·원인·해결 방법·상세 정보·요청ID)을 모달로.
+       사이드바(220px)를 제외한 콘텐츠 영역 중앙에 뜨도록 pl-[220px] + items-center. -->
+  <div id="inv-error-modal" data-modal class="hidden fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/40 py-10 pr-4 pl-[220px]">
+    <div class="w-full max-w-lg rounded-2xl border border-border bg-surface shadow-xl" style="border-top:4px solid #c0392b">
+      <div class="flex items-start justify-between gap-3 border-b border-border p-5">
+        <div class="flex items-center gap-3">
+          <span class="grid h-9 w-9 flex-none place-items-center rounded-full" style="background:rgba(192,57,43,.12);color:#c0392b">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          </span>
+          <h2 id="inv-error-modal-title" class="text-lg font-bold" style="color:#c0392b">작업을 처리하지 못했습니다</h2>
+        </div>
+        <button type="button" data-modal-close class="grid h-8 w-8 flex-none place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+      </div>
+      <div id="inv-error-modal-body" class="max-h-[60vh] space-y-3 overflow-y-auto p-5"></div>
+      <div class="flex justify-end gap-2 border-t border-border p-5">
+        <button type="button" data-modal-close class="rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">닫기</button>
+      </div>
+    </div>
+  </div>
+
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/modal.js"></script>
   <script src="assets/js/dropdown.js"></script>
