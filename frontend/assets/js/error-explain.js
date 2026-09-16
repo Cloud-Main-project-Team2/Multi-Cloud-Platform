@@ -27,6 +27,13 @@ window.MCErr = (function () {
       cause: "원인을 확인하지 못했습니다.",
       remedy: "잠시 후 다시 시도하고, 계속되면 아래 코드와 함께 문의하세요.",
     },
+    // 백엔드 error_catalog에 아직 없는 코드(S3/GCS 삭제 시 비어있지 않은 버킷). 서버가 unknown
+    // 설명을 주므로 아래 규칙(category==="unknown"이면 폴백)에 의해 이 문구가 쓰인다.
+    BucketNotEmpty: {
+      symptom: "버킷이 비어 있어야 삭제할 수 있습니다.",
+      cause: "버킷 안에 객체가 남아 있습니다.",
+      remedy: "버킷을 비운 뒤 다시 삭제하거나, 강제 삭제 옵션으로 다시 시도하세요.",
+    },
   };
 
   function escapeHtml(s) {
@@ -43,7 +50,10 @@ window.MCErr = (function () {
     var code = err.code || (isNetwork ? "NETWORK_ERROR" : "UNKNOWN_ERROR");
 
     // explanation: api.js Error(.explanation)와 잡 오류(error.explanation) 둘 다 같은 키 구조.
+    // 단, 서버가 모르는 코드는 category="unknown"의 일반 설명을 주므로, 그럴 땐 로컬 폴백을
+    // 우선한다(예: BucketNotEmpty — 백엔드 카탈로그에 아직 없음).
     var exp = err.explanation || null;
+    var backendUsable = !!(exp && exp.category && exp.category !== "unknown");
     var fb = FALLBACK[code] || FALLBACK.UNKNOWN_ERROR;
 
     // specific_reason(잡 오류)와 specificReason(api.js Error) 둘 다 수용.
@@ -51,10 +61,10 @@ window.MCErr = (function () {
 
     return {
       code: code,
-      symptom: (exp && exp.symptom) || fb.symptom,
-      cause: (exp && exp.cause) || fb.cause,
-      remedy: (exp && exp.remedy) || fb.remedy,
-      category: (exp && exp.category) || null,
+      symptom: (backendUsable && exp.symptom) || fb.symptom,
+      cause: (backendUsable && exp.cause) || fb.cause,
+      remedy: (backendUsable && exp.remedy) || fb.remedy,
+      category: (backendUsable && exp.category) || null,
       specificReason: specific,
       rawMessage: err.message || null,
       requestId: err.requestId || err.request_id || null,

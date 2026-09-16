@@ -20,6 +20,8 @@
   var lastSyncedEl = document.getElementById("last-synced");
   var totalCostEl = document.getElementById("total-cost");
   var syncBanner = document.getElementById("sync-banner");
+  var syncReasons = document.getElementById("sync-reasons");
+  var invNotice = document.getElementById("inv-notice");
   var refreshBtn = document.getElementById("refresh-btn");
   var selCount = document.getElementById("sel-count");
   var selectAll = document.getElementById("select-all");
@@ -62,24 +64,24 @@
     pending: "var(--muted-foreground)", running: "var(--yellow)", success: "var(--primary)",
     failed: "#c0392b", partial_success: "var(--yellow)", cancelled: "var(--muted-foreground)",
   };
-  var ERROR_MESSAGES = {
-    UNSUPPORTED_OPERATION: "이 리소스 종류는 아직 이 동작을 지원하지 않습니다.",
-    CLOUD_PERMISSION_DENIED: "사용 가능한 검증된 자격 증명이 없거나 권한이 부족합니다.",
-    RESOURCE_ALREADY_DELETED: "이미 삭제된 리소스입니다.",
-    RESOURCE_STALE: "최근 동기화에서 확인되지 않은 리소스입니다. 다시 동기화한 뒤 시도해 주세요.",
-    RESOURCE_NOT_FOUND: "리소스를 찾을 수 없습니다.",
-    JOB_ALREADY_RUNNING: "이미 진행 중인 동기화가 있습니다.",
-    PROVIDER_API_ERROR: "클라우드 API 호출에 실패했습니다.",
-    BucketNotEmpty: "버킷이 비어 있지 않습니다.",
-  };
-
   var allResources = [];
   var selectedIds = new Set();
   var currentModalResourceId = null;
   var pollTimer = null;
 
-  function errorMessage(err) {
-    return ERROR_MESSAGES[err && err.code] || (err && err.message) || "요청 처리 중 오류가 발생했습니다.";
+  // 에러코드→문구 매핑은 백엔드 error_catalog가 단일 소스이며, 표시는 MCErr가 담당한다.
+  // 여러 실패를 한 컨테이너에 패널로 쌓아 보여준다(라벨 optional).
+  function renderPanels(container, entries) {
+    if (!container) return;
+    if (!entries.length) { MCErr.clear(container); return; }
+    container.innerHTML = entries.map(function (e) {
+      var head = e.label
+        ? '<p class="mb-1 text-xs font-medium text-muted-foreground">' + MCErr.escapeHtml(e.label) + "</p>"
+        : "";
+      return "<div>" + head + MCErr.panelHtml(e.err) + "</div>";
+    }).join("");
+    container.hidden = false;
+    MCErr.wire(container);
   }
   function providerLabel(p) { return PROVIDER_LABELS[p] || p; }
   function pad(n) { return n < 10 ? "0" + n : "" + n; }
@@ -368,7 +370,7 @@
       updateTotalCost();
       render();
     }).catch(function (err) {
-      loadingRow.querySelector("td").textContent = "불러오지 못했습니다: " + errorMessage(err);
+      loadingRow.querySelector("td").textContent = "불러오지 못했습니다: " + MCErr.headline(err);
     });
   }
 
@@ -411,6 +413,12 @@
       wrap.appendChild(document.createTextNode(providerLabel(p.provider) + " " + (SYNC_STATUS_LABELS[p.status] || p.status)));
       syncBanner.appendChild(wrap);
     });
+
+    // 실패한 계정의 원인을 배너 아래에 패널로 보여준다(status 배지만으로는 "왜"를 알 수 없다).
+    var failedItems = (job.items || []).filter(function (it) { return it.error; });
+    renderPanels(syncReasons, failedItems.map(function (it) {
+      return { label: providerLabel(it.provider) + " 동기화 실패", err: it.error };
+    }));
   }
 
   function setRefreshBusy(busy) {
@@ -449,6 +457,7 @@
 
   function triggerSync() {
     setRefreshBusy(true);
+    MCErr.clear(syncReasons);
     MCPApi.request("/sync-jobs", { method: "POST", body: {} }).then(function (data) {
       pollJob(data.id);
     }).catch(function (err) {
@@ -457,7 +466,7 @@
         return;
       }
       setRefreshBusy(false);
-      window.alert("동기화 요청에 실패했습니다: " + errorMessage(err));
+      MCErr.renderInto(syncReasons, err);
     });
   }
 
@@ -468,6 +477,7 @@
     var label = { start: "시작", stop: "중지", delete: "삭제" }[action] || action;
     if (!window.confirm(resourceIds.length + "개 리소스를 " + label + "하시겠습니까?")) return;
 
+    MCErr.clear(invNotice);
     MCPApi.request("/resources/action", {
       method: "POST",
       headers: { "X-Action-Confirmed": "true" },
@@ -475,13 +485,16 @@
     }).then(function (data) {
       var succeeded = data.results.filter(function (r) { return r.status === "success"; }).length;
       var problems = data.results.filter(function (r) { return r.status !== "success"; });
-      var message = succeeded + "개 성공";
-      if (problems.length) {
-        message += ", " + problems.length + "개 실패/거부: " + problems.map(function (p) {
-          return "#" + p.resource_id + " " + errorMessage(p.error || {});
-        }).join(", ");
-      }
-      window.alert(message);
+      // 성공 요약은 텍스트로, 실패/거부는 각각 원인 패널로 보여준다.
+      var summary = succeeded + "개 성공" + (problems.length ? ", " + problems.length + "개 실패/거부" : "");
+      invNotice.innerHTML =
+        '<p class="text-sm font-medium text-foreground">' + MCErr.escapeHtml(summary) + "</p>" +
+        problems.map(function (p) {
+          return '<div class="mt-2"><p class="mb-1 text-xs text-muted-foreground">#' +
+            MCErr.escapeHtml(p.resource_id) + "</p>" + MCErr.panelHtml(p.error || {}) + "</div>";
+        }).join("");
+      invNotice.hidden = false;
+      MCErr.wire(invNotice);
       selectedIds.clear();
       loadResources();
       loadSummary();
@@ -489,7 +502,7 @@
         MCPModal.close("#inv-modal");
       }
     }).catch(function (err) {
-      window.alert("요청에 실패했습니다: " + errorMessage(err));
+      MCErr.renderInto(invNotice, err);
     });
   }
 
@@ -520,7 +533,7 @@
         r.original_resource_type !== "EBS Volume");
     }).catch(function (err) {
       modalTitle.textContent = "불러오지 못했습니다";
-      modalSubtitle.textContent = errorMessage(err);
+      modalSubtitle.textContent = MCErr.headline(err);
     });
   }
 
@@ -538,7 +551,7 @@
       modalCliExpiry.textContent = formatDateTime(data.expires_at);
       modalCliResult.classList.remove("hidden");
     }).catch(function (err) {
-      window.alert("AWS CLI 접속 정보를 발급받지 못했습니다: " + errorMessage(err));
+      window.alert("AWS CLI 접속 정보를 발급받지 못했습니다: " + MCErr.headline(err));
     }).finally(function () {
       modalCliBtn.disabled = false;
       modalCliBtn.textContent = "AWS CLI로 접속";

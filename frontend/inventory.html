@@ -73,6 +73,10 @@
         <div id="sync-banner" class="mt-4 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm">
           <span class="text-muted-foreground">아직 동기화한 적이 없습니다. "새로고침"을 눌러 연결된 계정의 리소스를 가져오세요.</span>
         </div>
+        <!-- 동기화 실패 원인(계정별) — MCErr 패널 -->
+        <div id="sync-reasons" class="mt-2 space-y-2" hidden></div>
+        <!-- 리소스 액션(start/stop/delete) 결과·실패 원인 — MCErr 패널 -->
+        <div id="inv-notice" class="mt-3" hidden></div>
 
         <!-- 필터 바 -->
         <div class="mt-4 flex flex-wrap items-center gap-2">
