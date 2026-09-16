@@ -18,10 +18,20 @@
 # 리소스 자체는 하나로 유지된다. `deletion_protection`은 개발 편의를 위해 false로 둔다(운영 배포
 # 시 재검토 필요).
 #
-# 전제 조건(이 모듈이 자동으로 갖추지 않는 것): 프로젝트에 Service Networking API
-# (`servicenetworking.googleapis.com`)가 이미 활성화돼 있어야 하고, 사용하는 서비스 계정에
-# 피어링 연결을 만들 권한(예: Service Networking Admin)이 있어야 한다 — 안 그러면 apply 단계에서
-# 권한 오류가 난다(Azure 리소스 프로바이더 미등록과 같은 종류의 전제 조건).
+# Service Networking API는 이 모듈이 직접 켠다(2026-09-16 결정 — 이전엔 "프로젝트에 미리
+# 활성화돼 있어야 한다"는 전제 조건으로만 문서화하고 실제로 켜주지는 않아서, 새 프로젝트에서
+# 실사용 테스트할 때 `SERVICE_DISABLED`(403)로 매번 막혔다). `google_project_service`로 활성화하고
+# `google_service_networking_connection`이 그 뒤에 실행되도록 `depends_on`으로 순서를 강제한다.
+#
+# **`disable_on_destroy = false`가 필수다** — 기본값(true)으로 두면 이 job을 삭제(destroy)할 때
+# API도 같이 꺼지는데, 이 앱은 job마다 독립된 Terraform 상태를 쓰면서도 같은 GCP 프로젝트를
+# 여러 job이 공유한다(서로의 존재를 모름). 그래서 job A를 지울 때 API가 꺼지면, 같은 프로젝트의
+# 다른 Cloud SQL(job B)이 쓰던 API가 갑자기 사라져 job B가 고장 날 수 있다 — 그래서 "켜는 건
+# 자동으로, 끄는 건 절대 자동으로 하지 않는다."
+#
+# 사용하는 서비스 계정에는 여전히 `serviceusage.services.enable` 권한(예: Service Usage Admin
+# 역할)이 있어야 한다 — 없으면 이 리소스 자체가 권한 오류로 실패한다(이건 이 모듈이 대신 처리해 줄
+# 수 없는 진짜 IAM 전제 조건).
 
 terraform {
   required_version = ">= 1.5.0"
@@ -37,6 +47,15 @@ terraform {
 provider "google" {
   project = var.project_id
   region  = var.region
+}
+
+# Private Services Access(아래 VPC 피어링)에 필요한 API. disable_on_destroy=false 이유는 위
+# 모듈 docstring 참고 — 다른 job(같은 프로젝트의 다른 Cloud SQL)이 쓰고 있을 수 있어 절대 자동으로
+# 끄지 않는다.
+resource "google_project_service" "servicenetworking" {
+  project            = var.project_id
+  service            = "servicenetworking.googleapis.com"
+  disable_on_destroy = false
 }
 
 # job 전용 VPC — Cloud SQL Private Services Access는 이 네트워크에 피어링된 IP 대역에서만
@@ -63,6 +82,10 @@ resource "google_service_networking_connection" "this" {
   network                 = google_compute_network.this.id
   service                 = "servicenetworking.googleapis.com"
   reserved_peering_ranges = [google_compute_global_address.private_ip_range.name]
+
+  # API가 켜진 다음에 피어링을 시도해야 한다 — google_compute_global_address.private_ip_range를
+  # 통한 암묵적 의존만으로는 API 활성화 순서가 보장되지 않는다.
+  depends_on = [google_project_service.servicenetworking]
 }
 
 resource "google_sql_database_instance" "this" {
