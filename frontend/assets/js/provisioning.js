@@ -58,21 +58,8 @@
   function hasRealRunner(kind, platform) {
     return !!(SERVICE_CODE[kind] && SERVICE_CODE[kind][platform]);
   }
-  var PROV_ERROR_MESSAGES = {
-    IDEMPOTENCY_KEY_REQUIRED: "요청 식별 키가 없습니다(내부 오류).",
-    CONFIRMATION_REQUIRED: "확인이 필요한 작업입니다.",
-    VALIDATION_ERROR: "입력값을 다시 확인해 주세요(이름 형식·리전·사양·인증).",
-    SECRET_FIELD_NOT_ALLOWED: "입력값에 자격 증명으로 보이는 필드가 있습니다.",
-    CREDENTIAL_NOT_FOUND: "자격 증명을 찾을 수 없습니다.",
-    CLOUD_PERMISSION_DENIED: "이 자격 증명은 검증되지 않았거나 프로비저닝 권한이 없습니다 — 마이페이지에서 검증하세요.",
-    PROVISIONING_NOT_IMPLEMENTED: "아직 지원하지 않는 조합입니다.",
-    PROVIDER_AUTHENTICATION_FAILED: "클라우드 인증에 실패했습니다 — 자격 증명을 확인하세요.",
-    AUTHENTICATION_REQUIRED: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
-    INVALID_TOKEN: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
-  };
-  function provErrorMessage(err) {
-    return (err && (PROV_ERROR_MESSAGES[err.code] || err.message)) || "요청 처리 중 오류가 발생했습니다.";
-  }
+  // 에러코드→문구 매핑은 백엔드 error_catalog가 단일 소스이며, 표시는 MCErr(error-explain.js)가
+  // 담당한다. 진행 모달 실패 행은 job.error / api Error를 그대로 MCErr에 넘긴다.
   function escHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
@@ -1208,7 +1195,7 @@
         '<div class="flex justify-between text-sm"><span>' + PLATFORM_LABEL[t.platform] + " · " + escHtml(t.account) +
         '</span><span data-real-status class="text-muted-foreground">대기</span></div>' +
         '<div class="mt-1 h-2 rounded-full bg-muted"><div data-real-bar class="h-2 rounded-full bg-sky" style="width:0%"></div></div>' +
-        '<p data-real-msg class="mt-1 text-xs" hidden></p></div>';
+        '<div data-real-msg class="mt-1 text-xs" hidden></div></div>';
     }
     list.innerHTML = targets.map(rowHtml).join("");
     updateMini(targets);
@@ -1225,7 +1212,13 @@
         if (status === "failed") {
           bar.className = "h-2 rounded-full"; bar.style.background = "#c0392b";
           st.textContent = "실패"; st.className = "rounded px-1.5 py-0.5 text-xs text-white"; st.style.background = "#c0392b";
-          m.hidden = false; m.style.color = "#c0392b"; m.textContent = msg || "실패";
+          // msg가 에러 객체면 MCErr 패널(증상·해결책 + 접기 상세), 문자열이면 간단 텍스트
+          // (취소·러너 없는 시뮬레이션 등 실제 오류가 아닌 경우).
+          if (msg && typeof msg === "object") {
+            m.style.color = ""; MCErr.renderInto(m, msg);
+          } else {
+            m.hidden = false; m.style.color = "#c0392b"; m.innerHTML = ""; m.textContent = msg || "실패";
+          }
         } else if (status === "done") {
           bar.className = "h-2 rounded-full bg-primary"; st.textContent = "완료 100%"; st.className = "text-sm text-primary";
         } else {
@@ -1239,12 +1232,12 @@
       MCPApi.request("/provisioning/jobs/" + jobId)
         .then(function (job) {
           if (job.status === "success") { setRow(t, "done", 100, null); return; }
-          if (job.status === "failed") { setRow(t, "failed", t.progress, (job.error && job.error.message) || "생성에 실패했습니다."); return; }
+          if (job.status === "failed") { setRow(t, "failed", t.progress, job.error || "생성에 실패했습니다."); return; }
           if (job.status === "cancelled") { setRow(t, "failed", t.progress, "취소되었습니다."); return; }
           setRow(t, "running", Math.min(90, (t.progress || 8) + 7)); // queued/running — 창가 진행 연출
           setTimeout(function () { pollTarget(t, jobId); }, 2000);
         })
-        .catch(function (err) { setRow(t, "failed", t.progress, provErrorMessage(err)); });
+        .catch(function (err) { setRow(t, "failed", t.progress, err); });
     }
 
     // 러너가 없는 조합(azure/gcp의 CDN)은 진행률만 애니메이션한다 — 실패 시점은 랜덤.
@@ -1274,7 +1267,7 @@
         body: { credential_id: t.credentialId, common_spec: common, provider_spec: buildProviderSpec(t.platform) },
       })
         .then(function (data) { pollTarget(t, data.id); })
-        .catch(function (err) { setRow(t, "failed", t.progress, provErrorMessage(err)); });
+        .catch(function (err) { setRow(t, "failed", t.progress, err); });
     });
   }
 

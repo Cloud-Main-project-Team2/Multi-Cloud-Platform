@@ -17,15 +17,8 @@
     "약정 없이 절약할 방법이 있을까?",
   ];
 
-  var AGENT_ERROR_MESSAGES = {
-    AGENT_NOT_CONFIGURED: "AI 에이전트가 아직 설정되지 않았습니다 — 관리자가 API 키를 등록해야 사용할 수 있어요.",
-    AGENT_UPSTREAM_ERROR: "AI 응답을 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.",
-    AUTHENTICATION_REQUIRED: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
-    INVALID_TOKEN: "로그인이 만료되었습니다. 다시 로그인해 주세요.",
-  };
-  function agentErrorMessage(err) {
-    return (err && (AGENT_ERROR_MESSAGES[err.code] || err.message)) || "요청 처리 중 오류가 발생했습니다.";
-  }
+  // 에러 문구는 MCErr(error-explain.js)가 담당한다. agent 전용 코드(AGENT_*)는 백엔드
+  // error_catalog 범위 밖이라 MCErr의 로컬 폴백에서 관리한다.
 
   function escHtml(s) {
     return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
@@ -113,7 +106,7 @@
         })
         .catch(function (err) {
           typing.remove();
-          addBubble("error", agentErrorMessage(err));
+          addBubble("error", MCErr.headline(err));
         })
         .then(function () {
           sending = false;

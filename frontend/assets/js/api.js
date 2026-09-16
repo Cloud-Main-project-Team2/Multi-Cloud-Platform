@@ -121,6 +121,10 @@ window.MCPApi = (function () {
             e.code = err.code;
             e.details = err.details;
             e.status = res.status;
+            // 서버가 error_catalog로 실어 주는 자연어 설명(증상·원인·해결책)과 원문 번역.
+            // MCErr가 이걸 우선 사용해 코드→문구 매핑을 프론트가 각자 안 들어도 된다.
+            e.explanation = err.explanation || null;
+            e.specificReason = err.specific_reason || null;
             // 서버가 모든 응답에 붙이는 X-Request-Id. 오류 리포트에 실어 보내면 프론트에서 본
             // 실패 한 건을 백엔드 access.log/app.log의 같은 request_id 줄과 이어볼 수 있다.
             e.requestId = res.headers.get("X-Request-Id");
