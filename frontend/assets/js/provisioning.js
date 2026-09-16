@@ -480,9 +480,17 @@
     html += "</div>";
     if (p === "gcp" || p === "aws") {
       // aws는 실 API가 master_username을 안 받는다(서버가 mcp_admin으로 고정) — gcp와 같은 UI.
+      // 2026-09-16: 비밀번호 규칙을 안내 문구에 명시 — 규칙 안내 없이 막연히 "비밀번호만
+      // 입력합니다"라고만 써놔서, 실제 생성 시 규칙 위반으로 VALIDATION_ERROR가 나고서야
+      // 사용자가 규칙을 알게 되는 문제가 있었음(실사용 중 발견). 규칙은 플랫폼마다 다르다
+      // (app/gcp_cloudsql_provisioning.py: 8자 이상만 / app/aws_rds_provisioning.py: 8~41자,
+      // '/'·'"'·'@'·공백 금지).
+      var pwHint = p === "gcp"
+        ? "GCP는 비밀번호만 입력합니다(사용자명은 자동 지정). 최소 8자 이상이어야 합니다."
+        : "AWS는 비밀번호만 입력합니다(사용자명은 자동 지정). 8~41자, ' / \" @ ' 문자와 공백은 사용할 수 없습니다.";
       html += "<div>" + labelHtml("루트 비밀번호", true) +
         '<input type="password" data-ps-platform="' + p + '" data-ps="masterPassword" class="' + FIELD_INPUT + '" />' +
-        '<p class="mt-1 text-xs text-muted-foreground">' + PLATFORM_LABEL[p] + '는 비밀번호만 입력합니다(사용자명은 자동 지정).</p></div>';
+        '<p class="mt-1 text-xs text-muted-foreground">' + pwHint + "</p></div>";
     } else {
       html += '<div class="grid gap-2 sm:grid-cols-2"><div>' + labelHtml("마스터 사용자명", true) +
         '<input type="text" data-ps-platform="' + p + '" data-ps="masterUsername" class="' + FIELD_INPUT + '" /></div>' +
