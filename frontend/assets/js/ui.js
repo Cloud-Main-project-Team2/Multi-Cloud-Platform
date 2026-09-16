@@ -58,6 +58,52 @@
     }
   });
 
+  // 🔔 알림 팝오버 — 사이드바 유틸 바의 벨 위에 뜬다.
+  // 아직 알림 API가 없어 목업 데이터로 채우고, 각 항목은 관련 화면으로 이동한다.
+  function initNotifications() {
+    var utils = document.querySelector(".sidebar__utils");
+    var bell = utils && utils.querySelector(".bell");
+    if (!utils || !bell) return;
+
+    var NOTIFS = [
+      { icon: "⚡", title: "프로비저닝 완료", desc: "AWS EC2 인스턴스가 생성되었습니다.", time: "방금 전", href: "provisioning.html" },
+      { icon: "🔄", title: "동기화 실패", desc: "GCP 리소스 동기화가 실패했습니다.", time: "12분 전", href: "inventory.html" },
+      { icon: "🔑", title: "자격 증명 검증 실패", desc: "dev-gcp 자격 증명을 다시 등록해 주세요.", time: "1시간 전", href: "mypage.html" }
+    ];
+
+    var pop = document.createElement("div");
+    pop.className = "notif-pop hidden";
+    pop.setAttribute("role", "dialog");
+    pop.setAttribute("aria-label", "알림");
+    pop.innerHTML =
+      '<div class="notif-pop__head">알림 <span class="notif-pop__count">' + NOTIFS.length + "</span></div>" +
+      '<ul class="notif-pop__list">' +
+      NOTIFS.map(function (n) {
+        return '<li><a class="notif-pop__item" href="' + n.href + '">' +
+          '<span class="notif-pop__icon">' + n.icon + "</span>" +
+          '<span class="notif-pop__body">' +
+          '<span class="notif-pop__title">' + n.title + "</span>" +
+          '<span class="notif-pop__desc">' + n.desc + "</span>" +
+          '<span class="notif-pop__time">' + n.time + "</span>" +
+          "</span></a></li>";
+      }).join("") +
+      "</ul>";
+    utils.appendChild(pop);
+
+    bell.style.cursor = "pointer";
+    bell.addEventListener("click", function (e) {
+      e.stopPropagation();
+      pop.classList.toggle("hidden");
+    });
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest(".notif-pop") && !e.target.closest(".bell")) pop.classList.add("hidden");
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape") pop.classList.add("hidden");
+    });
+  }
+
   injectServiceName();
   syncThemeIcons();
+  initNotifications();
 })();
