@@ -238,36 +238,53 @@
         escHtml(a.policy.doc.label) + "</a></li>";
     }).join("");
     return '<div class="mt-1 text-xs text-muted-foreground">' +
-      "<p>ⓘ 선택한 플랫폼 기준 이름 규칙 — 아래 문자·형식만 입력할 수 있어요(공식 문서 기준):</p>" +
+      "<p>ⓘ 선택한 플랫폼 기준 이름 규칙 — 아래 문자·형식을 지켜 주세요(공식 문서 기준):</p>" +
       '<ul class="ml-4 list-disc space-y-0.5">' + items + "</ul></div>";
   }
-  // data-cs="name" 입력에서 허용 안 되는 문자(대문자 포함)는 애초에 입력 자체가 막힌다 — 제출
-  // 후 422/apply 실패로 걸리는 대신 키를 누르는 시점에 preventDefault로 차단한다(2026-09-15
-  // 실사용 중 발견: 대문자 이름 입력 시 검증 실패).
-  function guardNameBeforeInput(e) {
-    if (e.data == null) return; // 삭제·IME 조합 취소 등은 그대로 둔다
-    var input = e.target;
-    var c = effectiveNameConstraint(state.resourceKind);
-    var filtered = e.data.replace(c.charsetRe, "");
-    if (c.startLetter && input.selectionStart === 0) filtered = filtered.replace(/^[^a-z]+/, "");
-    var before = input.value.slice(0, input.selectionStart);
-    var after = input.value.slice(input.selectionEnd);
-    var room = c.max - (before.length + after.length);
-    if (filtered.length > Math.max(0, room)) filtered = filtered.slice(0, Math.max(0, room));
-    if (filtered === e.data) return; // 전부 허용된 입력 — 그대로 통과
-    e.preventDefault();
-    if (filtered) {
-      input.setRangeText(filtered, input.selectionStart, input.selectionEnd, "end");
-      input.dispatchEvent(new Event("input", { bubbles: true }));
+  // data-cs="name" 입력값의 유효성 판정. 입력 자체는 막지 않고(키를 눌러도 그대로 보인다),
+  // 규칙(effectiveNameConstraint)은 그대로 재사용하되 "검사 시점"만 blur/Enter로 옮긴다
+  // (2026-09-16: 실시간 preventDefault 차단은 왜 안 눌리는지 알 수 없어 혼란스럽다는 피드백).
+  // 반환값: 유효하면 null, 아니면 사람이 읽을 수 있는 사유 문자열.
+  function nameError(kind, value) {
+    var v = value == null ? "" : String(value);
+    if (v === "") return null; // 빈 값은 '필수 미입력'으로 각 종류의 presence 검사가 처리
+    var c = effectiveNameConstraint(kind);
+    var bad = v.match(c.charsetRe); // 허용 안 되는 문자들
+    if (bad) {
+      var uniq = bad.filter(function (ch, i) { return bad.indexOf(ch) === i; });
+      var shown = uniq.map(function (ch) {
+        if (ch === " ") return "공백";
+        if (/[A-Z]/.test(ch)) return "'" + ch + "'(대문자)";
+        return "'" + ch + "'";
+      });
+      return "사용할 수 없는 문자가 있어요: " + shown.join(", ") + ". 아래 이름 규칙에 맞는 문자만 써 주세요.";
     }
+    if (c.startLetter && !/^[a-z]/.test(v)) return "이름은 영소문자로 시작해야 해요.";
+    if (v.length > c.max) return "이름이 너무 길어요(최대 " + c.max + "자).";
+    return null;
   }
-  // beforeinput을 못 받는 경로(붙여넣기 일부 브라우저·프로그램적 값 설정)를 위한 보조 필터.
-  function sanitizeNameInputs(scope) {
-    var c = effectiveNameConstraint(state.resourceKind);
-    scope.querySelectorAll('[data-cs="name"]').forEach(function (input) {
-      var cleaned = input.value.replace(c.charsetRe, "").slice(0, c.max);
-      if (cleaned !== input.value) input.value = cleaned;
-    });
+  // 이름 필드의 테두리 상자(prefix가 붙는 종류는 감싸는 div, storage는 input 자신)와 안내 <p>를 찾는다.
+  function nameFieldParts(input) {
+    var box = input.closest("[data-name-box]") || input;
+    var errEl = box.parentElement ? box.parentElement.querySelector("[data-name-error]") : null;
+    return { box: box, errEl: errEl };
+  }
+  function showNameError(input) {
+    var err = nameError(state.resourceKind, input.value);
+    if (!err) { clearNameError(input); return; }
+    var parts = nameFieldParts(input);
+    parts.box.style.borderColor = "#dc2626"; // 인라인 스타일이 border 클래스를 덮어써 안정적으로 빨간 테두리
+    if (parts.errEl) { parts.errEl.textContent = err; parts.errEl.classList.remove("hidden"); }
+  }
+  function clearNameError(input) {
+    var parts = nameFieldParts(input);
+    parts.box.style.borderColor = ""; // 인라인 해제 → 원래 클래스(포커스 시 border-primary 등) 복귀
+    if (parts.errEl) { parts.errEl.classList.add("hidden"); parts.errEl.textContent = ""; }
+  }
+  // 현재 이름 입력값이 규칙에 어긋나는지(제출 게이팅용) — 입력 차단을 없앤 대신 여기서 막는다.
+  function currentNameInvalid(kind) {
+    var input = (document.getElementById("prov-common-fields") || document).querySelector('[data-cs="name"]');
+    return !!(input && nameError(kind, input.value));
   }
 
   // ── 선택 상태 읽기 ────────────────────────────────────────────────────────
@@ -353,10 +370,12 @@
     // 1) 이름 (prefix mcp- 고정)
     var nameField = el("div", { class: "sm:col-span-2" });
     nameField.innerHTML = labelHtml("이름", true) +
-      '<div class="flex items-stretch rounded-lg border border-border bg-background focus-within:border-primary">' +
+      '<div data-name-box class="flex items-stretch rounded-lg border border-border bg-background focus-within:border-primary">' +
       '<span class="flex items-center px-3 text-sm text-muted-foreground">mcp-</span>' +
       '<input type="text" data-cs="name" data-prefix="mcp-" placeholder="web-01" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" />' +
-      "</div>" + namePolicyHintHtml("compute");
+      "</div>" +
+      '<p data-name-error class="mt-1 hidden text-xs" style="color:#dc2626"></p>' +
+      namePolicyHintHtml("compute");
     container.appendChild(nameField);
 
     // 3) 사양(추상 등급) — providerSpec의 실제 SKU는 collect 시 매핑
@@ -397,10 +416,11 @@
   function nameFieldEl(placeholder, kind) {
     var f = el("div", { class: "sm:col-span-2" });
     f.innerHTML = labelHtml("이름", true) +
-      '<div class="flex items-stretch rounded-lg border border-border bg-background focus-within:border-primary">' +
+      '<div data-name-box class="flex items-stretch rounded-lg border border-border bg-background focus-within:border-primary">' +
       '<span class="flex items-center px-3 text-sm text-muted-foreground">mcp-</span>' +
       '<input type="text" data-cs="name" data-prefix="mcp-" placeholder="' + (placeholder || "") +
-      '" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" /></div>' + namePolicyHintHtml(kind);
+      '" class="w-full rounded-r-lg bg-transparent px-2 py-2 text-sm outline-none" /></div>' +
+      '<p data-name-error class="mt-1 hidden text-xs" style="color:#dc2626"></p>' + namePolicyHintHtml(kind);
     return f;
   }
   // 국가 단일 select(공통). 선택 국가는 collect()에서 각 플랫폼 리전으로 매핑된다.
@@ -525,7 +545,8 @@
     // 버킷/계정명 — 전역 고유(프리픽스 없음)
     var bucket = el("div", { class: "sm:col-span-2" });
     bucket.innerHTML = labelHtml("버킷/계정명", true) +
-      '<input type="text" data-cs="name" placeholder="my-unique-bucket" class="' + FIELD_INPUT + '" />' +
+      '<input type="text" data-cs="name" data-name-box placeholder="my-unique-bucket" class="' + FIELD_INPUT + '" />' +
+      '<p data-name-error class="mt-1 hidden text-xs" style="color:#dc2626"></p>' +
       '<p class="mt-1 text-xs text-muted-foreground">전역에서 고유한 이름이어야 합니다.</p>' +
       namePolicyHintHtml("storage_object");
     container.appendChild(bucket);
@@ -851,6 +872,10 @@
     if (!kind) return false;
     if (!state.platforms.length) return false;
     var cs = state.commonSpec || {};
+
+    // 이름 문자/형식이 규칙에 어긋나면(대문자·한글·공백 등) 제출 불가 — 실시간 차단을 없앤 대신
+    // 여기서 게이팅한다(빈 값은 아래 각 종류의 presence 검사가 따로 처리). CDN은 이름 필드가 없다.
+    if (currentNameInvalid(kind)) return false;
 
     if (kind === "cdn") {
       // 필수: AWS Origin / Azure Origin·Resource Group·SKU /
@@ -1278,13 +1303,22 @@
     var providerC = document.getElementById("prov-provider-fields");
 
     // ④ 공통 필드: 입력 변화 → 상태 수집 + 제출 상태 + 다음 단계 노출 갱신
-    function onFieldChange() { sanitizeNameInputs(container); collect(); updateSubmitState(); revealSteps(); }
+    function onFieldChange() { collect(); updateSubmitState(); revealSteps(); }
     container.addEventListener("input", onFieldChange);
     container.addEventListener("change", onFieldChange);
-    // 이름 필드는 입력되는 순간(beforeinput)에 허용 안 되는 문자를 막는다 — 재렌더에도 살아남게
-    // container(고정 노드)에 위임 배선한다.
-    container.addEventListener("beforeinput", function (e) {
-      if (e.target && e.target.matches && e.target.matches('[data-cs="name"]')) guardNameBeforeInput(e);
+    // 이름 필드: 입력은 그대로 두고(막지 않음), 검사는 필드를 벗어날 때(blur=focusout)나 Enter 시점에.
+    // 입력하는 동안에는 이전 오류 표시를 지운다(고치는 중에 빨간 줄이 남지 않도록).
+    container.addEventListener("input", function (e) {
+      if (e.target && e.target.matches && e.target.matches('[data-cs="name"]')) clearNameError(e.target);
+    });
+    container.addEventListener("focusout", function (e) {
+      if (e.target && e.target.matches && e.target.matches('[data-cs="name"]')) showNameError(e.target);
+    });
+    container.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && e.target && e.target.matches && e.target.matches('[data-cs="name"]')) {
+        e.preventDefault(); // 이름 필드에서 Enter로 인한 예기치 않은 제출/줄바꿈 방지
+        showNameError(e.target);
+      }
     });
     // 동적 행 삭제(위임) — 컨테이너에 1회만 배선(재렌더 시 누적 방지)
     container.addEventListener("click", function (e) {
