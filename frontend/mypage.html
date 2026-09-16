@@ -109,8 +109,9 @@
               <div class="flex items-center gap-3">
                 <button id="cred-submit" type="submit" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">저장 및 검증</button>
                 <button id="cred-cancel-edit" type="button" hidden class="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted">수정 취소</button>
-                <span id="cred-result" class="hidden text-sm"></span>
               </div>
+              <!-- 결과 문구는 버튼과 같은 flex 줄에 두면 긴 검증 실패 메시지가 버튼을 밀어 깨뜨린다 → 별도 줄로 분리 -->
+              <span id="cred-result" class="hidden text-sm"></span>
               <p class="text-xs text-muted-foreground">검증에 실패해도 자격 증명은 저장되며, 아래 표에서 검증 실패로 표시됩니다. 언제든 "재검증"할 수 있습니다.</p>
             </form>
           </section>

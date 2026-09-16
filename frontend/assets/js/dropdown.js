@@ -59,7 +59,13 @@
       closeAll();
       if (willOpen) menu.classList.remove("hidden");
     });
-    select.addEventListener("change", syncLabel);     // 프로그래밍적 변경(초기화 등)도 라벨 동기화
+    select.addEventListener("change", syncLabel);     // 프로그래밍적 변경도 라벨 동기화
+    // form.reset()은 <select> 값을 되돌리지만 change 이벤트를 쏘지 않아 커스텀 라벨이 옛 선택을
+    // 그대로 보여준다(예: 마이페이지에서 GCP 저장 후 폼은 AWS로 리셋되는데 라벨만 GCP로 남는 문제).
+    // reset 이벤트는 컨트롤이 초기화되기 "전"에 발생하므로 다음 틱에 라벨을 다시 맞춘다.
+    if (select.form) {
+      select.form.addEventListener("reset", function () { setTimeout(syncLabel, 0); });
+    }
     syncLabel();
   }
 

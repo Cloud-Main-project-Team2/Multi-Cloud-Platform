@@ -453,7 +453,10 @@
       .then(function (data) {
         // 폼을 먼저 초기화한 뒤 메시지를 띄운다 — renderProviderFields()가 내부에서
         // hideResult()를 호출하기 때문에 순서가 반대면 결과 문구가 바로 사라진다.
+        // form.reset()은 플랫폼 select를 기본값(AWS)으로 되돌리므로, 방금 등록한 플랫폼을
+        // 그대로 유지하도록 복원한다(같은 플랫폼 계정을 이어서 추가하기 편하게).
         form.reset();
+        providerSelect.value = provider;
         renderProviderFields();
         showResult(
           data.verified
