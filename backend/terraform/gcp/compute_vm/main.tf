@@ -15,6 +15,16 @@
 # GCP가 해당 이미지 패밀리를 단종시켜 `debian-cloud` 프로젝트에서 내려갔다 — 실제 계정으로
 # 끝까지(apply) 테스트해본 게 이번이 처음이라 아무도 못 보고 지나갔던 문제다.
 #
+# ## 인바운드 규칙은 var.inbound_rules를 실제로 반영한다(2026-09-16 결정 — 이전엔 죽은 UI였음)
+#
+# 프론트 ④ 공통 설정의 "인바운드 규칙"(HTTP/HTTPS 체크박스 + 커스텀 포트 추가)은 AWS
+# (`terraform/aws/ec2/main.tf`)·Azure(`terraform/azure/vm/main.tf`)에서는 실제로 방화벽에
+# 반영되는데, 이 GCP 모듈만 그 값을 아예 받지 않고 80번 포트를 무조건 고정으로 열고 있었다
+# (실사용 테스트로 발견 — SSH 공개키 죽은 필드와 같은 종류의 문제). 이제 AWS/Azure와 동일하게
+# `var.inbound_rules`가 비어 있으면 아무것도 안 열고, 사용자가 고른 포트·CIDR만 그대로 연다.
+# 관리용 SSH(22, IAP 전용)는 이 목록과 무관하게 항상 별도로 고정 — 사용자가 선택하는 항목이
+# 아니다(아래 `allow_iap_ssh` 참고).
+#
 # ## SSH는 IAP + OS Login으로 접속한다(2026-09-16 결정) — 키 페어·전체 공개 22번 포트 제거
 #
 # 프론트 폼에 "SSH Public Key" 입력칸이 있었지만 실제로는 백엔드/Terraform 어디에도 전달되지
@@ -81,18 +91,22 @@ resource "google_compute_instance" "vm" {
   }
 }
 
-# 실제 서비스 트래픽(80번)은 그대로 전 세계에 연다 — 관리용 접속이 아니라 외부 사용자가 쓰는 통로.
-resource "google_compute_firewall" "allow_http" {
-  name    = "${var.instance_name}-allow-http"
+# 서비스 트래픽은 사용자가 고른 포트·CIDR만 연다 — 규칙마다 CIDR이 다를 수 있어(AWS/Azure와
+# 같은 이유) 하나의 firewall에 여러 allow를 몰아넣지 않고 규칙 개수만큼 별도 리소스를 만든다.
+# var.inbound_rules가 비어 있으면 이 리소스 자체가 하나도 안 만들어져 아무 포트도 안 열린다.
+resource "google_compute_firewall" "allow_inbound" {
+  for_each = { for idx, rule in var.inbound_rules : tostring(idx) => rule }
+
+  name    = "${var.instance_name}-allow-${each.key}"
   project = var.project_id
   network = "default"
 
   allow {
     protocol = "tcp"
-    ports    = ["80"]
+    ports    = [tostring(each.value.port)]
   }
 
-  source_ranges = ["0.0.0.0/0"]
+  source_ranges = [each.value.cidr]
   target_tags   = ["http-server"]
 }
 

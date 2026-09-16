@@ -28,3 +28,12 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "inbound_rules" {
+  description = "인바운드 규칙(공통 설정 항목). 비어 있으면 인바운드를 아무것도 열지 않는다(호출자가 명시적으로 넘긴 규칙만 신뢰) — terraform/aws/ec2·terraform/azure/vm과 동일 정책."
+  type = list(object({
+    port = number
+    cidr = string
+  }))
+  default = []
+}

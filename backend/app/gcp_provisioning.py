@@ -12,6 +12,13 @@ provider 무관인 `terraform_runner.run_apply()`에 위임한다. `app/provisio
 asia-northeast3/us-central1)과 동일한 값만 허용한다 — 프론트가 아직 이 API를 호출하지 않지만(Network
 요청 0건, CLAUDE.md 기록) 같은 어휘를 써서 이후 연동 비용을 줄인다. zone은 각 region의 `-a`로 고정
 (GCP_VM_생성_가이드.md 권장값과 동일).
+
+**인바운드 규칙을 그대로 전달한다(2026-09-16 결정)**: `common_spec.inbound_rules`(§10.3 공통
+필드)를 지금까지는 이 러너가 아예 읽지 않고 있었다 — 실사용 테스트로 발견(SSH 공개키 죽은
+필드와 같은 종류의 문제). AWS(`aws_provisioning.py`)·Azure(`azure_provisioning.py`)와 같은
+공유 모델 `app/compute_specs.py`의 `ComputeCommonSpec`으로 검증한 뒤 그대로 넘긴다 — 비어
+있으면(기본값) 방화벽은 관리용 SSH(IAP 전용) 하나만 남고 서비스 포트는 아무것도 안 열린다,
+AWS/Azure와 동일한 "호출자가 명시한 규칙만 신뢰" 정책.
 """
 
 from __future__ import annotations
@@ -20,6 +27,9 @@ import re
 from pathlib import Path
 from typing import Callable
 
+from pydantic import ValidationError
+
+from app.compute_specs import ComputeCommonSpec, InboundRule
 from app.errors import ApiError, validation_error
 from app.terraform_runner import TerraformResult, run_apply
 
@@ -36,14 +46,26 @@ _ZONE_SUFFIX = "-a"
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,38}[a-z0-9]$")
 
 
-def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str]:
-    """`(instance_name, region, machine_type)`를 반환한다. 실패 시 422 `ApiError`를 raise한다."""
+def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str, list[InboundRule]]:
+    """`(instance_name, region, machine_type, inbound_rules)`를 반환한다. 실패 시 422
+    `ApiError`를 raise한다."""
     name = common_spec.get("name")
     if not isinstance(name, str) or not _NAME_RE.fullmatch(name):
         raise validation_error(
             "common_spec.name은 소문자로 시작하는 영소문자/숫자/하이픈 2~40자여야 합니다.",
             details=[{"field": "common_spec.name", "reason": "invalid"}],
         )
+
+    # tags/inbound_rules는 aws_provisioning.py/azure_provisioning.py와 같은 공유 모델로
+    # 검증한다 — name 자체의 형식 규칙(위)만 AWS/GCP 전용이라 별도로 남겨둔다.
+    try:
+        common = ComputeCommonSpec.model_validate(common_spec)
+    except ValidationError as exc:
+        first = exc.errors()[0] if exc.errors() else {}
+        field = "common_spec." + ".".join(str(p) for p in first.get("loc", ())) if first.get("loc") else "common_spec"
+        raise validation_error(
+            f"common_spec 검증 실패: {first.get('msg', 'invalid')}", details=[{"field": field, "reason": "invalid"}]
+        ) from exc
 
     machine_type = provider_spec.get("instance_type")
     if machine_type not in ALLOWED_MACHINE_TYPES:
@@ -59,7 +81,7 @@ def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str]:
             details=[{"field": "provider_spec.region", "reason": "invalid"}],
         )
 
-    return f"mcp-{name}", region, machine_type
+    return f"mcp-{name}", region, machine_type, common.inbound_rules
 
 
 def validate_spec(common_spec: dict, provider_spec: dict) -> None:
@@ -67,7 +89,14 @@ def validate_spec(common_spec: dict, provider_spec: dict) -> None:
     _derive(common_spec, provider_spec)
 
 
-def build_tfvars(job_id: int, project_id: str, instance_name: str, region: str, machine_type: str) -> dict:
+def build_tfvars(
+    job_id: int,
+    project_id: str,
+    instance_name: str,
+    region: str,
+    machine_type: str,
+    inbound_rules: list[InboundRule] | None = None,
+) -> dict:
     return {
         "project_id": project_id,
         "region": region,
@@ -75,6 +104,7 @@ def build_tfvars(job_id: int, project_id: str, instance_name: str, region: str, 
         "machine_type": machine_type,
         "instance_name": instance_name,
         "labels": {"managed-by": "multi-cloud-platform", "job-id": str(job_id)},
+        "inbound_rules": [rule.model_dump() for rule in (inbound_rules or [])],
     }
 
 
@@ -91,11 +121,11 @@ def run(
     """백그라운드 job에서 호출된다 — 이미 `validate_spec()`을 통과한 입력이지만, raise 대신
     `TerraformResult`로 실패를 표현해 백그라운드 태스크 밖으로 예외가 새 나가지 않게 한다."""
     try:
-        instance_name, region, machine_type = _derive(common_spec, provider_spec)
+        instance_name, region, machine_type, inbound_rules = _derive(common_spec, provider_spec)
     except ApiError as exc:
         return TerraformResult(success=False, error_code=exc.code, error_message=exc.message)
 
-    tfvars = build_tfvars(job_id, project_id, instance_name, region, machine_type)
+    tfvars = build_tfvars(job_id, project_id, instance_name, region, machine_type, inbound_rules)
     # GCP는 secret_payload(서비스 계정 키 JSON)를 환경변수가 아니라 파일로 넘긴다 —
     # terraform_runner가 0600 임시 파일로 써서 GOOGLE_APPLICATION_CREDENTIALS로만 노출한다.
     return run_apply(
