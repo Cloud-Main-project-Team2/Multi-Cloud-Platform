@@ -213,32 +213,28 @@
   }
 
   // 개수 → 마커 지름(px). 개수가 많을수록 큰 점.
+  // 원 크기: 개수에 따라 살짝 커지되, 숫자 라벨을 없앤 대신 크기가 대략적 규모 힌트다.
+  // 예전(18~42px)보다 작게 잡아, 같은 지점에 여러 클라우드 원이 겹쳐도 서로 드러나게 한다.
   function markerSize(count) {
-    return Math.round(18 + Math.min(count, 10) * 2.4); // 18~42px
+    return Math.round(12 + Math.min(count, 10) * 1.0); // 12~22px
   }
 
-  // provider 비율에 따른 배경. 단일 provider면 단색, 여러 개면 conic-gradient 파이.
-  function markerBackground(providers) {
-    var entries = Object.keys(providers).map(function (p) { return { p: p, c: providers[p] }; });
-    if (entries.length === 1) return PROVIDER_COLOR[entries[0].p] || "#94a3b8";
-    var total = entries.reduce(function (s, e) { return s + e.c; }, 0);
-    var acc = 0;
-    var stops = entries.map(function (e) {
-      var start = (acc / total) * 360;
-      acc += e.c;
-      var end = (acc / total) * 360;
-      return (PROVIDER_COLOR[e.p] || "#94a3b8") + " " + start + "deg " + end + "deg";
-    });
-    return "conic-gradient(" + stops.join(", ") + ")";
+  // 같은 지점(site)에 클라우드가 여럿이면, 각 원을 지점 중심 주변의 작은 링 위에 결정적으로
+  // 배치해 겹침을 푼다. 무작위 jitter와 달리 재렌더 시 원이 튀지 않고, 반경이 고정이라
+  // 클라우드 종류가 늘어도 구역(반경 R)을 절대 벗어나지 않는다. 하나면 중심에 그대로 둔다.
+  function jitterOffset(index, count) {
+    if (count <= 1) return { dx: 0, dy: 0 };
+    var R = 11; // px — 구역 반경(원 반지름 남짓)
+    var angle = (index / count) * 2 * Math.PI - Math.PI / 2; // 첫 원을 위쪽부터 시계방향
+    return { dx: Math.round(Math.cos(angle) * R), dy: Math.round(Math.sin(angle) * R) };
   }
 
-  function siteTooltip(site, regionsAtSite, regionProvider) {
-    var lines = [site.label];
+  // 원(클라우드) 하나에 대한 툴팁 — 그 지점에서 해당 클라우드의 리전별 개수.
+  function providerTooltip(site, provider, regionsAtSite, regionProvider) {
+    var lines = [(PLATFORM_LABEL[provider] || provider) + " · " + site.label];
     regionsAtSite.forEach(function (region) {
-      var provs = regionProvider[region];
-      Object.keys(provs).sort().forEach(function (p) {
-        lines.push((PLATFORM_LABEL[p] || p) + " " + region + ": " + provs[p] + "개");
-      });
+      var c = regionProvider[region] && regionProvider[region][provider];
+      if (c) lines.push(region + ": " + c + "개");
     });
     return lines.join("\n");
   }
@@ -270,19 +266,25 @@
       markersEl.innerHTML =
         '<div class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">아직 리전 정보가 있는 리소스가 없습니다.</div>';
     } else {
+      // 지점당 원 하나(파이+숫자) 대신, 클라우드마다 개별 색 원을 그린다 — 같은 리전에
+      // AWS·GCP가 함께 있어도 서로 다른 색 원이 각각 보이도록 링 형태로 살짝 흩뿌린다.
       markersEl.innerHTML = Object.keys(bySite).map(function (siteKey) {
         var s = bySite[siteKey];
         var site = SITES[siteKey];
-        var d = markerSize(s.total);
-        var tip = siteTooltip(site, s.regions, regionProvider);
-        return (
-          '<div class="absolute" style="left:' + site.x + "%;top:" + site.y + "%;transform:translate(-50%,-50%)\" title=\"" +
-          escHtml(tip) + '">' +
-          '<div style="width:' + d + "px;height:" + d + "px;border-radius:9999px;background:" + markerBackground(s.providers) +
-          ';box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;">' +
-          '<span style="font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)">' + s.total + "</span>" +
-          "</div></div>"
-        );
+        var provs = Object.keys(s.providers);
+        return provs.map(function (p, i) {
+          var d = markerSize(s.providers[p]);
+          var off = jitterOffset(i, provs.length);
+          var tip = providerTooltip(site, p, s.regions, regionProvider);
+          return (
+            '<div class="absolute" style="left:' + site.x + "%;top:" + site.y +
+            "%;transform:translate(calc(-50% + " + off.dx + "px),calc(-50% + " + off.dy + "px));z-index:" + (10 + i) + '" title="' +
+            escHtml(tip) + '">' +
+            '<div style="width:' + d + "px;height:" + d + "px;border-radius:9999px;background:" + (PROVIDER_COLOR[p] || "#94a3b8") +
+            ';box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);"></div>' +
+            "</div>"
+          );
+        }).join("");
       }).join("");
     }
 
