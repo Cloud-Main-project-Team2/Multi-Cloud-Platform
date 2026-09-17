@@ -29,10 +29,21 @@
     /* 페이지 기본 배경을 흰색(surface)으로 — hero만 배경색을 두고 나머지 섹션은 흰색 위에 얹는다. */
     body{ background:var(--surface); }
 
-    /* 히어로 배경 — 외부 시안처럼 은은한 그라데이션. 라이트는 흰색→연한 하늘색,
-       다크는 짙은 네이비 그라데이션으로 텍스트 대비를 유지한다. */
-    .hero{ background:linear-gradient(140deg, #ffffff 12%, #f0f6fb 70%, #e4eef7); }
-    :root[data-theme="dark"] .hero{ background:linear-gradient(140deg, #0b1724 12%, #102a40 70%, #16354f); }
+    /* 히어로 배경 이미지 — hero 영역에만 배경사진을 깔고, 위에 오버레이를 얹어 텍스트 가독성을 확보한다. */
+    .hero{ position:relative; isolation:isolate; overflow:hidden; }
+    .hero::before{
+      content:""; position:absolute; inset:0; z-index:-2;
+      background:url("assets/imgs/multicloud-hero-background-v2.png") center/cover no-repeat;
+    }
+    /* 라이트: 밝은 배경 위에 어두운 텍스트가 읽히도록 흰색 오버레이. */
+    .hero::after{
+      content:""; position:absolute; inset:0; z-index:-1;
+      background:linear-gradient(to right, rgba(255,255,255,.88), rgba(255,255,255,.55));
+    }
+    /* 다크: 어두운 배경 위에 밝은 텍스트가 읽히도록 어두운 오버레이. */
+    :root[data-theme="dark"] .hero::after{
+      background:linear-gradient(to right, rgba(10,20,32,.85), rgba(10,20,32,.5));
+    }
 
     /* ===== Explore the workspace 기능 투어 =====
        외부 시안(main-home-animated.html)의 탭 투어를 이식. 원본의 하드코딩 색상을
