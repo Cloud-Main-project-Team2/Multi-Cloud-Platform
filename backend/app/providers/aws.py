@@ -275,6 +275,138 @@ def list_network_resources(secret_payload: dict, region: str) -> dict:
     return {"vpcs": vpcs, "subnets": subnets, "security_groups": security_groups}
 
 
+def list_security_groups(secret_payload: dict, region: str) -> list[dict]:
+    """보안그룹 관리 화면(2026-09-17)의 목록 조회 — 규칙까지 포함한 상세를 돌려준다.
+    `list_network_resources()`의 `security_groups`(id/name/vpc_id 요약, 프로비저닝 폼의 "기존
+    리소스 사용" 드롭다운용)와 달리 규칙 CRUD에 쓸 수 있는 전체 정보를 담는다.
+
+    `describe_security_group_rules()`가 주는 `SecurityGroupRuleId`를 그대로 `rule_id`로 쓴다 —
+    구버전 API처럼 `IpPermissions` 전체를 매칭해 삭제하는 방식보다 안전하다(2018년 이후 리전
+    에선 전부 지원).
+    """
+    from app.resource_actions import ResourceActionError
+
+    ec2 = _client(secret_payload, "ec2", region)
+    try:
+        groups_resp = ec2.describe_security_groups()
+        rules_resp = ec2.describe_security_group_rules()
+    except (BotoCoreError, ClientError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+    rules_by_group: dict[str, list[dict]] = {}
+    for r in rules_resp.get("SecurityGroupRules", []):
+        rules_by_group.setdefault(r["GroupId"], []).append(
+            {
+                "rule_id": r["SecurityGroupRuleId"],
+                "direction": "egress" if r.get("IsEgress") else "ingress",
+                "protocol": r.get("IpProtocol"),
+                "from_port": r.get("FromPort"),
+                "to_port": r.get("ToPort"),
+                "cidr": r.get("CidrIpv4") or r.get("CidrIpv6"),
+                "description": r.get("Description"),
+            }
+        )
+
+    groups = []
+    for g in groups_resp.get("SecurityGroups", []):
+        group_rules = rules_by_group.get(g["GroupId"], [])
+        groups.append(
+            {
+                "id": g["GroupId"],
+                "name": g.get("GroupName"),
+                "description": g.get("Description"),
+                "vpc_id": g.get("VpcId"),
+                "ingress_rules": [r for r in group_rules if r["direction"] == "ingress"],
+                "egress_rules": [r for r in group_rules if r["direction"] == "egress"],
+            }
+        )
+    return groups
+
+
+def create_security_group(secret_payload: dict, region: str, name: str, description: str, vpc_id: str) -> dict:
+    from app.resource_actions import ResourceActionError
+
+    ec2 = _client(secret_payload, "ec2", region)
+    try:
+        resp = ec2.create_security_group(GroupName=name, Description=description, VpcId=vpc_id)
+    except (BotoCoreError, ClientError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return {
+        "id": resp["GroupId"],
+        "name": name,
+        "description": description,
+        "vpc_id": vpc_id,
+        "ingress_rules": [],
+        "egress_rules": [],
+    }
+
+
+def delete_security_group(secret_payload: dict, region: str, group_id: str) -> None:
+    from app.resource_actions import ResourceActionError
+
+    ec2 = _client(secret_payload, "ec2", region)
+    try:
+        ec2.delete_security_group(GroupId=group_id)
+    except (BotoCoreError, ClientError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+
+def add_security_group_rule(
+    secret_payload: dict,
+    region: str,
+    group_id: str,
+    direction: str,
+    protocol: str,
+    from_port: int | None,
+    to_port: int | None,
+    cidr: str,
+    description: str | None,
+) -> dict:
+    from app.resource_actions import ResourceActionError
+
+    ec2 = _client(secret_payload, "ec2", region)
+    ip_range: dict = {"CidrIp": cidr}
+    if description:
+        ip_range["Description"] = description
+    ip_permission: dict = {"IpProtocol": protocol, "IpRanges": [ip_range]}
+    if from_port is not None:
+        ip_permission["FromPort"] = from_port
+    if to_port is not None:
+        ip_permission["ToPort"] = to_port
+
+    try:
+        if direction == "ingress":
+            resp = ec2.authorize_security_group_ingress(GroupId=group_id, IpPermissions=[ip_permission])
+        else:
+            resp = ec2.authorize_security_group_egress(GroupId=group_id, IpPermissions=[ip_permission])
+    except (BotoCoreError, ClientError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+    added = (resp.get("SecurityGroupRules") or [{}])[0]
+    return {
+        "rule_id": added.get("SecurityGroupRuleId"),
+        "direction": direction,
+        "protocol": protocol,
+        "from_port": from_port,
+        "to_port": to_port,
+        "cidr": cidr,
+        "description": description,
+    }
+
+
+def remove_security_group_rule(secret_payload: dict, region: str, group_id: str, direction: str, rule_id: str) -> None:
+    from app.resource_actions import ResourceActionError
+
+    ec2 = _client(secret_payload, "ec2", region)
+    try:
+        if direction == "ingress":
+            ec2.revoke_security_group_ingress(GroupId=group_id, SecurityGroupRuleIds=[rule_id])
+        else:
+            ec2.revoke_security_group_egress(GroupId=group_id, SecurityGroupRuleIds=[rule_id])
+    except (BotoCoreError, ClientError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+
 def _instance_tags(tag_list) -> tuple[dict, str | None]:
     tags = {t["Key"]: t["Value"] for t in tag_list or []}
     return tags, tags.get("Name")

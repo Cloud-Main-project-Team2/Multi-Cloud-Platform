@@ -188,3 +188,83 @@ def list_network_resources(secret_payload: dict, project_id: str) -> dict:
         raise ResourceActionError("PROVIDER_API_ERROR") from exc
 
     return {"networks": networks}
+
+
+def _firewall_rule_out(f) -> dict:
+    allowed_or_denied = list(f.allowed) + list(f.denied)
+    protocol = allowed_or_denied[0].I_p_protocol if allowed_or_denied else None
+    ports: list[str] = []
+    for entry in allowed_or_denied:
+        ports.extend(entry.ports)
+    return {
+        "name": f.name,
+        "network": f.network,
+        "direction": f.direction,
+        "priority": f.priority,
+        "action": "deny" if f.denied else "allow",
+        "protocol": protocol,
+        "ports": ports,
+        "source_ranges": list(f.source_ranges),
+        "target_tags": list(f.target_tags),
+    }
+
+
+def list_firewall_rules(secret_payload: dict, project_id: str) -> list[dict]:
+    """보안그룹 관리 화면(2026-09-17)의 목록 조회 — GCP는 "그룹"이 없다. VPC 전역(global)
+    방화벽 규칙 자체가 최상위 객체라, AWS SG/Azure NSG처럼 그룹 밑에 규칙이 중첩된 모양이
+    아니라 평면 목록이다(`docs/Security_Group_Management_Design_2026-09-17.md` 참고)."""
+    from app.resource_actions import ResourceActionError
+
+    try:
+        credentials = service_account.Credentials.from_service_account_info(secret_payload)
+        client = compute_v1.FirewallsClient(credentials=credentials)
+        rules = [_firewall_rule_out(f) for f in client.list(project=project_id)]
+    except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return rules
+
+
+def create_firewall_rule(secret_payload: dict, project_id: str, rule: dict) -> dict:
+    from app.resource_actions import ResourceActionError
+
+    # allowed/denied는 서로 다른 메시지 타입이라(둘 다 필드는 I_p_protocol/ports로 같지만) 액션에
+    # 맞는 쪽만 채운다 — 반대쪽에 잘못된 타입을 넣으면 즉시 TypeError.
+    if rule["action"] == "deny":
+        firewall = compute_v1.Firewall(
+            name=rule["name"],
+            network=rule["network"],
+            direction=rule["direction"],
+            priority=rule["priority"],
+            source_ranges=rule.get("source_ranges") or [],
+            target_tags=rule.get("target_tags") or [],
+            denied=[compute_v1.Denied(I_p_protocol=rule["protocol"], ports=rule.get("ports") or [])],
+        )
+    else:
+        firewall = compute_v1.Firewall(
+            name=rule["name"],
+            network=rule["network"],
+            direction=rule["direction"],
+            priority=rule["priority"],
+            source_ranges=rule.get("source_ranges") or [],
+            target_tags=rule.get("target_tags") or [],
+            allowed=[compute_v1.Allowed(I_p_protocol=rule["protocol"], ports=rule.get("ports") or [])],
+        )
+    try:
+        credentials = service_account.Credentials.from_service_account_info(secret_payload)
+        client = compute_v1.FirewallsClient(credentials=credentials)
+        client.insert(project=project_id, firewall_resource=firewall).result()
+        created = client.get(project=project_id, firewall=rule["name"])
+    except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return _firewall_rule_out(created)
+
+
+def delete_firewall_rule(secret_payload: dict, project_id: str, name: str) -> None:
+    from app.resource_actions import ResourceActionError
+
+    try:
+        credentials = service_account.Credentials.from_service_account_info(secret_payload)
+        client = compute_v1.FirewallsClient(credentials=credentials)
+        client.delete(project=project_id, firewall=name).result()
+    except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
