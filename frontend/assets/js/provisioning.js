@@ -1220,6 +1220,11 @@
       return {
         idx: i, platform: c.provider, account: c.label, credentialId: c.credentialId,
         progress: 0, status: "pending", real: hasRealRunner(kind, c.provider),
+        // job별로 다른 시작 오프셋·증가 속도·타이밍 — 여러 개를 동시에 돌려도 진행률이
+        // 제각각 다르게 올라가도록(문제 2). 실제 완료 응답이 오면 즉시 100%로 스냅한다.
+        startAt: 5 + Math.floor(Math.random() * 10),   // 5~14%
+        step: 4 + Math.floor(Math.random() * 7),       // 4~10%씩
+        tickMs: 380 + Math.floor(Math.random() * 240), // 시뮬레이션 job별 간격
       };
     });
 
@@ -1241,6 +1246,11 @@
         var bar = row.querySelector("[data-real-bar]");
         var st = row.querySelector("[data-real-status]");
         var m = row.querySelector("[data-real-msg]");
+        // 진행 중에는 다음 갱신 간격에 맞춰 width를 부드럽게 잇고(폴링 2초 / 시뮬 tickMs),
+        // 완료·실패로 종결될 때는 즉시 스냅한다(문제 1).
+        bar.style.transition = status === "running"
+          ? "width " + (t.real ? "1.95s" : (t.tickMs / 1000 + 0.05).toFixed(2) + "s") + " linear"
+          : "width .3s ease-out";
         bar.style.width = progress + "%";
         if (status === "failed") {
           bar.className = "h-2 rounded-full"; bar.style.background = "#c0392b";
@@ -1267,7 +1277,8 @@
           if (job.status === "success") { setRow(t, "done", 100, null); return; }
           if (job.status === "failed") { setRow(t, "failed", t.progress, job.error || "생성에 실패했습니다."); return; }
           if (job.status === "cancelled") { setRow(t, "failed", t.progress, "취소되었습니다."); return; }
-          setRow(t, "running", Math.min(90, (t.progress || 8) + 7)); // queued/running — 창가 진행 연출
+          // queued/running — job별 증가 속도(step)+소폭 지터로 진행 연출(90% 이하에서 대기).
+          setRow(t, "running", Math.min(90, (t.progress || t.startAt) + t.step + Math.floor(Math.random() * 4)));
           setTimeout(function () { pollTarget(t, jobId); }, 2000);
         })
         .catch(function (err) { setRow(t, "failed", t.progress, err); });
@@ -1278,7 +1289,7 @@
       var willFail = Math.random() < 0.25;
       var failAt = willFail ? 35 + Math.floor(Math.random() * 45) : null;
       var timer = setInterval(function () {
-        t.progress += 4 + Math.floor(Math.random() * 9);
+        t.progress += t.step + Math.floor(Math.random() * 6);
         if (failAt != null && t.progress >= failAt) {
           clearInterval(timer);
           setRow(t, "failed", failAt, "할당량 초과 — 해당 리전의 한도를 넘었습니다.");
@@ -1288,11 +1299,11 @@
         } else {
           setRow(t, "running", t.progress);
         }
-      }, 450);
+      }, t.tickMs);
     }
 
     targets.forEach(function (t) {
-      setRow(t, "running", 8);
+      setRow(t, "running", t.startAt);
       if (!t.real) { simulateTarget(t); return; }
       MCPApi.request("/provisioning/" + t.platform + "/" + SERVICE_CODE[kind][t.platform], {
         method: "POST",
