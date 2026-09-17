@@ -20,6 +20,7 @@ from app.models import CloudAccount, Credential, Resource, ServiceCatalog, User
 from app.providers import aws as aws_provider
 from app.resource_actions import ResourceActionError, perform_action, supported_actions
 from app.schemas.errors import explanation_for, specific_reason_for
+from app.metrics import get_top_utilization
 from app.schemas.resources import (
     ActionResultError,
     ActionResultItem,
@@ -38,6 +39,9 @@ from app.schemas.resources import (
     ResourceSummaryData,
     ResourceSummaryResponse,
     ServiceBrief,
+    UtilizationData,
+    UtilizationItem,
+    UtilizationResponse,
 )
 from app.providers.session import CredentialResolutionError, resolve_secret_payload
 from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json
@@ -244,6 +248,24 @@ def resources_summary(
             stale_resources=stale,
             last_synced_at=iso_z(last_synced_at),
             by_provider=by_provider,
+        )
+    )
+
+
+@router.get("/resources/utilization/top", response_model=UtilizationResponse)
+def resources_utilization_top(
+    limit: int = Query(5, ge=1, le=20),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UtilizationResponse:
+    """CPU 사용률 상위 N개를 실시간으로 조회한다(보고서 §3.3 "리소스 사용률 상위" 섹션용,
+    2026-09-17). 저장된 값이 아니라 이 요청을 처리하는 순간 CSP Monitoring API를 호출한
+    결과다 — `as_of`가 그 시점이다. app/metrics.py 참고."""
+    items = get_top_utilization(db, current_user, limit=limit)
+    return UtilizationResponse(
+        data=UtilizationData(
+            items=[UtilizationItem(**item) for item in items],
+            as_of=iso_z(dt.datetime.now(dt.timezone.utc)),
         )
     )
 

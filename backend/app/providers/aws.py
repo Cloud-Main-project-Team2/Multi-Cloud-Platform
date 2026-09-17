@@ -100,6 +100,53 @@ def verify(external_account_id: str, secret_payload: dict) -> VerificationResult
     return VerificationResult(verified=True, permission_scope=scope)
 
 
+def get_cpu_utilization(secret_payload: dict, region: str, instance_ids: list[str]) -> dict[str, float | None]:
+    """최근 1시간 평균 CPU 사용률(%)을 인스턴스별로 일괄 조회한다 — 보고서 "리소스 사용률 상위"
+    섹션(2026-09-17)의 실데이터 소스. `GetMetricStatistics`(단건, 레거시)가 아니라
+    `GetMetricData`(일괄, CSP가 권장하는 현재 방식)를 쓴다 — 인스턴스 수만큼 API를 왕복하지
+    않고 한 번에 최대 500개 쿼리를 묶어 보낼 수 있다.
+
+    메모리는 여기서 다루지 않는다 — `CWAgent mem_used_percent`는 인스턴스에 CloudWatch Agent가
+    설치돼 있어야만 나오는데, 이 앱의 Terraform 모듈은 그 에이전트를 설치하지 않는다."""
+    if not instance_ids:
+        return {}
+
+    now = dt.datetime.now(dt.timezone.utc)
+    queries = [
+        {
+            "Id": f"m{i}",
+            "MetricStat": {
+                "Metric": {
+                    "Namespace": "AWS/EC2",
+                    "MetricName": "CPUUtilization",
+                    "Dimensions": [{"Name": "InstanceId", "Value": instance_id}],
+                },
+                "Period": 300,
+                "Stat": "Average",
+            },
+        }
+        for i, instance_id in enumerate(instance_ids)
+    ]
+
+    try:
+        cw = _client(secret_payload, "cloudwatch", region)
+        resp = cw.get_metric_data(
+            MetricDataQueries=queries,
+            StartTime=now - dt.timedelta(hours=1),
+            EndTime=now,
+        )
+    except (BotoCoreError, ClientError):
+        return {instance_id: None for instance_id in instance_ids}
+
+    # GetMetricData는 기본적으로 최신 시각 순(내림차순)으로 Values를 돌려준다 — [0]이 가장 최근값.
+    result_by_id = {r["Id"]: r for r in resp.get("MetricDataResults", [])}
+    out: dict[str, float | None] = {}
+    for i, instance_id in enumerate(instance_ids):
+        values = result_by_id.get(f"m{i}", {}).get("Values") or []
+        out[instance_id] = round(values[0], 1) if values else None
+    return out
+
+
 def _empty_bucket(s3_client, bucket: str) -> None:
     paginator = s3_client.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=bucket):
