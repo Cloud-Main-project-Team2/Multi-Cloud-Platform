@@ -254,7 +254,13 @@
           <h2 class="text-base font-bold">AI 비용 어시스턴트</h2>
           <p class="text-xs text-muted-foreground">플랫폼 비용을 비교하고, 절감 방법을 찾아보세요.</p>
         </div>
-        <button type="button" data-modal-close class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+        <div class="flex items-center gap-1.5">
+          <button type="button" id="agent-new-session" class="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted" aria-label="새 세션 시작">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+            새 세션
+          </button>
+          <button type="button" data-modal-close class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+        </div>
       </div>
 
       <div id="agent-chat-messages" class="flex-1 space-y-3 overflow-y-auto p-4 text-sm"></div>
