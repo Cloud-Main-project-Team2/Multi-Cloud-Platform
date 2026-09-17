@@ -207,12 +207,32 @@
   <script src="assets/js/provisioning.js"></script>
   <script>
     (function () {
+      var modal = document.getElementById("prov-progress-modal");
       var mini = document.getElementById("prov-progress-mini");
-      // 기본형 '닫기' → 모달 닫고 축소형 카드 표시
-      document.getElementById("prov-to-mini").addEventListener("click", function () {
+
+      // 진행률 모달을 닫는 모든 경로(닫기 버튼 / 백드롭 클릭 / ESC)가 동일하게
+      // 축소형 카드(작은 창)를 띄우도록 통일한다. 그렇지 않으면 백드롭/ESC로 닫았을 때
+      // MCPModal 기본 핸들러가 모달만 숨기고 작은 창이 뜨지 않는다.
+      function showMini() {
         MCPModal.close("#prov-progress-modal");
         mini.classList.remove("hidden");
+      }
+
+      // 기본형 '닫기' → 모달 닫고 축소형 카드 표시
+      document.getElementById("prov-to-mini").addEventListener("click", showMini);
+
+      // 백드롭(오버레이 자기 자신) 클릭 → MCPModal이 모달을 닫으므로 동일하게 작은 창 표시.
+      // 모달 요소의 target-phase 리스너라 document의 MCPModal 핸들러보다 먼저 실행된다.
+      modal.addEventListener("click", function (e) {
+        if (e.target === modal) showMini();
       });
+
+      // ESC → 진행률 모달이 열려 있을 때만 작은 창 표시.
+      // capture 단계로 등록해 MCPModal의 bubble 단계 close 이전에 열림 상태를 확인한다.
+      document.addEventListener("keydown", function (e) {
+        if (e.key === "Escape" && !modal.classList.contains("hidden")) showMini();
+      }, true);
+
       // 축소형 카드 클릭 → 카드 숨기고 기본형 모달 복귀
       mini.addEventListener("click", function () {
         mini.classList.add("hidden");
