@@ -48,6 +48,7 @@ from app.schemas.auth import (
     RefreshResponse,
     SignUpRequest,
     SignUpResponse,
+    UpdateMeRequest,
     UserOut,
 )
 from app.security.jwt_tokens import create_access_token
@@ -142,6 +143,35 @@ def login(payload: LoginRequest, db: Session = Depends(get_db)) -> LoginResponse
 
 @router.get("/me", response_model=MeResponse)
 def me(current_user: User = Depends(get_current_user)) -> MeResponse:
+    return MeResponse(data=_serialize_user(current_user))
+
+
+@router.patch("/me", response_model=MeResponse)
+def update_me(
+    payload: UpdateMeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+) -> MeResponse:
+    # JWT의 user_id로 인증된 본인 계정만 수정한다(get_current_user와 db가 같은 세션을 공유).
+    name = payload.name.strip()
+    if not name:
+        raise validation_error("이름을 입력해 주세요.", details=[{"field": "name", "reason": "required"}])
+    # 회원가입과 동일한 규칙: 회사 소속이면 단체명 필수, 개인이면 단체명을 두지 않는다.
+    affiliation_name = (payload.affiliation_name or "").strip() or None
+    if payload.affiliation_type == "company" and not affiliation_name:
+        raise validation_error(
+            "소속 회사명을 입력해 주세요.", details=[{"field": "affiliation_name", "reason": "required"}]
+        )
+    if payload.affiliation_type == "individual":
+        affiliation_name = None
+
+    current_user.name = name
+    current_user.affiliation_type = payload.affiliation_type
+    current_user.affiliation_name = affiliation_name
+    db.commit()
+    db.refresh(current_user)
+
+    log_business_event("auth.profile_updated", user_id=current_user.id)
     return MeResponse(data=_serialize_user(current_user))
 
 

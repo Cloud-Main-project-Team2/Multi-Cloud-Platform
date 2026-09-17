@@ -33,6 +33,71 @@ def test_me_without_token_is_unauthenticated(client):
     assert resp.json()["error"]["code"] == "AUTHENTICATION_REQUIRED"
 
 
+# --- PATCH /auth/me (마이페이지 계정 정보 수정: 이름·소속) --------------------------------
+def test_update_me_changes_name_and_affiliation(client, make_user, auth_header):
+    user = make_user(email="patch@example.com")
+    resp = client.patch(
+        "/api/v1/auth/me",
+        headers=auth_header(user),
+        json={"name": "새이름", "affiliation_type": "company", "affiliation_name": "누리컴퍼니"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["name"] == "새이름"
+    assert data["affiliation_type"] == "company"
+    assert data["affiliation_name"] == "누리컴퍼니"
+    # 이메일은 이 경로로 바뀌지 않는다.
+    assert data["email"] == "patch@example.com"
+
+    # 다시 조회해도 유지된다.
+    again = client.get("/api/v1/auth/me", headers=auth_header(user)).json()["data"]
+    assert again["name"] == "새이름"
+    assert again["affiliation_name"] == "누리컴퍼니"
+
+
+def test_update_me_company_requires_affiliation_name(client, make_user, auth_header):
+    user = make_user(email="patch2@example.com")
+    resp = client.patch(
+        "/api/v1/auth/me",
+        headers=auth_header(user),
+        json={"name": "이름", "affiliation_type": "company", "affiliation_name": "  "},
+    )
+    assert resp.status_code == 422
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+
+def test_update_me_individual_clears_affiliation_name(client, make_user, auth_header):
+    user = make_user(
+        email="patch3@example.com", affiliation_type="company", affiliation_name="옛회사"
+    )
+    resp = client.patch(
+        "/api/v1/auth/me",
+        headers=auth_header(user),
+        json={"name": "이름", "affiliation_type": "individual", "affiliation_name": "무시됨"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()["data"]
+    assert data["affiliation_type"] == "individual"
+    assert data["affiliation_name"] is None
+
+
+def test_update_me_blank_name_is_rejected(client, make_user, auth_header):
+    user = make_user(email="patch4@example.com")
+    resp = client.patch(
+        "/api/v1/auth/me",
+        headers=auth_header(user),
+        json={"name": "   ", "affiliation_type": "individual"},
+    )
+    assert resp.status_code == 422
+
+
+def test_update_me_without_token_is_unauthenticated(client):
+    resp = client.patch(
+        "/api/v1/auth/me", json={"name": "x", "affiliation_type": "individual"}
+    )
+    assert resp.status_code == 401
+
+
 # --- login now returns refresh token + refresh/logout -----------------------------------
 def test_login_returns_refresh_token(client, make_user):
     make_user(email="rt@example.com", password="correct-pass-1234")

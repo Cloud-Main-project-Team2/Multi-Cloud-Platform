@@ -811,7 +811,10 @@
 
   tbody.addEventListener("pointerdown", onDown);
 
-  // --- 계정 정보 (GET /auth/me) — 하드코딩 대신 실제 로그인 사용자 정보 렌더링 ---------------
+  // --- 계정 정보 (GET /auth/me + PATCH /auth/me) — 실제 로그인 사용자 정보 렌더링 + 이름/소속 인라인 수정 ---
+  // 이메일은 로그인 식별자라 읽기 전용, 비밀번호는 범위 밖(별도 재설정). 수정 가능한 건 이름·소속뿐.
+  var profileUser = null;
+
   function renderAffiliation(user) {
     if (user.affiliation_type === "company") {
       return user.affiliation_name ? "회사 · " + user.affiliation_name : "회사";
@@ -819,22 +822,120 @@
     return "개인";
   }
 
+  function profileEls() {
+    return {
+      email: document.getElementById("profile-email"),
+      name: document.getElementById("profile-name"),
+      aff: document.getElementById("profile-affiliation"),
+      editBtn: document.getElementById("profile-edit-btn"),
+      saveBtn: document.getElementById("profile-save-btn"),
+      cancelBtn: document.getElementById("profile-cancel-btn"),
+      msg: document.getElementById("profile-msg"),
+    };
+  }
+
+  function setProfileMsg(text, ok) {
+    var e = profileEls();
+    if (!e.msg) return;
+    if (!text) { e.msg.hidden = true; e.msg.textContent = ""; return; }
+    e.msg.hidden = false;
+    e.msg.textContent = text;
+    e.msg.style.color = ok ? "" : "#c0392b";
+  }
+
+  // 읽기 모드: 저장된 사용자 값을 텍스트로 표시한다.
+  function renderProfileRead() {
+    var e = profileEls();
+    var u = profileUser || {};
+    if (e.email) e.email.textContent = u.email || "—";
+    if (e.name) e.name.textContent = u.name || "—";
+    if (e.aff) e.aff.textContent = renderAffiliation(u);
+  }
+
+  // 수정 모드: 이름/소속 dd를 입력 요소로 바꾼다(이메일은 그대로 텍스트).
+  function enterProfileEdit() {
+    var e = profileEls();
+    var u = profileUser || {};
+    if (e.name) {
+      e.name.innerHTML = '<input id="profile-name-input" type="text" maxlength="100" class="w-56 max-w-full rounded-lg border border-border bg-surface px-2 py-1 text-sm" />';
+      document.getElementById("profile-name-input").value = u.name || "";
+    }
+    if (e.aff) {
+      e.aff.innerHTML =
+        '<span class="flex flex-wrap items-center justify-end gap-2">' +
+          '<select id="profile-aff-type" class="rounded-lg border border-border bg-surface px-2 py-1 text-sm">' +
+            '<option value="individual">개인</option><option value="company">회사</option>' +
+          '</select>' +
+          '<input id="profile-aff-name" type="text" maxlength="200" placeholder="단체명" class="w-40 max-w-full rounded-lg border border-border bg-surface px-2 py-1 text-sm" />' +
+        '</span>';
+      var typeSel = document.getElementById("profile-aff-type");
+      var affNameInput = document.getElementById("profile-aff-name");
+      typeSel.value = u.affiliation_type === "company" ? "company" : "individual";
+      affNameInput.value = u.affiliation_name || "";
+      // 개인이면 단체명 칸을 숨긴다(회사일 때만 필수 입력).
+      var syncAff = function () { affNameInput.hidden = typeSel.value !== "company"; };
+      typeSel.addEventListener("change", syncAff);
+      syncAff();
+    }
+    if (e.editBtn) e.editBtn.hidden = true;
+    if (e.saveBtn) e.saveBtn.hidden = false;
+    if (e.cancelBtn) e.cancelBtn.hidden = false;
+    setProfileMsg("", true);
+  }
+
+  function exitProfileEdit() {
+    var e = profileEls();
+    renderProfileRead();
+    if (e.editBtn) e.editBtn.hidden = false;
+    if (e.saveBtn) e.saveBtn.hidden = true;
+    if (e.cancelBtn) e.cancelBtn.hidden = true;
+  }
+
+  function saveProfile() {
+    var e = profileEls();
+    var nameInput = document.getElementById("profile-name-input");
+    var typeSel = document.getElementById("profile-aff-type");
+    var affNameInput = document.getElementById("profile-aff-name");
+    if (!nameInput || !typeSel) return;
+    var name = (nameInput.value || "").trim();
+    var affType = typeSel.value === "company" ? "company" : "individual";
+    var affName = ((affNameInput && affNameInput.value) || "").trim();
+    // 서버와 동일한 규칙을 프론트에서도 먼저 막는다(회사=단체명 필수).
+    if (!name) { setProfileMsg("이름을 입력해 주세요.", false); nameInput.focus(); return; }
+    if (affType === "company" && !affName) { setProfileMsg("소속 회사명을 입력해 주세요.", false); if (affNameInput) affNameInput.focus(); return; }
+
+    if (e.saveBtn) { e.saveBtn.disabled = true; e.saveBtn.textContent = "저장 중…"; }
+    MCPApi.request("/auth/me", {
+      method: "PATCH",
+      body: { name: name, affiliation_type: affType, affiliation_name: affType === "company" ? affName : null },
+    })
+      .then(function (user) {
+        profileUser = user || profileUser;
+        exitProfileEdit();
+        setProfileMsg("계정 정보를 수정했습니다.", true);
+      })
+      .catch(function (err) { setProfileMsg(errorMessage(err), false); })
+      .then(function () { if (e.saveBtn) { e.saveBtn.disabled = false; e.saveBtn.textContent = "저장"; } });
+  }
+
   function loadProfile() {
-    var emailEl = document.getElementById("profile-email");
-    var nameEl = document.getElementById("profile-name");
-    var affEl = document.getElementById("profile-affiliation");
-    if (!emailEl && !nameEl && !affEl) return;
+    var e = profileEls();
+    if (!e.email && !e.name && !e.aff) return;
+    // 수정/저장/취소 배선(요소는 정적이라 한 번만 바인딩).
+    if (e.editBtn) e.editBtn.addEventListener("click", enterProfileEdit);
+    if (e.saveBtn) e.saveBtn.addEventListener("click", saveProfile);
+    if (e.cancelBtn) e.cancelBtn.addEventListener("click", exitProfileEdit);
+
+    // MCPApi.request는 표준 응답 봉투(json.data)를 이미 벗겨 user 객체를 그대로 준다.
     MCPApi.request("/auth/me")
-      .then(function (resp) {
-        var user = (resp && resp.data) || {};
-        if (emailEl) emailEl.textContent = user.email || "—";
-        if (nameEl) nameEl.textContent = user.name || "—";
-        if (affEl) affEl.textContent = renderAffiliation(user);
+      .then(function (user) {
+        profileUser = user || {};
+        renderProfileRead();
       })
       .catch(function (err) {
         // 실패 시 자리표시자 유지(auth-guard가 세션 만료는 이미 로그인으로 보낸다).
         var msg = errorMessage(err);
-        [emailEl, nameEl, affEl].forEach(function (el) { if (el) el.textContent = "불러오지 못했습니다"; });
+        [e.email, e.name, e.aff].forEach(function (el) { if (el) el.textContent = "불러오지 못했습니다"; });
         if (window.console) console.warn("profile load failed:", msg);
       });
   }

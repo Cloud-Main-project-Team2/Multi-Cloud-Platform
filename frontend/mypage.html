@@ -71,16 +71,19 @@
             <div class="flex flex-wrap items-center justify-between gap-2">
               <p class="font-semibold">계정 정보</p>
               <div class="flex flex-wrap gap-2">
-                <button type="button" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">수정하기</button>
+                <button id="profile-edit-btn" type="button" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">수정하기</button>
+                <button id="profile-save-btn" type="button" hidden class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">저장</button>
+                <button id="profile-cancel-btn" type="button" hidden class="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted">취소</button>
                 <button type="button" data-logout class="rounded-lg border border-border bg-surface px-4 py-2 text-sm font-medium hover:bg-muted">로그아웃</button>
                 <button type="button" class="rounded-lg px-4 py-2 text-sm font-medium text-white" style="background:#c0392b">회원탈퇴</button>
               </div>
             </div>
             <dl class="mt-3 max-w-xl space-y-2 text-sm">
-              <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">이메일</dt><dd id="profile-email" class="font-medium">—</dd></div>
-              <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">이름</dt><dd id="profile-name" class="font-medium">—</dd></div>
-              <div class="flex justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">소속</dt><dd id="profile-affiliation" class="font-medium">—</dd></div>
+              <div class="flex items-center justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">이메일</dt><dd id="profile-email" class="font-medium">—</dd></div>
+              <div class="flex items-center justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">이름</dt><dd id="profile-name" class="font-medium">—</dd></div>
+              <div class="flex items-center justify-between gap-4 border-b border-border pb-2"><dt class="text-muted-foreground">소속</dt><dd id="profile-affiliation" class="font-medium">—</dd></div>
             </dl>
+            <p id="profile-msg" hidden class="mt-2 text-sm"></p>
           </section>
 
           <!-- 2. 키 & 플랫폼 IAM 계정 관리 -->
