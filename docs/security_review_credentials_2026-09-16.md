@@ -39,10 +39,13 @@ AWS 콘솔 IAM 정책에만** 존재하고, **커밋된 자격증명 암호화 �
   `docker-compose.yml`에서 전부 빈 기본값(`${...:-}`)이고, `backend/.env.example:44,53`이
   *"실제 키는 이 예시 파일에 절대 커밋하지 말 것"* 을 명시.
 
-**예외(실질 위험, 미해결):** `docker-compose.yml:27`에 **실동작 폴백 시크릿이 커밋**돼 있다.
+**예외(실질 위험) — 2026-09-17 #78에서 해결:** `docker-compose.yml`에 **실동작 폴백 시크릿이
+커밋**돼 있었다. 아래 폴백을 전부 제거해 `.env` 필수(`${VAR:?}`)로 전환하고, 노출됐던
+`CREDENTIAL_ENCRYPTION_KEY`는 새 키로 로테이션(DB 볼륨 재생성 + 재시드)해 옛 값을 무력화했다.
 
 ```yaml
-CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-ItGuIvwBa1vpQkpSuONI0GHpbxwtSxL8UPh4dp340ak=}  # 유효한 32바이트 base64 키
+# 해결 전(참고용, 실제 값은 로테이션되어 무력화됨):
+CREDENTIAL_ENCRYPTION_KEY: ${CREDENTIAL_ENCRYPTION_KEY:-‹redacted – #78에서 로테이션›}  # 유효한 32바이트 base64 키였음
 JWT_SECRET_KEY: ${JWT_SECRET_KEY:-dev-only-jwt-secret-change-me}
 ```
 
