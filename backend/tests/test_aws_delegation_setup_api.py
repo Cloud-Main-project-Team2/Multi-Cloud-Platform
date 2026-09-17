@@ -57,6 +57,34 @@ def test_external_id_is_fresh_each_request(client, make_user, auth_header, platf
     assert first != second
 
 
+def test_inline_statements_scope_iam_management_to_ssm_role(client, make_user, auth_header, platform_configured):
+    data = _setup(client, auth_header(make_user()))
+
+    statements = data["inline_statements"]
+    assert len(statements) == 2
+
+    readonly = statements[0]
+    assert readonly["Resource"] == "*"
+    assert "ec2:DescribeVpcs" in readonly["Action"]
+    # EC2 생성은 "기존 리소스 사용" 여부와 무관하게 매번 이 둘을 조회한다(terraform/aws/ec2/main.tf의
+    # data "aws_vpc"/data "aws_availability_zones") — 없으면 자동 생성 경로에서 EC2 생성 자체가
+    # `ec2:DescribeVpcAttribute AccessDenied`로 실패한다(2026-09-17 실사용 중 발견).
+    assert "ec2:DescribeVpcAttribute" in readonly["Action"]
+    assert "ec2:DescribeAvailabilityZones" in readonly["Action"]
+
+    # EC2 프로비저닝이 만드는 mcp-ssm-* 역할/인스턴스 프로파일을 관리하는 데 필요한 권한 —
+    # 이게 없으면 실제 EC2 생성이 `iam:ListRolePolicies AccessDenied`로 막힌다(2026-09-17).
+    ssm_mgmt = statements[1]
+    assert "iam:PassRole" in ssm_mgmt["Action"]
+    assert "iam:CreateRole" in ssm_mgmt["Action"]
+    # iam:PassRole을 Resource: "*"로 주면 위임 세션이 임의 역할로 권한을 상승시킬 수 있어,
+    # 우리가 만드는 mcp-ssm-* 역할/프로파일로만 좁힌다.
+    assert ssm_mgmt["Resource"] == [
+        "arn:aws:iam::*:role/mcp-ssm-*",
+        "arn:aws:iam::*:instance-profile/mcp-ssm-*",
+    ]
+
+
 def test_troubleshooting_covers_all_access_denied_causes(client, make_user, auth_header, platform_configured):
     data = _setup(client, auth_header(make_user()))
 

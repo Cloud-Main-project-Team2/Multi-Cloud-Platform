@@ -260,10 +260,12 @@
           arnInput.placeholder = "arn:aws:iam::<내 계정 ID>:role/" + data.suggested_role_name;
         }
 
-        // 인라인 권한 정책은 서버가 준 action 목록으로 조립한다 — 목록이 바뀌면 안내도 같이 바뀐다.
+        // 인라인 권한 정책은 서버가 완성된 Statement 배열을 그대로 준다(2026-09-17 — mcp-ssm-*
+        // 리소스로 좁혀야 하는 IAM 관리 권한이 추가되면서 statement가 2개가 돼 프론트에서
+        // "Resource: *" 한 덩어리로 조립할 수 없게 됐다).
         var inlinePolicy = {
           Version: "2012-10-17",
-          Statement: [{ Effect: "Allow", Action: data.inline_actions, Resource: "*" }],
+          Statement: data.inline_statements,
         };
 
         // JSON 블록은 길어서 접어 둔다(<details>는 브라우저 기본 토글이라 JS가 필요 없다).
@@ -296,7 +298,7 @@
           jsonBlock("① 신뢰 정책 (역할 만들기 중 붙여넣기)", "역할 생성 화면의 \"사용자 지정 신뢰 정책\"에만 들어갑니다.", data.trust_policy) +
           jsonBlock(
             "② 인라인 권한 정책 (역할 생성 후 추가)",
-            "관리형 정책에 없는 권한입니다. 비용 표시와 권한 자동 판별에 쓰이며, 없어도 연결은 됩니다.",
+            "관리형 정책에 없는 권한입니다. 첫 번째 항목(비용 표시·권한 자동 판별·기존 네트워크 조회)은 없어도 연결 자체는 되지만, 두 번째 항목(mcp-ssm-* 역할 관리)이 없으면 EC2 생성 시 SSM 콘솔 접속용 역할을 만들지 못해 프로비저닝이 실패합니다.",
             inlinePolicy
           ) +
           '<p class="mt-2"><a href="' + escapeHtml(data.iam_console_url) + '" target="_blank" rel="noopener" class="text-primary underline">IAM 콘솔에서 역할 만들기 ↗</a></p>' +

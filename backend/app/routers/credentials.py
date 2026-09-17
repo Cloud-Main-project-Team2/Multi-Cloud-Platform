@@ -330,8 +330,71 @@ def aws_delegation_setup(
                 "arn:aws:iam::aws:policy/AmazonS3FullAccess",
                 "arn:aws:iam::aws:policy/CloudFrontFullAccess",
             ],
-            # 인벤토리 비용 표시와 permission_scope 자동 판별에 쓰는 읽기 전용 권한.
-            inline_actions=["ce:GetCostAndUsage", "iam:SimulatePrincipalPolicy"],
+            inline_statements=[
+                {
+                    # 인벤토리 비용 표시와 permission_scope 자동 판별에 쓰는 읽기 전용 권한 +
+                    # 프로비저닝 폼 "기존 리소스 사용"이 실제 VPC/서브넷/보안 그룹 목록을 조회하는
+                    # 데 쓰는 읽기 전용 권한(2026-09-17 추가 — AmazonEC2FullAccess엔 원래
+                    # 포함되지만, 그 managed policy 없이 좁은 인라인 정책만으로 역할을 만든
+                    # 사용자는 이 조회가 막혔다 — 실사용 중 발견) + EC2 프로비저닝 자체가
+                    # "자동 생성"(기존 리소스 미지정) 경로에서 항상 거치는 조회 2종
+                    # (2026-09-17 실제 AWS 계정으로 EC2 생성 테스트 중 `ec2:DescribeVpcAttribute
+                    # AccessDenied`로 실패하는 걸 발견해서 추가) — `terraform/aws/ec2/main.tf`의
+                    # `data "aws_vpc"`가 vpc_id 지정 여부와 무관하게 항상 enableDnsSupport/
+                    # enableDnsHostnames를 읽고(`DescribeVpcAttribute`), `data
+                    # "aws_availability_zones"`는 (fallback 서브넷을 실제로 만들지 않아도) 매
+                    # apply마다 무조건 평가된다(`DescribeAvailabilityZones`) — 둘 다
+                    # `AmazonEC2FullAccess`에 포함되지만 그게 제대로 붙지 않은 역할에서 막히는
+                    # 게 실사용으로 확인됐다.
+                    "Effect": "Allow",
+                    "Action": [
+                        "ce:GetCostAndUsage",
+                        "iam:SimulatePrincipalPolicy",
+                        "ec2:DescribeVpcs",
+                        "ec2:DescribeVpcAttribute",
+                        "ec2:DescribeSubnets",
+                        "ec2:DescribeSecurityGroups",
+                        "ec2:DescribeAvailabilityZones",
+                    ],
+                    "Resource": "*",
+                },
+                {
+                    # EC2 프로비저닝(app/aws_provisioning.py)이 SSH 키 대신 SSM Session Manager로
+                    # 접속하게 하려고 인스턴스마다 `mcp-ssm-*` IAM 역할/인스턴스 프로파일을 만든다
+                    # (terraform/aws/ec2/main.tf). 이 위임 역할 자체가 그 역할을 만들고 인스턴스에
+                    # 넘길(`iam:PassRole`) 권한이 없으면 실제 AWS 계정으로 테스트 중
+                    # `iam:ListRolePolicies AccessDenied`로 막힌다(2026-09-17 실사용 중 발견 —
+                    # terraform이 aws_iam_role을 생성한 직후 state 갱신을 위해 인라인/첨부 정책
+                    # 목록까지 읽는다). `iam:PassRole`은 임의 역할에 주면 위임 세션이 그 역할로
+                    # 권한을 상승시킬 수 있어(예: 관리자 역할을 결제 리소스에 붙이는 식) 절대
+                    # Resource: "*"로 주지 않는다 — 우리가 만드는 `mcp-ssm-*` 역할/프로파일로만
+                    # 좁힌다(§2의 `MultiCloudOps*` 역할 이름 제한과 같은 원칙).
+                    "Effect": "Allow",
+                    "Action": [
+                        "iam:CreateRole",
+                        "iam:GetRole",
+                        "iam:DeleteRole",
+                        "iam:ListRolePolicies",
+                        "iam:ListAttachedRolePolicies",
+                        "iam:ListRoleTags",
+                        "iam:TagRole",
+                        "iam:UntagRole",
+                        "iam:ListInstanceProfilesForRole",
+                        "iam:AttachRolePolicy",
+                        "iam:DetachRolePolicy",
+                        "iam:CreateInstanceProfile",
+                        "iam:GetInstanceProfile",
+                        "iam:DeleteInstanceProfile",
+                        "iam:AddRoleToInstanceProfile",
+                        "iam:RemoveRoleFromInstanceProfile",
+                        "iam:PassRole",
+                    ],
+                    "Resource": [
+                        "arn:aws:iam::*:role/mcp-ssm-*",
+                        "arn:aws:iam::*:instance-profile/mcp-ssm-*",
+                    ],
+                },
+            ],
             iam_console_url="https://console.aws.amazon.com/iam/home#/roles/create",
             troubleshooting=DELEGATION_TROUBLESHOOTING,
         )

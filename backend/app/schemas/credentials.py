@@ -112,7 +112,11 @@ class AwsDelegationSetupData(BaseModel):
     suggested_role_name: str
     trust_policy: dict[str, Any]
     managed_policy_arns: list[str]
-    inline_actions: list[str]
+    # 인라인 정책의 Statement 배열을 그대로 준다(2026-09-17 — 예전엔 action 문자열 목록만 주고
+    # 프론트가 "Resource: *" 한 statement로 조립했는데, mcp-ssm-* 리소스로 좁혀야 하는 IAM 관리
+    # 권한이 추가되면서 statement가 2개로 늘어 프론트에서 조립할 수 없게 됐다 — 서버가 완성된
+    # 모양을 내려주고 프론트는 그대로 렌더링만 한다).
+    inline_statements: list[dict[str, Any]]
     iam_console_url: str
     troubleshooting: list[str]
 
