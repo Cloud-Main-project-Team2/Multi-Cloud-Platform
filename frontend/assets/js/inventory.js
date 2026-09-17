@@ -483,12 +483,70 @@
   }
 
   // --- 액션(start/stop/delete) ----------------------------------------------------------
+  // 시작(생성)=과금 안내 후 실행, 중지/삭제="중지"/"삭제" 문자열을 정확히 입력해야 실행.
+  // (기존 window.confirm 단순 확인을 확인 모달로 대체 — 되돌릴 수 없는 작업의 이중 방어.)
+
+  var ACTION_LABELS = { start: "시작", stop: "중지", delete: "삭제" };
+  var confirmModal = document.getElementById("inv-confirm-modal");
+  var confirmTitle = document.getElementById("inv-confirm-title");
+  var confirmMessage = document.getElementById("inv-confirm-message");
+  var confirmBilling = document.getElementById("inv-confirm-billing");
+  var confirmTyped = document.getElementById("inv-confirm-typed");
+  var confirmWord = document.getElementById("inv-confirm-word");
+  var confirmInput = document.getElementById("inv-confirm-input");
+  var confirmExecute = document.getElementById("inv-confirm-execute");
+  var pendingAction = null;
+  var pendingIds = null;
+
+  function needsTyped(action) { return action === "stop" || action === "delete"; }
+
+  function updateExecuteState() {
+    if (!confirmExecute) return;
+    var label = ACTION_LABELS[pendingAction] || pendingAction;
+    confirmExecute.disabled = needsTyped(pendingAction) && confirmInput.value.trim() !== label;
+  }
+
+  if (confirmInput) {
+    confirmInput.addEventListener("input", updateExecuteState);
+    confirmInput.addEventListener("keydown", function (e) {
+      if (e.key === "Enter" && !confirmExecute.disabled) { e.preventDefault(); confirmExecute.click(); }
+    });
+  }
+  if (confirmExecute) {
+    confirmExecute.addEventListener("click", function () {
+      if (confirmExecute.disabled) return;
+      MCPModal.close("#inv-confirm-modal");
+      executeAction(pendingAction, pendingIds);
+    });
+  }
 
   function runAction(action, resourceIds) {
     if (!resourceIds.length) return;
-    var label = { start: "시작", stop: "중지", delete: "삭제" }[action] || action;
-    if (!window.confirm(resourceIds.length + "개 리소스를 " + label + "하시겠습니까?")) return;
+    var label = ACTION_LABELS[action] || action;
+    // 확인 모달이 없는 환경이면 기존 방식으로 안전 폴백.
+    if (!confirmModal) {
+      if (!window.confirm(resourceIds.length + "개 리소스를 " + label + "하시겠습니까?")) return;
+      executeAction(action, resourceIds);
+      return;
+    }
+    pendingAction = action;
+    pendingIds = resourceIds;
+    confirmTitle.textContent = resourceIds.length + "개 리소스 " + label;
+    confirmMessage.textContent = "선택한 " + resourceIds.length + "개 리소스를 " + label + "합니다.";
+    var typed = needsTyped(action);
+    confirmBilling.classList.toggle("hidden", action !== "start");
+    confirmBilling.classList.toggle("flex", action === "start");
+    confirmTyped.classList.toggle("hidden", !typed);
+    confirmWord.textContent = label;
+    confirmInput.value = "";
+    confirmExecute.textContent = label;
+    confirmExecute.style.background = action === "delete" ? "#c0392b" : "var(--primary)";
+    updateExecuteState();
+    MCPModal.open("#inv-confirm-modal");
+    if (typed) setTimeout(function () { confirmInput.focus(); }, 50);
+  }
 
+  function executeAction(action, resourceIds) {
     MCErr.clear(invNotice);
     MCPApi.request("/resources/action", {
       method: "POST",
