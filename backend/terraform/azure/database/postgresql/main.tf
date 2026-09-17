@@ -84,8 +84,11 @@ resource "azurerm_subnet" "this" {
 }
 
 # Private DNS Zone 이름은 Azure 요구사항상 "postgres.database.azure.com"으로 끝나야 한다.
+# 서버 이름을 접두사로 그대로 쓰면 Azure가 "InvalidPrivateDnsZoneName"으로 거부한다(2026-09-18
+# 실측 — 서버의 실제 FQDN처럼 보이는 이름은 막는 것으로 보인다. mysql 모듈에서 먼저 발견해 같은
+# 원칙으로 고정 접두사를 쓴다). job마다 별도 리소스 그룹 안에서만 유일하면 되므로 고정값으로 충분하다.
 resource "azurerm_private_dns_zone" "this" {
-  name                = "${var.server_name}.postgres.database.azure.com"
+  name                = "mcp.postgres.database.azure.com"
   resource_group_name = local.resource_group_name
   tags                = var.tags
 }
@@ -112,6 +115,11 @@ resource "azurerm_postgresql_flexible_server" "this" {
 
   delegated_subnet_id = azurerm_subnet.this.id
   private_dns_zone_id = azurerm_private_dns_zone.this.id
+  # MySQL Flexible Server는 delegated_subnet_id가 있으면 퍼블릭 액세스를 알아서 꺼주지만,
+  # PostgreSQL Flexible Server는 이 값의 기본값이 true라서 명시적으로 꺼주지 않으면
+  # "ConflictingPublicNetworkAccessAndVirtualNetworkConfiguration"으로 apply가 거부된다
+  # (2026-09-18 실측).
+  public_network_access_enabled = false
 
   tags = var.tags
 
