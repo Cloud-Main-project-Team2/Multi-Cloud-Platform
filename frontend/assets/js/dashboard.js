@@ -212,38 +212,10 @@
     wireRegionToggle();
   }
 
-  // 개수 → 마커 지름(px). 개수가 많을수록 큰 점.
-  // 원 크기: 숫자 라벨을 없앤 대신 크기가 대략적 규모 힌트다. 작은 점(dot)에 가깝게 잡아
-  // 같은 지점에 여러 클라우드 원이 겹쳐도 서로 또렷이 구분되게 한다(예전 18~42px → 7~13px).
+  // 개수 → 마커 지름(px). 개수(숫자 라벨)가 들어가야 하므로 최소 18px는 확보한다.
   function markerSize(count) {
-    return Math.round(7 + Math.min(count, 10) * 0.6); // 7~13px
+    return Math.round(18 + Math.min(count, 10) * 1.4); // 18~32px
   }
-
-  // 문자열 → 0..1 결정적 유사난수(FNV-1a). 재렌더 시 원이 튀지 않도록 무작위 대신 해시를 쓴다.
-  function hash01(str) {
-    var h = 2166136261;
-    for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
-    return ((h >>> 0) % 1000) / 1000;
-  }
-
-  // 같은 지점(site)의 클라우드 원들을 지점 중심 주변에 흩뿌린다. index로 대략의 방향을 균등
-  // 분배하고(서로 반대편으로), 해시로 각도·반경을 흔들어 '흩어진' 느낌을 준다. 반경은 MAXR로
-  // 제한해 클라우드 종류가 늘어도 구역을 벗어나지 않는다. 하나여도 살짝 흔들어 정중앙 고정을 피한다.
-  function scatterOffset(siteKey, provider, index, count) {
-    var seed = siteKey + "|" + provider;
-    if (count <= 1) {
-      return { dx: Math.round((hash01(seed) - 0.5) * 10), dy: Math.round((hash01(provider + siteKey) - 0.5) * 10) };
-    }
-    var MAXR = 16; // px — 구역 반경 상한
-    var base = (index / count) * 2 * Math.PI - Math.PI / 2; // 균등 분배(서로 반대 방향)
-    var angle = base + (hash01(seed) - 0.5) * (Math.PI / count); // 방향 소폭 흔들기
-    var r = MAXR * (0.6 + 0.4 * hash01(provider + siteKey)); // 반경 ~10~16px
-    return { dx: Math.round(Math.cos(angle) * r), dy: Math.round(Math.sin(angle) * r) };
-  }
-
-  // calc()용 부호 표기: 음수는 `calc(-50% + -11px)`처럼 쓰면 CSS가 통째로 무효가 돼 transform이
-  // 무시된다(그러면 원들이 같은 지점에 겹쳐 하나처럼 보인다) — 부호를 분리해 `- 11px`로 만든다.
-  function offPx(n) { return n < 0 ? "- " + (-n) + "px" : "+ " + n + "px"; }
 
   // 원(클라우드) 하나에 대한 툴팁 — 그 지점에서 해당 클라우드의 리전별 개수.
   function providerTooltip(site, provider, regionsAtSite, regionProvider) {
@@ -282,25 +254,27 @@
       markersEl.innerHTML =
         '<div class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">아직 리전 정보가 있는 리소스가 없습니다.</div>';
     } else {
-      // 지점당 원 하나(파이+숫자) 대신, 클라우드마다 개별 색 원을 그린다 — 같은 리전에
-      // AWS·GCP가 함께 있어도 서로 다른 색 원이 각각 보이도록 링 형태로 살짝 흩뿌린다.
+      // 지점(site)마다 클라우드별 원을 flexbox로 나란히 놓는다. 절대 위치 오프셋 대신 flex+gap을
+      // 쓰면 원이 서로 겹치는 것이 구조적으로 불가능하다(같은 리전에 AWS·Azure·GCP가 있어도
+      // 각 회사 원이 확실히 분리돼 보인다). 각 원 안에는 기존처럼 개수(숫자)를 표시한다.
       markersEl.innerHTML = Object.keys(bySite).map(function (siteKey) {
         var s = bySite[siteKey];
         var site = SITES[siteKey];
-        var provs = Object.keys(s.providers);
-        return provs.map(function (p, i) {
+        var circles = Object.keys(s.providers).map(function (p) {
           var d = markerSize(s.providers[p]);
-          var off = scatterOffset(siteKey, p, i, provs.length);
           var tip = providerTooltip(site, p, s.regions, regionProvider);
           return (
-            '<div class="absolute" style="left:' + site.x + "%;top:" + site.y +
-            "%;transform:translate(calc(-50% " + offPx(off.dx) + "),calc(-50% " + offPx(off.dy) + "));z-index:" + (10 + i) + '" title="' +
-            escHtml(tip) + '">' +
-            '<div style="width:' + d + "px;height:" + d + "px;border-radius:9999px;background:" + (PROVIDER_COLOR[p] || "#94a3b8") +
-            ';box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);"></div>' +
+            '<div title="' + escHtml(tip) + '" style="width:' + d + "px;height:" + d +
+            "px;border-radius:9999px;background:" + (PROVIDER_COLOR[p] || "#94a3b8") +
+            ";box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;\">" +
+            '<span style="font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)">' + s.providers[p] + "</span>" +
             "</div>"
           );
         }).join("");
+        return (
+          '<div class="absolute" style="left:' + site.x + "%;top:" + site.y +
+          '%;transform:translate(-50%,-50%);display:flex;gap:4px;align-items:center;">' + circles + "</div>"
+        );
       }).join("");
     }
 
