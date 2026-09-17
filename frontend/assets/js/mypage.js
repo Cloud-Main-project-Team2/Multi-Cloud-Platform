@@ -576,11 +576,11 @@
       return td;
     }
 
-    cell("⋮⋮", "px-3 py-3 cursor-grab text-muted-foreground");
+    cell("⋮⋮", "px-2 py-3 cursor-grab text-muted-foreground");
     cell(credential.name, "px-3 py-3 font-medium");
     cell(PROVIDER_LABELS[account.provider] || account.provider);
-    cell(account.external_account_id);
-    var keyTd = cell(credential.masked_public_identifier || "—");
+    cell(account.external_account_id, "px-2 py-3");
+    var keyTd = cell(credential.masked_public_identifier || "—", "px-2 py-3");
     if (account.provider === "aws") {
       var authBadge = document.createElement("span");
       var delegated = credential.auth_type === "assume_role";
@@ -611,7 +611,7 @@
     var actionsTd = document.createElement("td");
     actionsTd.className = "px-3 py-3";
     var actions = document.createElement("div");
-    actions.className = "flex flex-wrap gap-1";
+    actions.className = "flex flex-nowrap gap-1";
 
     function actionButton(label, className, handler) {
       var btn = document.createElement("button");
