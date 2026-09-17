@@ -224,3 +224,113 @@ def list_network_resources(secret_payload: dict, subscription_id: str) -> dict:
         "network_security_groups": network_security_groups,
         "azure_subnets": subnets,
     }
+
+
+def _network_client(secret_payload: dict, subscription_id: str) -> NetworkManagementClient:
+    credential = ClientSecretCredential(
+        tenant_id=secret_payload["tenant_id"],
+        client_id=secret_payload["client_id"],
+        client_secret=secret_payload["client_secret"],
+    )
+    return NetworkManagementClient(credential, subscription_id)
+
+
+def _security_rule_out(rule) -> dict:
+    return {
+        "name": rule.name,
+        "priority": rule.priority,
+        "direction": rule.direction,
+        "access": rule.access,
+        "protocol": rule.protocol,
+        "source_address_prefix": rule.source_address_prefix,
+        "destination_port_range": rule.destination_port_range,
+        "description": rule.description,
+    }
+
+
+def list_security_groups(secret_payload: dict, subscription_id: str) -> list[dict]:
+    """보안그룹 관리 화면(2026-09-17)의 목록 조회 — NSG + 중첩된 보안 규칙 전체를 돌려준다.
+    `list_network_resources()`의 `network_security_groups`(id/name/rg/location 요약)와 달리
+    각 NSG의 `security_rules`를 함께 담는다(Azure SDK가 이미 중첩해서 주므로 AWS처럼 별도
+    API를 한 번 더 부를 필요가 없다)."""
+    from app.resource_actions import ResourceActionError
+
+    try:
+        network_client = _network_client(secret_payload, subscription_id)
+        groups = [
+            {
+                "id": nsg.id,
+                "name": nsg.name,
+                "resource_group": nsg.id.split("/")[4],
+                "location": nsg.location,
+                "rules": [_security_rule_out(r) for r in (nsg.security_rules or [])],
+            }
+            for nsg in network_client.network_security_groups.list_all()
+        ]
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return groups
+
+
+def create_security_group(secret_payload: dict, subscription_id: str, resource_group: str, name: str, location: str) -> dict:
+    from app.resource_actions import ResourceActionError
+
+    try:
+        network_client = _network_client(secret_payload, subscription_id)
+        poller = network_client.network_security_groups.begin_create_or_update(
+            resource_group, name, {"location": location}
+        )
+        nsg = poller.result()
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return {"id": nsg.id, "name": nsg.name, "resource_group": resource_group, "location": nsg.location, "rules": []}
+
+
+def delete_security_group(secret_payload: dict, subscription_id: str, resource_group: str, name: str) -> None:
+    from app.resource_actions import ResourceActionError
+
+    try:
+        network_client = _network_client(secret_payload, subscription_id)
+        network_client.network_security_groups.begin_delete(resource_group, name).result()
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+
+def add_security_group_rule(
+    secret_payload: dict, subscription_id: str, resource_group: str, nsg_name: str, rule: dict
+) -> dict:
+    from app.resource_actions import ResourceActionError
+
+    try:
+        network_client = _network_client(secret_payload, subscription_id)
+        poller = network_client.security_rules.begin_create_or_update(
+            resource_group,
+            nsg_name,
+            rule["name"],
+            {
+                "priority": rule["priority"],
+                "direction": rule["direction"],
+                "access": rule["access"],
+                "protocol": rule["protocol"],
+                # source/destination 포트·주소 중 사용자가 실제로 고르는 건 source 주소와
+                # destination 포트뿐이다(§3 스키마) — 나머지 절반은 "전체 허용"으로 고정한다.
+                "source_port_range": "*",
+                "destination_port_range": rule["destination_port_range"],
+                "source_address_prefix": rule["source_address_prefix"],
+                "destination_address_prefix": "*",
+            },
+        )
+        created = poller.result()
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return _security_rule_out(created)
+
+
+def remove_security_group_rule(secret_payload: dict, subscription_id: str, resource_group: str, nsg_name: str, rule_name: str) -> None:
+    from app.resource_actions import ResourceActionError
+
+    try:
+        network_client = _network_client(secret_payload, subscription_id)
+        network_client.security_rules.begin_delete(resource_group, nsg_name, rule_name).result()
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc

@@ -17,6 +17,9 @@
 - `change_iam.md` — IAM 인증 전환 설계안의 코드 적용 가능성 검증(2026-09-14)
 - `IAM_Delegation_and_Team_Budget_Design_2026-09-15.md` — IAM 위임 전환 + 팀별 예산 설계(검증 반영본)
 - `AWS_AssumeRole_Delegation_Explainer.md` — 역할 위임 인증 발표용 개념 설명(IAM 개념·토큰 발급 과정·Q&A)
+- `AWS_Delegation_Role_Setup_Guide.md` — 역할 위임 연결 IAM 설정 가이드(콘솔에서 실제로 뭘 만드는지)
+- `Security_Group_Management_Design_2026-09-17.md` — 보안그룹 관리 기능 설계 결정(DB 미저장, GCP 비대칭 등)
+- `AWS_Azure_GCP_Permission_Reference_2026-09-17.md` — 기능별 필요 권한 참조(AWS/Azure/GCP)
 - `design/` — 디자인 스크린샷(색·타이포·컴포넌트 룩 참고용), `design/extensions/` — 확장 기능 시안
 
 > WBS·프로토타입 개발 프롬프트·Tier2 확장 프롬프트 등 일부 문서는 아직 이 레포가 아니라

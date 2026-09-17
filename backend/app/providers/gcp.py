@@ -368,62 +368,81 @@ def list_network_resources(secret_payload: dict, project_id: str) -> dict:
     return {"networks": networks}
 
 
-def get_cpu_utilization(secret_payload: dict, project_id: str, instance_names: list[str]) -> dict[str, float | None]:
-    """최근 CPU 사용률(%)을 Compute Engine 인스턴스 이름별로 조회한다 — 보고서 "리소스 사용률
-    상위" 섹션(2026-09-17)의 실데이터 소스.
+def _firewall_rule_out(f) -> dict:
+    allowed_or_denied = list(f.allowed) + list(f.denied)
+    protocol = allowed_or_denied[0].I_p_protocol if allowed_or_denied else None
+    ports: list[str] = []
+    for entry in allowed_or_denied:
+        ports.extend(entry.ports)
+    return {
+        "name": f.name,
+        "network": f.network,
+        "direction": f.direction,
+        "priority": f.priority,
+        "action": "deny" if f.denied else "allow",
+        "protocol": protocol,
+        "ports": ports,
+        "source_ranges": list(f.source_ranges),
+        "target_tags": list(f.target_tags),
+    }
 
-    **GCP만 이름이 아니라 숫자 instance_id로 조회해야 한다**: Cloud Monitoring의
-    `compute.googleapis.com/instance/cpu/utilization` 시계열은 `resource.labels.instance_id`
-    (숫자)로만 필터링할 수 있고 인스턴스 이름 라벨이 없다. 그런데 `discover_resources()`는
-    이름(`instance.name`)을 `external_resource_id`로 저장한다 — 그래서 여기서 먼저
-    `compute_v1.aggregated_list`로 이름→숫자 ID 매핑을 만든 다음, 그 ID로 시계열을 찾아 다시
-    이름으로 돌려준다.
 
-    메모리는 다루지 않는다(Ops Agent 설치 전제) — AWS/Azure와 같은 이유(각 provider 모듈 참고)."""
-    if not instance_names:
-        return {}
+def list_firewall_rules(secret_payload: dict, project_id: str) -> list[dict]:
+    """보안그룹 관리 화면(2026-09-17)의 목록 조회 — GCP는 "그룹"이 없다. VPC 전역(global)
+    방화벽 규칙 자체가 최상위 객체라, AWS SG/Azure NSG처럼 그룹 밑에 규칙이 중첩된 모양이
+    아니라 평면 목록이다(`docs/Security_Group_Management_Design_2026-09-17.md` 참고)."""
+    from app.resource_actions import ResourceActionError
 
     try:
         credentials = service_account.Credentials.from_service_account_info(secret_payload)
-    except (ValueError, KeyError):
-        return {name: None for name in instance_names}
+        client = compute_v1.FirewallsClient(credentials=credentials)
+        rules = [_firewall_rule_out(f) for f in client.list(project=project_id)]
+    except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return rules
 
-    out: dict[str, float | None] = {name: None for name in instance_names}
-    wanted = set(instance_names)
-    id_to_name: dict[str, str] = {}
-    try:
-        client = compute_v1.InstancesClient(credentials=credentials)
-        for _zone, scoped_list in client.aggregated_list(project=project_id):
-            for instance in scoped_list.instances or []:
-                if instance.name in wanted:
-                    id_to_name[str(instance.id)] = instance.name
-    except (GoogleAuthError, GoogleAPICallError):
-        return out
-    if not id_to_name:
-        return out
 
-    session = AuthorizedSession(credentials.with_scopes(_CLOUD_PLATFORM_SCOPE))
-    now = dt.datetime.now(dt.timezone.utc)
-    params = {
-        "filter": 'metric.type="compute.googleapis.com/instance/cpu/utilization"',
-        "interval.startTime": (now - dt.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "interval.endTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
-    }
+def create_firewall_rule(secret_payload: dict, project_id: str, rule: dict) -> dict:
+    from app.resource_actions import ResourceActionError
+
+    # allowed/denied는 서로 다른 메시지 타입이라(둘 다 필드는 I_p_protocol/ports로 같지만) 액션에
+    # 맞는 쪽만 채운다 — 반대쪽에 잘못된 타입을 넣으면 즉시 TypeError.
+    if rule["action"] == "deny":
+        firewall = compute_v1.Firewall(
+            name=rule["name"],
+            network=rule["network"],
+            direction=rule["direction"],
+            priority=rule["priority"],
+            source_ranges=rule.get("source_ranges") or [],
+            target_tags=rule.get("target_tags") or [],
+            denied=[compute_v1.Denied(I_p_protocol=rule["protocol"], ports=rule.get("ports") or [])],
+        )
+    else:
+        firewall = compute_v1.Firewall(
+            name=rule["name"],
+            network=rule["network"],
+            direction=rule["direction"],
+            priority=rule["priority"],
+            source_ranges=rule.get("source_ranges") or [],
+            target_tags=rule.get("target_tags") or [],
+            allowed=[compute_v1.Allowed(I_p_protocol=rule["protocol"], ports=rule.get("ports") or [])],
+        )
     try:
-        resp = session.get(f"https://monitoring.googleapis.com/v3/projects/{project_id}/timeSeries", params=params)
-        if resp.status_code == 200:
-            # Cloud Monitoring도 기본적으로 최신 시각 순(내림차순)으로 points를 돌려준다.
-            for series in resp.json().get("timeSeries", []):
-                instance_id = ((series.get("resource") or {}).get("labels") or {}).get("instance_id")
-                name = id_to_name.get(instance_id)
-                if not name:
-                    continue
-                points = series.get("points") or []
-                if not points:
-                    continue
-                value = (points[0].get("value") or {}).get("doubleValue")
-                if value is not None:
-                    out[name] = round(value * 100, 1)  # GCP는 0~1 비율로 반환 → %로 환산
-    except requests.RequestException:
-        pass
-    return out
+        credentials = service_account.Credentials.from_service_account_info(secret_payload)
+        client = compute_v1.FirewallsClient(credentials=credentials)
+        client.insert(project=project_id, firewall_resource=firewall).result()
+        created = client.get(project=project_id, firewall=rule["name"])
+    except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return _firewall_rule_out(created)
+
+
+def delete_firewall_rule(secret_payload: dict, project_id: str, name: str) -> None:
+    from app.resource_actions import ResourceActionError
+
+    try:
+        credentials = service_account.Credentials.from_service_account_info(secret_payload)
+        client = compute_v1.FirewallsClient(credentials=credentials)
+        client.delete(project=project_id, firewall=name).result()
+    except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
