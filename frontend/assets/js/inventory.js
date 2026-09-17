@@ -277,9 +277,23 @@
       return td;
     }
 
-    cell(r.original_resource_type);
-    cell(r.name || r.external_resource_id, "font-medium");
-    cell(r.region || "—");
+    // 내용이 칸 폭을 넘으면 줄바꿈 대신 말줄임표(…)로 자르고, 전체 값은 title 툴팁으로 보여준다.
+    // 표가 table-layout:auto라 td max-width가 무시될 수 있어, 안쪽 div에 폭·ellipsis를 건다.
+    function truncCell(text, maxW, extraClass) {
+      var td = document.createElement("td");
+      td.className = "px-3 py-3" + (extraClass ? " " + extraClass : "");
+      var inner = document.createElement("div");
+      inner.style.cssText = "max-width:" + maxW + "px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;";
+      inner.textContent = text;
+      inner.title = text; // 전체 값 툴팁
+      td.appendChild(inner);
+      tr.appendChild(td);
+      return td;
+    }
+
+    truncCell(r.original_resource_type, 130); // "CSP 원본 리소스 유형" — 폭을 줄여 다른 칸에 여유
+    truncCell(r.name || r.external_resource_id, 200, "font-medium");
+    truncCell(r.region || "—", 120);
     cell(r.cloud_account.account_label || r.cloud_account.external_account_id);
     cell(formatCost(r.cost_summary));
 
@@ -288,8 +302,10 @@
     var tagKeys = Object.keys(r.tags || {});
     if (tagKeys.length) {
       var span = document.createElement("span");
-      span.className = "rounded bg-muted px-1.5 py-0.5 text-[11px]";
+      span.className = "inline-block max-w-[160px] truncate align-bottom rounded bg-muted px-1.5 py-0.5 text-[11px]";
       span.textContent = tagKeys[0] + ":" + r.tags[tagKeys[0]] + (tagKeys.length > 1 ? " +" + (tagKeys.length - 1) : "");
+      // 전체 태그를 title 툴팁으로(칸을 넘으면 첫 태그도 말줄임되므로).
+      span.title = tagKeys.map(function (k) { return k + ":" + r.tags[k]; }).join(", ");
       tdTags.appendChild(span);
     } else {
       tdTags.classList.add("text-muted-foreground");
@@ -312,10 +328,11 @@
     tr.appendChild(tdStatus);
 
     var tdDetail = document.createElement("td");
-    tdDetail.className = "px-3 py-3";
+    tdDetail.className = "px-3 py-3 whitespace-nowrap";
     var btn = document.createElement("button");
     btn.type = "button";
-    btn.className = "rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted";
+    // whitespace-nowrap: 칸이 좁아도 "상세보기"가 두 줄로 깨지지 않게 한 줄로 고정.
+    btn.className = "whitespace-nowrap rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-muted";
     btn.textContent = "상세보기";
     btn.setAttribute("data-modal-open", "#inv-modal");
     btn.addEventListener("click", function () { openDetail(r.id); });
