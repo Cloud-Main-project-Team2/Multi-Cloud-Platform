@@ -213,20 +213,32 @@
   }
 
   // 개수 → 마커 지름(px). 개수가 많을수록 큰 점.
-  // 원 크기: 개수에 따라 살짝 커지되, 숫자 라벨을 없앤 대신 크기가 대략적 규모 힌트다.
-  // 예전(18~42px)보다 작게 잡아, 같은 지점에 여러 클라우드 원이 겹쳐도 서로 드러나게 한다.
+  // 원 크기: 숫자 라벨을 없앤 대신 크기가 대략적 규모 힌트다. 작은 점(dot)에 가깝게 잡아
+  // 같은 지점에 여러 클라우드 원이 겹쳐도 서로 또렷이 구분되게 한다(예전 18~42px → 7~13px).
   function markerSize(count) {
-    return Math.round(12 + Math.min(count, 10) * 1.0); // 12~22px
+    return Math.round(7 + Math.min(count, 10) * 0.6); // 7~13px
   }
 
-  // 같은 지점(site)에 클라우드가 여럿이면, 각 원을 지점 중심 주변의 작은 링 위에 결정적으로
-  // 배치해 겹침을 푼다. 무작위 jitter와 달리 재렌더 시 원이 튀지 않고, 반경이 고정이라
-  // 클라우드 종류가 늘어도 구역(반경 R)을 절대 벗어나지 않는다. 하나면 중심에 그대로 둔다.
-  function jitterOffset(index, count) {
-    if (count <= 1) return { dx: 0, dy: 0 };
-    var R = 11; // px — 구역 반경(원 반지름 남짓)
-    var angle = (index / count) * 2 * Math.PI - Math.PI / 2; // 첫 원을 위쪽부터 시계방향
-    return { dx: Math.round(Math.cos(angle) * R), dy: Math.round(Math.sin(angle) * R) };
+  // 문자열 → 0..1 결정적 유사난수(FNV-1a). 재렌더 시 원이 튀지 않도록 무작위 대신 해시를 쓴다.
+  function hash01(str) {
+    var h = 2166136261;
+    for (var i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return ((h >>> 0) % 1000) / 1000;
+  }
+
+  // 같은 지점(site)의 클라우드 원들을 지점 중심 주변에 흩뿌린다. index로 대략의 방향을 균등
+  // 분배하고(서로 반대편으로), 해시로 각도·반경을 흔들어 '흩어진' 느낌을 준다. 반경은 MAXR로
+  // 제한해 클라우드 종류가 늘어도 구역을 벗어나지 않는다. 하나여도 살짝 흔들어 정중앙 고정을 피한다.
+  function scatterOffset(siteKey, provider, index, count) {
+    var seed = siteKey + "|" + provider;
+    if (count <= 1) {
+      return { dx: Math.round((hash01(seed) - 0.5) * 10), dy: Math.round((hash01(provider + siteKey) - 0.5) * 10) };
+    }
+    var MAXR = 16; // px — 구역 반경 상한
+    var base = (index / count) * 2 * Math.PI - Math.PI / 2; // 균등 분배(서로 반대 방향)
+    var angle = base + (hash01(seed) - 0.5) * (Math.PI / count); // 방향 소폭 흔들기
+    var r = MAXR * (0.6 + 0.4 * hash01(provider + siteKey)); // 반경 ~10~16px
+    return { dx: Math.round(Math.cos(angle) * r), dy: Math.round(Math.sin(angle) * r) };
   }
 
   // 원(클라우드) 하나에 대한 툴팁 — 그 지점에서 해당 클라우드의 리전별 개수.
@@ -274,7 +286,7 @@
         var provs = Object.keys(s.providers);
         return provs.map(function (p, i) {
           var d = markerSize(s.providers[p]);
-          var off = jitterOffset(i, provs.length);
+          var off = scatterOffset(siteKey, p, i, provs.length);
           var tip = providerTooltip(site, p, s.regions, regionProvider);
           return (
             '<div class="absolute" style="left:' + site.x + "%;top:" + site.y +
