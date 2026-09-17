@@ -75,10 +75,11 @@ _ENGINE_CONFIG: dict[str, dict[str, object]] = {
 
 _MIN_PASSWORD_LENGTH = 8
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,38}[a-z0-9]$")
+_NETWORK_NAME_RE = re.compile(r"^[a-z]([-a-z0-9]*[a-z0-9])?$")
 
 
-def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str, dict]:
-    """`(instance_name, region, master_password, engine_config)`를 반환한다.
+def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str, dict, str | None]:
+    """`(instance_name, region, master_password, engine_config, network)`를 반환한다.
 
     실패 시 422 `ApiError`를 raise한다."""
     name = common_spec.get("name")
@@ -110,7 +111,16 @@ def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str, dict
             details=[{"field": "provider_spec.master_password", "reason": "invalid"}],
         )
 
-    return f"mcp-{name}", region, master_password, engine_config
+    # 기존 VPC 재사용(2026-09-17 결정) — 존재/소유 확인은 apply 시점에 GCP API가 대신 해준다.
+    # 이름 규칙만 가볍게 검사(GCP 리소스 이름 규칙, self_link도 그대로 받아준다).
+    network = provider_spec.get("network") or None
+    if network is not None and not (network.startswith("https://") or _NETWORK_NAME_RE.fullmatch(network)):
+        raise validation_error(
+            "provider_spec.network 형식이 올바르지 않습니다.",
+            details=[{"field": "provider_spec.network", "reason": "invalid"}],
+        )
+
+    return f"mcp-{name}", region, master_password, engine_config, network
 
 
 def validate_spec(common_spec: dict, provider_spec: dict) -> None:
@@ -118,7 +128,14 @@ def validate_spec(common_spec: dict, provider_spec: dict) -> None:
     _derive(common_spec, provider_spec)
 
 
-def build_tfvars(job_id: int, project_id: str, instance_name: str, region: str, engine_config: dict) -> dict:
+def build_tfvars(
+    job_id: int,
+    project_id: str,
+    instance_name: str,
+    region: str,
+    engine_config: dict,
+    network: str | None = None,
+) -> dict:
     return {
         "project_id": project_id,
         "region": region,
@@ -128,6 +145,7 @@ def build_tfvars(job_id: int, project_id: str, instance_name: str, region: str, 
         "admin_user": engine_config["admin_user"],
         "create_admin_user": engine_config["create_admin_user"],
         "labels": {"managed-by": "multi-cloud-platform", "job-id": str(job_id)},
+        "network": network,
     }
 
 
@@ -147,11 +165,11 @@ def run(
     `provider_spec`은 라우터가 메모리로 넘긴 **원본**(master_password 포함)이다 — DB에 저장된
     sanitize 버전이 아니다."""
     try:
-        instance_name, region, master_password, engine_config = _derive(common_spec, provider_spec)
+        instance_name, region, master_password, engine_config, network = _derive(common_spec, provider_spec)
     except ApiError as exc:
         return TerraformResult(success=False, error_code=exc.code, error_message=exc.message)
 
-    tfvars = build_tfvars(job_id, project_id, instance_name, region, engine_config)
+    tfvars = build_tfvars(job_id, project_id, instance_name, region, engine_config, network)
     # GCP는 secret_payload(서비스 계정 키 JSON)를 환경변수가 아니라 파일로 넘긴다(compute_engine과
     # 동일) — terraform_runner가 0600 임시 파일로 써서 GOOGLE_APPLICATION_CREDENTIALS로만 노출한다.
     # master_password는 tfvars 파일에 쓰지 않고 TF_VAR_root_password 환경변수로만 전달한다.

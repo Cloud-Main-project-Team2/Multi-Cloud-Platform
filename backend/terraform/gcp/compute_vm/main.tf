@@ -64,12 +64,25 @@ provider "google" {
   zone    = var.zone
 }
 
+# var.network이 있으면 그 기존 VPC 네트워크(이름 또는 self_link)를 그대로 쓰고, 없으면
+# 지금까지처럼 프로젝트의 "default" 네트워크를 쓴다. 존재/소유 확인은 apply 시점에 GCP API가
+# 대신 해준다(credential이 이미 그 프로젝트로 스코프돼 있어 다른 프로젝트 네트워크는 애초에
+# 참조가 안 된다 — 크로스 테넌트 위험 없음).
+locals {
+  network = var.network != null ? var.network : "default"
+  # 방화벽 target_tags는 네트워크 전체에서 유효하다 — "http-server"/"iap-ssh"처럼 흔한 이름을
+  # 고정으로 쓰면, 기존(공유) 네트워크를 재사용할 때 같은 태그를 쓰는 *다른* 인스턴스에도 이
+  # 규칙이 의도치 않게 적용될 수 있다. 인스턴스 이름을 태그에 섞어 이 job 전용으로 만든다.
+  http_tag    = "${var.instance_name}-http"
+  iap_ssh_tag = "${var.instance_name}-iap-ssh"
+}
+
 resource "google_compute_instance" "vm" {
   name         = var.instance_name
   project      = var.project_id
   zone         = var.zone
   machine_type = var.machine_type
-  tags         = ["http-server", "iap-ssh"]
+  tags         = [local.http_tag, local.iap_ssh_tag]
   labels       = var.labels
 
   # SSH 키 대신 OS Login(IAM 계정 기반 인증)을 쓴다 — ssh-keys 메타데이터는 아예 안 둔다.
@@ -86,7 +99,8 @@ resource "google_compute_instance" "vm" {
   }
 
   network_interface {
-    network = "default"
+    network    = local.network
+    subnetwork = var.subnetwork
     access_config {} # ephemeral external IP
   }
 }
@@ -99,7 +113,7 @@ resource "google_compute_firewall" "allow_inbound" {
 
   name    = "${var.instance_name}-allow-${each.key}"
   project = var.project_id
-  network = "default"
+  network = local.network
 
   allow {
     protocol = "tcp"
@@ -107,7 +121,7 @@ resource "google_compute_firewall" "allow_inbound" {
   }
 
   source_ranges = [each.value.cidr]
-  target_tags   = ["http-server"]
+  target_tags   = [local.http_tag]
 }
 
 # 관리용 SSH(22번)는 구글 IAP 릴레이 대역에서 오는 트래픽만 허용한다 — 이 대역은 전 세계 어디서든
@@ -116,7 +130,7 @@ resource "google_compute_firewall" "allow_inbound" {
 resource "google_compute_firewall" "allow_iap_ssh" {
   name    = "${var.instance_name}-allow-iap-ssh"
   project = var.project_id
-  network = "default"
+  network = local.network
 
   allow {
     protocol = "tcp"
@@ -124,5 +138,5 @@ resource "google_compute_firewall" "allow_iap_ssh" {
   }
 
   source_ranges = ["35.235.240.0/20"]
-  target_tags   = ["iap-ssh"]
+  target_tags   = [local.iap_ssh_tag]
 }

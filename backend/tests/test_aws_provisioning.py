@@ -137,6 +137,72 @@ def test_run_passes_tags_and_inbound_rules_through_to_run_apply(monkeypatch, tmp
     assert captured["tfvars"]["inbound_rules"] == [{"port": 22, "cidr": "0.0.0.0/0"}]
 
 
+def test_validate_spec_accepts_existing_vpc_subnet_and_security_group():
+    aws_provisioning.validate_spec(
+        VALID_COMMON,
+        {
+            **VALID_PROVIDER,
+            "vpc_id": "vpc-0123456789abcdef0",
+            "subnet_id": "subnet-0123456789abcdef0",
+            "security_group_id": "sg-0123456789abcdef0",
+        },
+    )
+
+
+@pytest.mark.parametrize(
+    "provider_spec,expected_field",
+    [
+        ({**VALID_PROVIDER, "vpc_id": "not-a-vpc-id"}, "provider_spec.vpc_id"),
+        ({**VALID_PROVIDER, "subnet_id": "subnet-0123456789abcdef0"}, "provider_spec.vpc_id"),  # subnet_id 단독 → vpc_id 필요
+        ({**VALID_PROVIDER, "security_group_id": "not-an-sg"}, "provider_spec.security_group_id"),
+    ],
+)
+def test_validate_spec_rejects_invalid_existing_resource_ids(provider_spec, expected_field):
+    with pytest.raises(ApiError) as exc_info:
+        aws_provisioning.validate_spec(VALID_COMMON, provider_spec)
+    assert exc_info.value.code == "VALIDATION_ERROR"
+    assert exc_info.value.details[0]["field"] == expected_field
+
+
+def test_build_tfvars_includes_existing_resource_ids_when_given():
+    tfvars = aws_provisioning.build_tfvars(
+        42, "mcp-web-01", "ap-northeast-2", "t3.micro", None,
+        vpc_id="vpc-0123456789abcdef0", subnet_id="subnet-0123456789abcdef0", security_group_id="sg-0123456789abcdef0",
+    )
+    assert tfvars["vpc_id"] == "vpc-0123456789abcdef0"
+    assert tfvars["subnet_id"] == "subnet-0123456789abcdef0"
+    assert tfvars["security_group_id"] == "sg-0123456789abcdef0"
+
+
+def test_build_tfvars_defaults_existing_resource_ids_to_none():
+    tfvars = aws_provisioning.build_tfvars(42, "mcp-web-01", "ap-northeast-2", "t3.micro", None)
+    assert tfvars["vpc_id"] is None
+    assert tfvars["subnet_id"] is None
+    assert tfvars["security_group_id"] is None
+
+
+def test_run_passes_existing_resource_ids_through_to_run_apply(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run_apply(workspace_dir, module_dir, tfvars, credential_env, *, cancel_check=None):
+        captured["tfvars"] = tfvars
+        return TerraformResult(success=True, outputs={"instance_id": "i-123"})
+
+    monkeypatch.setattr(aws_provisioning, "run_apply", fake_run_apply)
+
+    aws_provisioning.run(
+        job_id=1,
+        workspace_dir=tmp_path,
+        common_spec=VALID_COMMON,
+        provider_spec={**VALID_PROVIDER, "vpc_id": "vpc-0123456789abcdef0", "security_group_id": "sg-0123456789abcdef0"},
+        secret_payload={"access_key_id": "AKIAFAKE", "secret_access_key": "shh"},
+    )
+
+    assert captured["tfvars"]["vpc_id"] == "vpc-0123456789abcdef0"
+    assert captured["tfvars"]["subnet_id"] is None
+    assert captured["tfvars"]["security_group_id"] == "sg-0123456789abcdef0"
+
+
 def test_run_returns_failed_result_on_invalid_spec(tmp_path):
     result = aws_provisioning.run(
         job_id=1,

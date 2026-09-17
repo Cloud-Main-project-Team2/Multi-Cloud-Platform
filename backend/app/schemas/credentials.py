@@ -123,3 +123,77 @@ class AwsDelegationSetupResponse(BaseModel):
 
 class VerifyResponse(BaseModel):
     data: VerifyResponseData
+
+
+class AwsVpcOut(BaseModel):
+    id: str
+    cidr_block: str | None = None
+    name: str | None = None
+    is_default: bool = False
+
+
+class AwsSubnetOut(BaseModel):
+    id: str
+    vpc_id: str
+    availability_zone: str | None = None
+    cidr_block: str | None = None
+    name: str | None = None
+
+
+class AwsSecurityGroupOut(BaseModel):
+    id: str
+    vpc_id: str | None = None
+    name: str | None = None
+
+
+class AzureResourceGroupOut(BaseModel):
+    name: str
+    location: str
+
+
+class AzureVirtualNetworkOut(BaseModel):
+    id: str
+    name: str
+    resource_group: str
+    location: str
+    address_space: list[str] = Field(default_factory=list)
+
+
+class AzureNetworkSecurityGroupOut(BaseModel):
+    id: str
+    name: str
+    resource_group: str
+    location: str
+
+
+class AzureSubnetOut(BaseModel):
+    id: str
+    name: str
+    vnet_name: str
+    resource_group: str
+    address_prefix: str | None = None
+
+
+class GcpNetworkOut(BaseModel):
+    name: str
+    self_link: str
+    auto_create_subnetworks: bool = False
+
+
+class NetworkResourcesData(BaseModel):
+    """프로비저닝 폼 "기존 리소스 사용"이 실제 목록을 보여줄 때 쓰는 응답(2026-09-17) — provider마다
+    유효한 필드만 채워지고 나머지는 빈 리스트다."""
+
+    vpcs: list[AwsVpcOut] = Field(default_factory=list)
+    subnets: list[AwsSubnetOut] = Field(default_factory=list)
+    security_groups: list[AwsSecurityGroupOut] = Field(default_factory=list)
+    resource_groups: list[AzureResourceGroupOut] = Field(default_factory=list)
+    virtual_networks: list[AzureVirtualNetworkOut] = Field(default_factory=list)
+    network_security_groups: list[AzureNetworkSecurityGroupOut] = Field(default_factory=list)
+    # AWS의 subnets(AwsSubnetOut)와 모양이 달라 이름을 분리한다.
+    azure_subnets: list[AzureSubnetOut] = Field(default_factory=list)
+    networks: list[GcpNetworkOut] = Field(default_factory=list)
+
+
+class NetworkResourcesResponse(BaseModel):
+    data: NetworkResourcesData

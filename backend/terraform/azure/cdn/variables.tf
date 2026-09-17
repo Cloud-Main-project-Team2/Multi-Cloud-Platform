@@ -69,3 +69,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "use_existing_resource_group" {
+  description = "true면 var.resource_group_name을 새로 만들지 않고 기존 리소스 그룹으로 조회해서 재사용한다(2026-09-17 결정)."
+  type        = bool
+  default     = false
+}

@@ -37,3 +37,15 @@ variable "inbound_rules" {
   }))
   default = []
 }
+
+variable "network" {
+  description = "기존 VPC 네트워크를 재사용하려면 그 이름 또는 self_link. null이면 프로젝트의 \"default\" 네트워크를 쓴다."
+  type        = string
+  default     = null
+}
+
+variable "subnetwork" {
+  description = "기존 서브넷을 재사용하려면 그 이름 또는 self_link(리전 네트워크에서 필요). null이면 네트워크의 자동 서브넷을 쓴다."
+  type        = string
+  default     = null
+}

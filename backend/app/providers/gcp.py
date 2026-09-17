@@ -169,3 +169,22 @@ def discover_resources(secret_payload: dict, project_id: str) -> list:
         pass
 
     return results
+
+
+def list_network_resources(secret_payload: dict, project_id: str) -> dict:
+    """프로비저닝 폼의 "기존 리소스 사용"에서 실제 VPC 네트워크 목록을 보여주기 위한 조회 전용
+    API(2026-09-17). GCP 네트워크는 전역(global) 리소스라 AWS(리전 필요)와 달리 region 파라미터가
+    없다. 실패 시 빈 목록이 아니라 예외를 올린다(app/providers/aws.py와 동일 원칙)."""
+    from app.resource_actions import ResourceActionError
+
+    try:
+        credentials = service_account.Credentials.from_service_account_info(secret_payload)
+        client = compute_v1.NetworksClient(credentials=credentials)
+        networks = [
+            {"name": n.name, "self_link": n.self_link, "auto_create_subnetworks": n.auto_create_subnetworks}
+            for n in client.list(project=project_id)
+        ]
+    except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+    return {"networks": networks}

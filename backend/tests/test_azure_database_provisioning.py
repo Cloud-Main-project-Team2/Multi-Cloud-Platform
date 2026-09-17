@@ -78,6 +78,35 @@ def test_build_tfvars_truncates_server_name_to_63_chars():
     assert len(tfvars["server_name"]) <= 63
 
 
+def test_build_tfvars_defaults_existing_resource_fields_to_none():
+    common, provider = azure_database_provisioning._derive(VALID_COMMON, VALID_PROVIDER)
+    tfvars, _ = azure_database_provisioning.build_tfvars(42, "ws", common, provider)
+    assert tfvars["existing_resource_group_name"] is None
+    assert tfvars["existing_vnet_id"] is None
+    assert tfvars["existing_vnet_subnet_cidr"] is None
+
+
+def test_validate_spec_accepts_existing_resource_fields():
+    azure_database_provisioning.validate_spec(
+        VALID_COMMON,
+        {
+            **VALID_PROVIDER,
+            "existing_resource_group_name": "my-existing-rg",
+            "existing_vnet_id": "/subscriptions/x/resourceGroups/my-existing-rg/providers/Microsoft.Network/virtualNetworks/vnet1",
+            "existing_vnet_subnet_cidr": "10.5.1.0/24",
+        },
+    )
+
+
+def test_build_tfvars_includes_existing_resource_fields_when_given():
+    common, provider = azure_database_provisioning._derive(
+        VALID_COMMON, {**VALID_PROVIDER, "existing_resource_group_name": "my-existing-rg", "existing_vnet_id": "vnet-arm-id"}
+    )
+    tfvars, _ = azure_database_provisioning.build_tfvars(42, "ws", common, provider)
+    assert tfvars["existing_resource_group_name"] == "my-existing-rg"
+    assert tfvars["existing_vnet_id"] == "vnet-arm-id"
+
+
 def test_run_calls_run_apply_with_arm_credential_env_and_password_var(monkeypatch, tmp_path):
     captured = {}
 

@@ -20,3 +20,9 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "existing_resource_group_name" {
+  description = "기존 리소스 그룹을 재사용하려면 그 이름. null이면 var.resource_group_name으로 새로 만든다."
+  type        = string
+  default     = null
+}

@@ -58,30 +58,46 @@ resource "google_project_service" "servicenetworking" {
   disable_on_destroy = false
 }
 
-# job 전용 VPC — Cloud SQL Private Services Access는 이 네트워크에 피어링된 IP 대역에서만
+# var.network이 있으면 그 기존 VPC를 그대로 쓰고, 없으면 지금까지처럼 이 job 전용 VPC를 새로
+# 만든다(2026-09-17 결정). Cloud SQL Private Services Access는 네트워크에 피어링된 IP 대역에서만
 # private_ip_address를 할당하므로, 서브넷은 필요 없다(VM처럼 컴퓨트 인스턴스가 붙는 게 아님).
 resource "google_compute_network" "this" {
+  count                   = var.network == null ? 1 : 0
   name                    = "${var.instance_name}-vpc"
   project                 = var.project_id
   auto_create_subnetworks = false
 }
 
+locals {
+  network_id = var.network != null ? var.network : google_compute_network.this[0].id
+}
+
 # Private Services Access용 예약 IP 대역(Google이 관리하는 서비스 네트워크와 피어링될 범위).
+#
+# **기존 VPC를 재사용할 땐 이 리소스도, 아래 피어링 연결도 만들지 않는다** — 이 서버는 job마다
+# 격리된 Terraform state를 쓰는데(app/terraform_runner.py), 피어링 연결은 VPC 하나당 최대 1개만
+# 존재할 수 있는 프로젝트 전역 공유 리소스다. 만약 이 job의 state가 그 피어링을 "우리 것"으로
+# 관리해버리면, 나중에 이 job만 destroy해도 같은 VPC를 쓰는 다른 Cloud SQL 인스턴스까지 연결이
+# 끊길 수 있다. 그래서 기존 VPC를 고르면 "그 VPC에 Private Services Access가 이미 설정돼 있다"고
+# 가정만 하고(전제 조건, 문서화), 안 돼 있으면 인스턴스 생성 자체가 그냥 실패한다 — 몰래
+# 가져오거나 바꾸지 않는다.
 resource "google_compute_global_address" "private_ip_range" {
+  count         = var.network == null ? 1 : 0
   name          = "${var.instance_name}-private-ip"
   project       = var.project_id
   purpose       = "VPC_PEERING"
   address_type  = "INTERNAL"
   prefix_length = 16
-  network       = google_compute_network.this.id
+  network       = local.network_id
 }
 
 # 이 VPC와 Google의 서비스 네트워크(servicenetworking) 간 피어링 연결 — Cloud SQL private IP가
-# 이 피어링을 통해 붙는다.
+# 이 피어링을 통해 붙는다(기존 VPC 재사용 시 생성하지 않는 이유는 위 설명 참고).
 resource "google_service_networking_connection" "this" {
-  network                 = google_compute_network.this.id
-  service                 = "servicenetworking.googleapis.com"
-  reserved_peering_ranges = [google_compute_global_address.private_ip_range.name]
+  count                    = var.network == null ? 1 : 0
+  network                  = local.network_id
+  service                  = "servicenetworking.googleapis.com"
+  reserved_peering_ranges  = [google_compute_global_address.private_ip_range[0].name]
 
   # API가 켜진 다음에 피어링을 시도해야 한다 — google_compute_global_address.private_ip_range를
   # 통한 암묵적 의존만으로는 API 활성화 순서가 보장되지 않는다.
@@ -102,11 +118,13 @@ resource "google_sql_database_instance" "this" {
 
     ip_configuration {
       ipv4_enabled    = false
-      private_network = google_compute_network.this.id
+      private_network = local.network_id
     }
   }
 
-  # private_network가 실제로 쓰기 전에 서비스 네트워크 피어링이 먼저 완료돼 있어야 한다.
+  # private_network가 실제로 쓰기 전에 서비스 네트워크 피어링이 먼저 완료돼 있어야 한다(기존
+  # VPC를 재사용하면 이 리소스가 아예 안 만들어지므로 이 depends_on은 그냥 빈 목록이 된다 —
+  # 그 경우 피어링이 이미 설정돼 있다고 가정한다는 뜻).
   depends_on = [google_service_networking_connection.this]
 }
 

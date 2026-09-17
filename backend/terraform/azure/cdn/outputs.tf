@@ -3,7 +3,7 @@ output "endpoint_hostname" {
 }
 
 output "resource_group_name" {
-  value = azurerm_resource_group.this.name
+  value = local.resource_group_name
 }
 
 output "profile_id" {

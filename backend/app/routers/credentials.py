@@ -31,6 +31,11 @@ from app.providers import (
     validate_secret_payload,
     verify_credential,
 )
+from app.providers import aws as aws_provider
+from app.providers import azure as azure_provider
+from app.providers import gcp as gcp_provider
+from app.providers.session import CredentialResolutionError, resolve_secret_payload
+from app.resource_actions import ResourceActionError
 from app.schemas.credentials import (
     AwsDelegationSetupData,
     AwsDelegationSetupResponse,
@@ -42,6 +47,8 @@ from app.schemas.credentials import (
     CredentialListResponse,
     CredentialOrderRequest,
     CredentialResponse,
+    NetworkResourcesData,
+    NetworkResourcesResponse,
     PatchCloudAccountRequest,
     PatchCredentialRequest,
     VerifyResponse,
@@ -549,6 +556,56 @@ def verify_credential_endpoint(
             verification_error_message=_verification_message(verification.error_code),
         )
     )
+
+
+@router.get("/credentials/{credential_id}/network-resources", response_model=NetworkResourcesResponse)
+def get_network_resources(
+    credential_id: str,
+    region: str | None = Query(default=None),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> NetworkResourcesResponse:
+    """프로비저닝 폼 "기존 리소스 사용"에서 실제 VPC/서브넷/보안 그룹(Azure는 리소스 그룹/VNet/
+    NSG, GCP는 VPC 네트워크) 목록을 조회한다(2026-09-17 — 전엔 사용자가 직접 콘솔에서 ID를
+    찾아 빈칸에 타이핑해야 했다). AWS는 리전별 리소스라 `region` 쿼리 파라미터가 필수, Azure/GCP는
+    구독/프로젝트 전체를 조회하므로 필요 없다."""
+    credential, account = _get_owned_credential(db, current_user.id, credential_id)
+
+    if not credential.verified:
+        raise ApiError(422, "CLOUD_PERMISSION_DENIED", "검증된 자격 증명이 아닙니다 — 먼저 재검증하세요.")
+
+    if account.provider == "aws" and not region:
+        raise validation_error(
+            "AWS는 조회할 region이 필요합니다.", details=[{"field": "region", "reason": "required"}]
+        )
+
+    try:
+        secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+    except CredentialEncryptionError:
+        raise ApiError(422, "PROVIDER_API_ERROR", "자격 증명을 복호화하지 못했습니다.")
+
+    # 위임 credential이면 임시 자격증명을 발급받는다(레거시는 그대로 통과) — resources.py의
+    # resource_control 액션과 동일 패턴.
+    try:
+        secret_payload = resolve_secret_payload(account.provider, secret_payload, credential_id=credential.id)
+    except CredentialResolutionError as exc:
+        raise ApiError(422, exc.error_code, exc.message or "임시 자격 증명을 발급받지 못했습니다.")
+
+    try:
+        if account.provider == "aws":
+            data = aws_provider.list_network_resources(secret_payload, region)
+        elif account.provider == "azure":
+            data = azure_provider.list_network_resources(secret_payload, account.external_account_id)
+        elif account.provider == "gcp":
+            data = gcp_provider.list_network_resources(secret_payload, account.external_account_id)
+        else:
+            data = {}
+    except ResourceActionError as exc:
+        raise ApiError(502, exc.code, "클라우드에서 네트워크 리소스 목록을 가져오지 못했습니다.") from exc
+    finally:
+        del secret_payload
+
+    return NetworkResourcesResponse(data=NetworkResourcesData(**data))
 
 
 @router.delete("/credentials/{credential_id}", status_code=204)

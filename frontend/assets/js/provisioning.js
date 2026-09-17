@@ -390,14 +390,8 @@
     // 2) 리전 — 국가 단일 선택(플랫폼 무관, collect에서 각 플랫폼 리전으로 매핑)
     container.appendChild(countryFieldEl());
 
-    // 4) 네트워크 — 읽기 전용 안내 + 비활성 토글 자리
-    var netField = el("div", { class: "sm:col-span-2" });
-    netField.innerHTML = labelHtml("네트워크") +
-      '<div class="flex items-center justify-between rounded-lg border border-dashed border-border bg-muted px-3 py-2 text-sm text-muted-foreground">' +
-      "<span>새 VPC/Subnet 자동 생성</span>" +
-      '<label class="flex cursor-not-allowed items-center gap-2 opacity-50"><input type="checkbox" disabled /> 기존 리소스 사용</label>' +
-      "</div>";
-    container.appendChild(netField);
+    // 4) 네트워크 — "새로 생성"(기본) / "기존 리소스 사용" 토글(2026-09-17, 실제로 동작)
+    container.appendChild(networkFieldEl("compute", platforms));
 
     // 인바운드 규칙·인증은 플랫폼별로 내용이 달라 ⑤ 추가 설정으로 이동(공통은 플랫폼 무관 유지).
 
@@ -443,6 +437,299 @@
   }
 
   // Compute 인바운드 규칙(⑤로 이동) — 프리셋 체크박스 + 커스텀 행 추가/삭제.
+  // 기존 리소스(VPC/서브넷/보안그룹 등) 재사용 입력 필드 — provider마다 값 형식이 달라 provider별로
+  // 다른 필드셋을 쓴다(2026-09-17 결정). 전부 선택 입력이라 비워두면 서버가 지금까지처럼 새로
+  // 만든다. DB는 서브넷/NSG 재사용을 안 받는다(위임·private endpoint 정책 강제 변경 위험 —
+  // 서버 쪽 terraform 모듈 주석 참고) — 리소스 그룹/VNet까지만.
+  var EXISTING_RESOURCE_FIELDS = {
+    compute: {
+      aws: [
+        ["vpcId", "VPC ID", "vpc-xxxxxxxxxxxxxxxxx"],
+        ["subnetId", "서브넷 ID", "subnet-xxxxxxxxxxxxxxxxx"],
+        ["securityGroupId", "보안 그룹 ID", "sg-xxxxxxxxxxxxxxxxx"],
+      ],
+      azure: [
+        ["existingResourceGroupName", "리소스 그룹 이름", "my-existing-rg"],
+        ["existingSubnetId", "서브넷 리소스 ID", "/subscriptions/.../subnets/..."],
+        ["existingNetworkSecurityGroupId", "NSG 리소스 ID", "/subscriptions/.../networkSecurityGroups/..."],
+      ],
+      gcp: [["network", "VPC 네트워크 이름", "my-existing-vpc"]],
+    },
+    db: {
+      aws: [
+        ["vpcId", "VPC ID", "vpc-xxxxxxxxxxxxxxxxx"],
+        ["securityGroupId", "보안 그룹 ID", "sg-xxxxxxxxxxxxxxxxx"],
+      ],
+      azure: [
+        ["existingResourceGroupName", "리소스 그룹 이름", "my-existing-rg"],
+        ["existingVnetId", "VNet 리소스 ID", "/subscriptions/.../virtualNetworks/..."],
+      ],
+      gcp: [["network", "VPC 네트워크 이름", "my-existing-vpc"]],
+    },
+  };
+
+  // provider별로 "불러오기"가 채울 select의 원본 데이터(마지막으로 불러온 값) — 재조회 없이
+  // 필터링(예: AWS VPC 선택 시 서브넷/보안그룹 목록 좁히기)에 재사용한다.
+  var fetchedNetworkData = {};
+
+  // kind+platform별 필드 -> 실제 목록 데이터 매핑. `source`는 응답의 어느 배열을 쓸지,
+  // `parent`는 그 배열을 필터링할 상위 필드 key(선택), `optionOf`는 {value, text} 변환.
+  var EXISTING_FIELD_SOURCES = {
+    compute: {
+      aws: {
+        vpcId: { source: "vpcs", optionOf: function (v) {
+          return { value: v.id, text: v.id + (v.name ? " - " + v.name : "") + " (" + v.cidr_block + ")" + (v.is_default ? " [기본]" : "") };
+        } },
+        subnetId: { source: "subnets", parent: "vpcId", parentKey: "vpc_id", optionOf: function (s) {
+          return { value: s.id, text: s.id + " (" + s.availability_zone + ", " + s.cidr_block + ")" + (s.name ? " - " + s.name : "") };
+        } },
+        securityGroupId: { source: "security_groups", parent: "vpcId", parentKey: "vpc_id", optionOf: function (g) {
+          return { value: g.id, text: g.id + (g.name ? " - " + g.name : "") };
+        } },
+      },
+      azure: {
+        existingResourceGroupName: { source: "resource_groups", optionOf: function (r) {
+          return { value: r.name, text: r.name + " (" + r.location + ")" };
+        } },
+        existingSubnetId: { source: "azure_subnets", optionOf: function (s) {
+          return { value: s.id, text: s.vnet_name + "/" + s.name + " (" + (s.address_prefix || "") + ") · rg:" + s.resource_group };
+        } },
+        existingNetworkSecurityGroupId: { source: "network_security_groups", optionOf: function (n) {
+          return { value: n.id, text: n.name + " (rg:" + n.resource_group + ", " + n.location + ")" };
+        } },
+      },
+      gcp: {
+        network: { source: "networks", optionOf: function (n) {
+          return { value: n.name, text: n.name + (n.auto_create_subnetworks ? " [자동 서브넷]" : "") };
+        } },
+      },
+    },
+    db: {
+      aws: {
+        vpcId: { source: "vpcs", optionOf: function (v) {
+          return { value: v.id, text: v.id + (v.name ? " - " + v.name : "") + " (" + v.cidr_block + ")" + (v.is_default ? " [기본]" : "") };
+        } },
+        securityGroupId: { source: "security_groups", parent: "vpcId", parentKey: "vpc_id", optionOf: function (g) {
+          return { value: g.id, text: g.id + (g.name ? " - " + g.name : "") };
+        } },
+      },
+      azure: {
+        existingResourceGroupName: { source: "resource_groups", optionOf: function (r) {
+          return { value: r.name, text: r.name + " (" + r.location + ")" };
+        } },
+        existingVnetId: { source: "virtual_networks", optionOf: function (v) {
+          return { value: v.id, text: v.name + " (rg:" + v.resource_group + ", " + v.location + ")" };
+        } },
+      },
+      gcp: {
+        network: { source: "networks", optionOf: function (n) {
+          return { value: n.name, text: n.name + (n.auto_create_subnetworks ? " [자동 서브넷]" : "") };
+        } },
+      },
+    },
+  };
+
+  function existingFieldManualHtml(p, key, label, placeholder) {
+    return labelHtml(label) +
+      '<input type="text" data-ps-platform="' + p + '" data-ps="' + key + '" placeholder="' + placeholder +
+      '" class="' + FIELD_INPUT + '" />';
+  }
+
+  function existingFieldSelectHtml(label, options) {
+    var opts = '<option value="">선택하세요</option>' +
+      options.map(function (o) { return '<option value="' + escHtml(o.value) + '">' + escHtml(o.text) + "</option>"; }).join("") +
+      '<option value="__manual__">직접 입력…</option>';
+    return labelHtml(label) + '<select class="' + FIELD_INPUT + '">' + opts + "</select>";
+  }
+
+  // 필드 하나(래퍼 div)를 select 모드로 바꾼다. 원본 <input data-ps-platform/data-ps>는 남겨두고
+  // (collect()가 계속 그 값을 읽는다) select는 그 값을 받아쓰기만 하는 보조 컨트롤로 둔다 —
+  // "직접 입력…"을 고르면 원본 input이 다시 드러나서 자유 입력으로 돌아간다.
+  function wireExistingFieldSelect(wrap, key, label, options, onPicked) {
+    var input = wrap.querySelector('input[data-ps="' + key + '"]');
+    var selectWrap = el("div", { class: "mt-1" });
+    selectWrap.innerHTML = existingFieldSelectHtml(label + " 목록", options);
+    var select = selectWrap.querySelector("select");
+    wrap.appendChild(selectWrap);
+    input.classList.add("hidden");
+    select.addEventListener("change", function () {
+      if (select.value === "__manual__") {
+        input.classList.remove("hidden");
+        selectWrap.remove();
+        input.focus();
+        collect();
+        updateSubmitState();
+        return;
+      }
+      input.value = select.value;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      if (onPicked) onPicked();
+    });
+    return select;
+  }
+
+  // 지금 그려진 select들의 현재 선택값(필드 key -> value). select가 없으면(아직 "직접 입력"
+  // 상태거나 렌더 전) 빈 문자열.
+  function currentExistingSelectValues(kind, p, wrapsByKey) {
+    var fieldDefs = (EXISTING_FIELD_SOURCES[kind] || {})[p] || {};
+    var values = {};
+    Object.keys(fieldDefs).forEach(function (key) {
+      var wrap = wrapsByKey[key];
+      var select = wrap && wrap.querySelector("select");
+      values[key] = select ? select.value : "";
+    });
+    return values;
+  }
+
+  // 필드 하나의 select를 (다시) 그린다 — 상위 필드가 있으면 currentValues로 좁힌다. 이미 골라둔
+  // 값이 새 옵션 목록에도 있으면 그대로 유지한다(상위 필드 자신은 이 함수로 재조회하지 않는다 —
+  // 그러면 방금 고른 값이 매번 초기화돼 버린다, 2026-09-17 실사용 시나리오로 직접 확인).
+  function rebuildExistingFieldSelect(kind, p, wrapsByKey, key, currentValues) {
+    var wrap = wrapsByKey[key];
+    if (!wrap) return null;
+    var def = ((EXISTING_FIELD_SOURCES[kind] || {})[p] || {})[key];
+    if (!def) return null;
+
+    var existingSelect = wrap.querySelector("select");
+    var preserveValue = existingSelect ? existingSelect.value : "";
+    if (existingSelect) existingSelect.parentElement.remove();
+
+    var data = fetchedNetworkData[p] || {};
+    var items = data[def.source] || [];
+    if (def.parent) {
+      var parentVal = currentValues[def.parent];
+      if (parentVal) items = items.filter(function (it) { return it[def.parentKey] === parentVal; });
+    }
+    var options = items.map(def.optionOf);
+
+    var label = wrap.querySelector("label");
+    var labelText = label ? label.textContent : key;
+    var select = wireExistingFieldSelect(wrap, key, labelText, options, function () {
+      onExistingFieldSelectChanged(kind, p, wrapsByKey);
+    });
+    if (preserveValue && options.some(function (o) { return o.value === preserveValue; })) {
+      select.value = preserveValue;
+      var input = wrap.querySelector('input[data-ps="' + key + '"]');
+      input.value = preserveValue;
+    }
+    return select;
+  }
+
+  // 아무 select나 바뀌면 호출된다 — "부모(parent)가 있는" 필드만 지금 선택값 기준으로 다시
+  // 좁혀 그린다. 부모 필드 자신은 다시 그리지 않는다.
+  function onExistingFieldSelectChanged(kind, p, wrapsByKey) {
+    var fieldDefs = (EXISTING_FIELD_SOURCES[kind] || {})[p] || {};
+    var values = currentExistingSelectValues(kind, p, wrapsByKey);
+    Object.keys(fieldDefs).forEach(function (key) {
+      if (fieldDefs[key].parent) rebuildExistingFieldSelect(kind, p, wrapsByKey, key, values);
+    });
+    collect();
+    updateSubmitState();
+  }
+
+  // "불러오기" 직후 — 이 플랫폼의 모든 필드를 처음부터 select로 그린다(선언 순서상 상위 필드가
+  // 하위보다 먼저 오므로, 앞서 그린 값을 바로 다음 필드의 부모값으로 쓸 수 있다).
+  function applyFetchedResourcesToFields(kind, p, wrapsByKey) {
+    var fieldDefs = (EXISTING_FIELD_SOURCES[kind] || {})[p] || {};
+    var values = {};
+    Object.keys(fieldDefs).forEach(function (key) {
+      var select = rebuildExistingFieldSelect(kind, p, wrapsByKey, key, values);
+      values[key] = select ? select.value : "";
+    });
+    collect();
+    updateSubmitState();
+  }
+
+  function fetchExistingResources(kind, p, container) {
+    var btn = container.querySelector('[data-fetch-existing="' + p + '"]');
+    var msg = container.querySelector('[data-fetch-existing-msg="' + p + '"]');
+    var credEntry = (state.selectedCredentials || []).filter(function (c) { return c.provider === p; })[0];
+    if (!credEntry || !credEntry.credentialId) {
+      window.alert("먼저 ② 단계에서 " + PLATFORM_LABEL[p] + " 계정(자격 증명)을 선택하세요.");
+      return;
+    }
+    var region = (state.providerSpec[p] || {}).region;
+    if (p === "aws" && !region) {
+      window.alert("먼저 ④ 공통 설정에서 리전(국가)을 선택하세요 — AWS는 리전별로 조회합니다.");
+      return;
+    }
+    var path = "/credentials/" + credEntry.credentialId + "/network-resources";
+    if (p === "aws") path += "?region=" + encodeURIComponent(region);
+
+    if (!window.MCPApi) return;
+    btn.disabled = true;
+    var original = btn.textContent;
+    btn.textContent = "불러오는 중…";
+    if (msg) { msg.classList.add("hidden"); msg.textContent = ""; }
+    MCPApi.request(path)
+      .then(function (data) {
+        fetchedNetworkData[p] = data;
+        var wrapsByKey = {};
+        container.querySelectorAll('[data-field-key]').forEach(function (w) {
+          wrapsByKey[w.getAttribute("data-field-key")] = w;
+        });
+        applyFetchedResourcesToFields(kind, p, wrapsByKey);
+        if (msg) {
+          msg.classList.remove("hidden");
+          msg.textContent = "불러왔습니다 — 아래에서 선택하세요.";
+        }
+      })
+      .catch(function (err) {
+        // err.explanation/specificReason은 MCErr 패널용 구조화 객체(증상/원인/해결책)라 그냥 이어붙이면
+        // "[object Object]"가 된다(2026-09-17 실사용 중 발견) — alert에는 항상 문자열인 err.message를 쓴다.
+        window.alert("목록을 가져오지 못했습니다: " + (err.message || err.code || "알 수 없는 오류"));
+      })
+      .finally(function () {
+        btn.disabled = false;
+        btn.textContent = original;
+      });
+  }
+
+  function existingResourceFieldsHtml(kind, platforms) {
+    var byPlatform = EXISTING_RESOURCE_FIELDS[kind] || {};
+    return platforms.map(function (p) {
+      var fields = byPlatform[p] || [];
+      if (!fields.length) return "";
+      var inputs = fields.map(function (f) {
+        return '<div data-field-key="' + f[0] + '">' + existingFieldManualHtml(p, f[0], f[1], f[2]) + "</div>";
+      }).join("");
+      return '<div class="rounded-lg border border-border bg-background p-3" data-existing-field-wrap="' + p + '">' +
+        '<div class="mb-2 flex items-center justify-between gap-2">' +
+        '<p class="text-xs font-medium text-muted-foreground">' + PLATFORM_LABEL[p] + "</p>" +
+        '<button type="button" data-fetch-existing="' + p + '" class="rounded-lg border border-border px-2 py-1 text-xs font-medium hover:bg-muted">실제 목록 불러오기</button>' +
+        "</div>" +
+        '<p data-fetch-existing-msg="' + p + '" class="mb-2 hidden text-xs text-muted-foreground"></p>' +
+        '<div class="grid gap-2 sm:grid-cols-2">' + inputs + "</div></div>";
+    }).join("");
+  }
+
+  // 네트워크 필드(공통) — "새로 생성"(기본) / "기존 리소스 사용" 토글 + 체크 시 provider별 입력
+  // + "실제 목록 불러오기"(2026-09-17 — 전엔 ID를 사용자가 직접 콘솔에서 찾아 타이핑해야 했다).
+  function networkFieldEl(kind, platforms) {
+    var f = el("div", { class: "sm:col-span-2" });
+    var fieldsHtml = existingResourceFieldsHtml(kind, platforms);
+    f.innerHTML = labelHtml("네트워크") +
+      '<label class="flex cursor-pointer items-center gap-2 text-sm">' +
+      '<input type="checkbox" data-network-existing-toggle /> 기존 리소스 사용(선택한 것만 재사용, ' +
+      "비워두면 지금처럼 자동 생성)</label>" +
+      '<div data-network-existing-fields class="mt-2 hidden space-y-2">' + (fieldsHtml || "") + "</div>";
+    var toggle = f.querySelector("[data-network-existing-toggle]");
+    var fieldsBox = f.querySelector("[data-network-existing-fields]");
+    toggle.addEventListener("change", function () {
+      fieldsBox.classList.toggle("hidden", !toggle.checked);
+      collect();
+      updateSubmitState();
+    });
+    fieldsBox.addEventListener("click", function (e) {
+      var btn = e.target.closest("[data-fetch-existing]");
+      if (!btn) return;
+      var p = btn.getAttribute("data-fetch-existing");
+      var box = btn.closest('[data-existing-field-wrap="' + p + '"]');
+      fetchExistingResources(kind, p, box);
+    });
+    return f;
+  }
+
   function inboundFieldEl() {
     var f = el("div", { class: "sm:col-span-2" });
     var presetHtml = INBOUND_PRESETS.map(function (r) {
@@ -528,6 +815,10 @@
     container.appendChild(countryFieldEl());
 
     // 엔진·인증은 플랫폼별로 달라 ⑤ 추가 설정으로 이동(공통은 플랫폼 무관 유지).
+
+    // 네트워크 — "새로 생성"(기본) / "기존 리소스 사용" 토글(2026-09-17). DB는 서브넷/NSG
+    // 재사용은 지원하지 않는다(위임·private endpoint 정책 강제 변경 위험) — 리소스 그룹/VNet만.
+    container.appendChild(networkFieldEl("db", platforms));
 
     // 백업 — 읽기 전용 안내(입력 아님)
     var backup = el("div", { class: "sm:col-span-2" });
@@ -645,9 +936,14 @@
           if (port) rules.push({ port: port, cidr: (cidrEl && cidrEl.value.trim()) || DEFAULT_CIDR });
         });
         cs.inboundRules = rules;
-        cs.network = "auto"; // 항상 자동 생성 고정
       }
       if (kind === "db") cs.backup = "auto"; // 자동 백업 고정(표시만)
+      // 기존 리소스 재사용 토글(compute/db 공통, networkFieldEl) — 체크 안 돼 있으면 provider별로
+      // 입력했던 기존 리소스 ID가 있어도 무시한다(buildProviderSpec에서 이 플래그로 게이트).
+      if (kind === "compute" || kind === "db") {
+        var networkToggle = container.querySelector("[data-network-existing-toggle]");
+        cs.useExistingNetwork = !!(networkToggle && networkToggle.checked);
+      }
     }
     state.commonSpec = cs;
 
@@ -716,6 +1012,12 @@
         html += '<div class="grid gap-3 sm:grid-cols-2">' +
           cdnText("azure", "origin", "Origin", true) +
           cdnText("azure", "resourceGroup", "Resource Group", true) +
+          "</div>" +
+          // 2026-09-17: 기존엔 이 이름으로 항상 새 리소스 그룹을 만들려고 해서 기존 이름과
+          // 겹치면 apply가 실패했다 — 체크하면 "새로 만들 이름"이 아니라 "조회할 기존 이름"으로
+          // 쓴다(app/azure_cdn_provisioning.py의 use_existing_resource_group).
+          cdnToggle("azure", "useExistingResourceGroup", "위 Resource Group을 기존 것으로 사용(체크 안 하면 새로 생성)", false) +
+          '<div class="grid gap-3 sm:grid-cols-2">' +
           "<div>" + labelHtml("SKU", true) +
           '<select data-ps-platform="azure" data-ps="sku" class="' + FIELD_INPUT + '"><option value="">선택하세요</option>' +
           CDN_OPTS.azSku.map(function (v) { return "<option>" + v + "</option>"; }).join("") + "</select></div>" +
@@ -837,14 +1139,27 @@
     }
 
     if (kind === "storage_object") {
+      var hasExtra = false;
       if (platforms.indexOf("gcp") >= 0) {
+        hasExtra = true;
         var opts2 = '<option value="">선택하세요</option>' +
           STORAGE_CLASSES.map(function (o) { return "<option>" + o + "</option>"; }).join("");
         var box2 = el("div", { class: "rounded-xl bg-muted p-3" },
           '<p class="mb-2 text-sm font-medium">GCP 스토리지 등급</p>' +
           '<select data-ps-platform="gcp" data-ps="storageClass" class="' + FIELD_INPUT + '">' + opts2 + "</select>");
         container.appendChild(box2);
-      } else {
+      }
+      if (platforms.indexOf("azure") >= 0) {
+        // Storage Account엔 VNet/NSG 개념이 없어 재사용할 대상이 리소스 그룹뿐이다(2026-09-17).
+        hasExtra = true;
+        var box3 = el("div", { class: "rounded-xl bg-muted p-3" },
+          '<p class="mb-2 text-sm font-medium">Azure 기존 리소스 그룹(선택)</p>' +
+          labelHtml("리소스 그룹 이름") +
+          '<input type="text" data-ps-platform="azure" data-ps="existingResourceGroupName" placeholder="my-existing-rg" class="' + FIELD_INPUT + '" />' +
+          '<p class="mt-1 text-xs text-muted-foreground">비워두면 새 리소스 그룹을 만듭니다.</p>');
+        container.appendChild(box3);
+      }
+      if (!hasExtra) {
         container.appendChild(el("div", { class: "text-xs text-muted-foreground" },
           "선택한 플랫폼에는 추가 입력이 없습니다(서버 기본값 사용)."));
       }
@@ -1120,7 +1435,12 @@
 
     if (kind === "storage_object") {
       if (p === "aws") return { region: ps.region }; // app/aws_s3_provisioning.py
-      if (p === "azure") return { region: ps.region }; // app/azure_storage_provisioning.py
+      if (p === "azure") {
+        // app/azure_storage_provisioning.py — VNet/NSG가 없어 재사용 가능한 건 리소스 그룹뿐(2026-09-17).
+        var azStorage = { region: ps.region };
+        if (ps.existingResourceGroupName) azStorage.existing_resource_group_name = ps.existingResourceGroupName;
+        return azStorage;
+      }
       if (p === "gcp") return { region: ps.region, storage_class: ps.storageClass }; // app/gcp_storage_provisioning.py
       return {};
     }
@@ -1132,6 +1452,7 @@
         return {
           origin: ps.origin,
           resource_group: ps.resourceGroup,
+          use_existing_resource_group: !!ps.useExistingResourceGroup,
           sku: ps.sku,
           query_string_caching_behavior: AZURE_CDN_QUERY_STRING_CODE[ps.queryStringCaching] || "IgnoreQueryString",
           protocol: AZURE_CDN_PROTOCOL_CODE[ps.supportedProtocols] || "http_and_https",
@@ -1155,23 +1476,36 @@
       }
       return {};
     }
+    // 기존 리소스 재사용 필드(2026-09-17) — "기존 리소스 사용" 토글이 체크돼 있을 때만, 값이
+    // 채워진 것만 넣는다(비운 필드는 안 보내 서버 기본 동작=자동생성을 그대로 둔다).
+    var useExisting = !!(state.commonSpec && state.commonSpec.useExistingNetwork);
+    function addIfFilled(target, targetKey, value) { if (useExisting && value) target[targetKey] = value; }
+
     if (kind === "db") {
       if (p === "aws") {
         // app/aws_rds_provisioning.py — master_username은 서버가 mcp_admin으로 고정, 안 받는다.
-        return { region: ps.region, engine: DB_ENGINE_CODE[ps.engine], master_password: ps.masterPassword };
+        var awsDb = { region: ps.region, engine: DB_ENGINE_CODE[ps.engine], master_password: ps.masterPassword };
+        addIfFilled(awsDb, "vpc_id", ps.vpcId);
+        addIfFilled(awsDb, "security_group_id", ps.securityGroupId);
+        return awsDb;
       }
       if (p === "azure") {
         // app/azure_database_provisioning.py — Azure만 마스터 사용자명도 사용자 입력으로 받는다
         // (엔진 라벨은 "MySQL"/"PostgreSQL"/"SQL Server" 그대로 보낸다 — 백엔드 Literal과 동일 어휘).
-        return {
+        var azureDb = {
           region: ps.region, engine: ps.engine,
           master_username: ps.masterUsername, master_password: ps.masterPassword,
         };
+        addIfFilled(azureDb, "existing_resource_group_name", ps.existingResourceGroupName);
+        addIfFilled(azureDb, "existing_vnet_id", ps.existingVnetId);
+        return azureDb;
       }
       if (p === "gcp") {
         // app/gcp_cloudsql_provisioning.py — aws처럼 비밀번호만 입력받는다(관리자 계정명은 엔진별
         // 서버 고정값 root/postgres/sqlserver). 엔진 라벨도 그대로 보낸다(_ENGINE_CONFIG 키와 동일).
-        return { region: ps.region, engine: ps.engine, master_password: ps.masterPassword };
+        var gcpDb = { region: ps.region, engine: ps.engine, master_password: ps.masterPassword };
+        addIfFilled(gcpDb, "network", ps.network);
+        return gcpDb;
       }
       return {};
     }
@@ -1180,9 +1514,16 @@
     if (p === "aws") {
       var aws = { region: ps.region, instance_type: ps.instanceType };
       if (ps.image === AMI_CUSTOM && ps.amiId) aws.ami_id = ps.amiId; // 직접 입력한 AMI만 전송
+      addIfFilled(aws, "vpc_id", ps.vpcId);
+      addIfFilled(aws, "subnet_id", ps.subnetId);
+      addIfFilled(aws, "security_group_id", ps.securityGroupId);
       return aws;
     }
-    if (p === "gcp") return { region: ps.region, instance_type: ps.instanceType };
+    if (p === "gcp") {
+      var gcp = { region: ps.region, instance_type: ps.instanceType };
+      addIfFilled(gcp, "network", ps.network);
+      return gcp;
+    }
     if (p === "azure") {
       // Azure provider_spec은 extra="forbid" — 정확히 이 필드만 보낸다. image는 값이 있을 때만
       // (빈 값이면 백엔드 기본값 Ubuntu 22.04).
@@ -1194,6 +1535,9 @@
         create_public_ip: true,
       };
       if (ps.image) az.image = ps.image;
+      addIfFilled(az, "existing_resource_group_name", ps.existingResourceGroupName);
+      addIfFilled(az, "existing_subnet_id", ps.existingSubnetId);
+      addIfFilled(az, "existing_network_security_group_id", ps.existingNetworkSecurityGroupId);
       return az;
     }
     return {};
