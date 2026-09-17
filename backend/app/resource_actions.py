@@ -14,9 +14,22 @@ Terraform과 무관하게 서비스별 SDK 어댑터(`app/providers/{aws,azure,g
 - Azure: Virtual Machine(start/stop/delete) — 목업 리소스(mcp-c3d4-vm)가 이 경로를 타므로 추가
 - GCP: Compute Engine 인스턴스(start/stop/delete) — 같은 이유로 추가
 
-나머지(Azure SQL Database/Storage Account/CDN, GCP Cloud SQL/Storage/CDN, AWS CloudFront)는
-`UNSUPPORTED_OPERATION`으로 명시적으로 막는다 — 어댑터가 없어서가 아니라 이번 세션 범위 밖으로
-의도적으로 뺀 것이다.
+나머지(Azure SQL Database/Storage Account/CDN, AWS CloudFront)는 `UNSUPPORTED_OPERATION`으로
+명시적으로 막는다 — 어댑터가 없어서가 아니라 이번 세션 범위 밖으로 의도적으로 뺀 것이다.
+
+**GCP Cloud SQL/Storage/CDN 지원 추가(2026-09-17, `gwonhyung/be-gcp-resource-actions`)**:
+AWS는 RDS(start/stop/delete)·S3(delete)까지 지원하는데 GCP는 Compute Engine만 지원해 3사 간
+기능 격차가 있었다(실사용자 확인). AWS와 동일한 서비스 등급 기준으로 맞춘다.
+
+- Cloud SQL 인스턴스: start/stop/delete — RDS와 동일하게 셋 다 지원. Cloud SQL Admin API는
+  전용 start/stop 엔드포인트가 없어 `settings.activationPolicy`를 `ALWAYS`(start)/`NEVER`(stop)로
+  PATCH하는 방식으로 구현한다(GCP 공식 문서 권장 패턴).
+- Cloud Storage 버킷: delete만 — S3와 동일한 이유(버킷 자체엔 시작/중지 개념이 없음). 비어있지
+  않으면 `force_empty=true`로 먼저 객체를 지우고 재시도하는 것도 S3와 동일하게 지원한다.
+- Cloud CDN(전역 forwarding rule): delete만 — 로드밸런서 리소스에도 시작/중지 개념이 없다.
+
+세 서비스 모두 RDS/EC2처럼 **호출이 accept되면 성공으로 본다**(작업 완료까지 폴링하지 않음) —
+"CSP 호출은 완료를 기다리지 않을 수 있다"는 기존 결정과 같은 비대칭 정책을 그대로 따른다.
 """
 
 from __future__ import annotations
@@ -72,6 +85,10 @@ def supported_actions(provider: str, service_code: str, original_resource_type: 
         return {"start", "stop", "delete"}
     if provider == "gcp" and service_code == "compute_engine":
         return {"start", "stop", "delete"}
+    if provider == "gcp" and service_code == "cloud_sql":
+        return {"start", "stop", "delete"}
+    if provider == "gcp" and service_code in ("cloud_storage", "cloud_cdn"):
+        return {"delete"}
     return set()
 
 
@@ -105,7 +122,8 @@ def perform_action(
             azure_provider.perform_resource_action(service_code, action, secret_payload, external_resource_id)
         elif provider == "gcp":
             gcp_provider.perform_resource_action(
-                service_code, action, secret_payload, external_account_id, region, external_resource_id
+                service_code, action, secret_payload, external_account_id, region, external_resource_id,
+                force_empty=force_empty,
             )
         else:
             raise ResourceActionError("UNSUPPORTED_OPERATION")

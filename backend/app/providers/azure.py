@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 
 from azure.core.exceptions import AzureError, ClientAuthenticationError, HttpResponseError
 from azure.identity import ClientSecretCredential
@@ -8,6 +9,7 @@ from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.subscriptions import SubscriptionClient
+from azure.monitor.query import MetricAggregationType, MetricsQueryClient
 
 from app.providers import VerificationResult
 
@@ -70,6 +72,57 @@ def perform_resource_action(service_code: str, action: str, secret_payload: dict
         poller.result()
     except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
         raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+
+def get_cpu_utilization(secret_payload: dict, resource_ids: list[str]) -> dict[str, float | None]:
+    """최근 1시간 평균 CPU 사용률(%)을 VM별로 조회한다 — 보고서 "리소스 사용률 상위" 섹션
+    (2026-09-17)의 실데이터 소스. `Percentage CPU`는 에이전트 없이도 나오는 플랫폼 메트릭이다.
+
+    `azure-mgmt-monitor`(`MonitorManagementClient`, 레거시 — MS 문서도 "archive-previous"로
+    분류)가 아니라 현재 권장되는 `azure-monitor-query`(`MetricsQueryClient`)를 쓴다. 이미 쓰고
+    있는 `azure-identity`의 `ClientSecretCredential`을 그대로 재사용할 수 있어 인증 코드가
+    늘지 않는다.
+
+    Azure Monitor Metrics API는 AWS/GCP와 달리 리소스 하나씩만 조회한다(공식 배치 조회는 같은
+    리소스 유형·리전 제약이 커서 이번 범위에서는 단순하게 순회한다) — 이 앱 규모(리소스 수가
+    적은 데모/과제 환경)에서는 직렬 호출로도 충분하다.
+
+    메모리는 다루지 않는다(Azure Monitor Agent 설치 전제) — AWS/GCP와 같은 이유."""
+    if not resource_ids:
+        return {}
+
+    try:
+        credential = ClientSecretCredential(
+            tenant_id=secret_payload["tenant_id"],
+            client_id=secret_payload["client_id"],
+            client_secret=secret_payload["client_secret"],
+        )
+        client = MetricsQueryClient(credential)
+    except KeyError:
+        return {resource_id: None for resource_id in resource_ids}
+
+    out: dict[str, float | None] = {}
+    for resource_id in resource_ids:
+        try:
+            response = client.query_resource(
+                resource_id,
+                metric_names=["Percentage CPU"],
+                timespan=timedelta(hours=1),
+                granularity=timedelta(minutes=5),
+                aggregations=[MetricAggregationType.AVERAGE],
+            )
+            points = [
+                (data.timestamp, data.average)
+                for metric in response.metrics
+                for series in metric.timeseries
+                for data in series.data
+                if data.average is not None
+            ]
+            points.sort(key=lambda p: p[0], reverse=True)
+            out[resource_id] = round(points[0][1], 1) if points else None
+        except (ClientAuthenticationError, HttpResponseError, AzureError):
+            out[resource_id] = None
+    return out
 
 
 def discover_resources(secret_payload: dict, subscription_id: str) -> list:
