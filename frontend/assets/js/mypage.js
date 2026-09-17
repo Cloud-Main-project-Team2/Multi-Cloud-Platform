@@ -911,6 +911,13 @@
     })
       .then(function (user) {
         profileUser = user || profileUser;
+        // 로그인 시 캐시된 세션 사용자 정보(mcp_session.user)도 갱신한다. 메인홈 헤더 등은
+        // /auth/me를 다시 부르지 않고 session.user.name을 읽으므로, 갱신하지 않으면 다른
+        // 페이지로 나갔을 때 이전 이름이 그대로 남는다.
+        try {
+          var session = MCPApi.getSession();
+          if (session && user) { session.user = user; MCPApi.setSession(session); }
+        } catch (e) {}
         exitProfileEdit();
         setProfileMsg("계정 정보를 수정했습니다.", true);
       })
