@@ -18,6 +18,14 @@ class SignUpRequest(BaseModel):
     affiliation_name: str | None = Field(default=None, max_length=200)
 
 
+class UpdateMeRequest(BaseModel):
+    # 마이페이지 계정 정보 수정 — 이름·소속만. 이메일은 로그인 식별자라 이 경로로 바꾸지 않고,
+    # 비밀번호도 범위 밖(별도 재설정 흐름). 인라인 폼이 항상 전체 편집 대상 값을 함께 보낸다.
+    name: str = Field(min_length=1, max_length=100)
+    affiliation_type: Literal["company", "individual"]
+    affiliation_name: str | None = Field(default=None, max_length=200)
+
+
 class UserOut(BaseModel):
     id: str
     email: str

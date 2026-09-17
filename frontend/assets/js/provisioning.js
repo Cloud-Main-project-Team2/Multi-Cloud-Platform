@@ -1547,30 +1547,19 @@
   // 백엔드 §10: POST /provisioning/{provider}/{service} 로 job을 만들고, 202(queued) 응답의
   // job id를 GET /provisioning/jobs/{id}로 폴링해 진행바를 갱신한다. 러너가 없는 (kind, platform)
   // 조합은 501이 뻔하므로 그 대상만 기존 진행률 애니메이션으로 대신한다(simulateTarget).
-  function startProvisioning() {
+  //
+  // 실행 엔진(runProvisioning)은 신규 생성('start')과 복원('restore')이 공유한다. 복원은
+  // 다른 페이지에 갔다가 프로비저닝 화면으로 돌아왔을 때, localStorage에 살아있는 job의 라이브
+  // 진행 UI(행·진행바·작은 창 + 폴링)를 다시 그린다. 새 run이 시작되면 세대(runGeneration)가
+  // 바뀌어 이전 복원의 폴링·저장소 갱신이 조용히 무효화된다(스테일 타이머 충돌 방지).
+  var runGeneration = 0;
+
+  function runProvisioning(mode, targets, kind, common) {
     var list = document.getElementById("prov-progress-list");
     if (!list) return;
-    var creds = (state.selectedCredentials || []).filter(function (c) {
-      return state.platforms.indexOf(c.provider) >= 0 && c.credentialId;
-    });
-    if (!creds.length) {
-      list.innerHTML = '<p class="text-sm" style="color:#c0392b">선택된 자격 증명이 없습니다 — ② 계정에서 선택하세요.</p>';
-      return;
-    }
 
-    var kind = state.resourceKind;
-    var common = buildCommonSpec();
-    var targets = creds.map(function (c, i) {
-      return {
-        idx: i, platform: c.provider, account: c.label, credentialId: c.credentialId,
-        progress: 0, status: "pending", real: hasRealRunner(kind, c.provider),
-        // job별로 다른 시작 오프셋·증가 속도·타이밍 — 여러 개를 동시에 돌려도 진행률이
-        // 제각각 다르게 올라가도록(문제 2). 실제 완료 응답이 오면 즉시 100%로 스냅한다.
-        startAt: 5 + Math.floor(Math.random() * 10),   // 5~14%
-        step: 4 + Math.floor(Math.random() * 7),       // 4~10%씩
-        tickMs: 380 + Math.floor(Math.random() * 240), // 시뮬레이션 job별 간격
-      };
-    });
+    var myGen = ++runGeneration;
+    function isCurrent() { return myGen === runGeneration; }
 
     function rowHtml(t) {
       return '<div data-real-row="' + t.idx + '">' +
@@ -1581,6 +1570,26 @@
     }
     list.innerHTML = targets.map(rowHtml).join("");
     updateMini(targets);
+
+    // 진행 중인 real job(백엔드 job id를 가진 대상)을 localStorage에 기록해, 다른 페이지로
+    // 이동해도(풀 리로드) 공통 셸(prov-tracker.js)이 작은 창과 폴링을 이어가게 한다.
+    // 시뮬레이션 대상(러너 없는 azure/gcp CDN 등)은 job id가 없어 페이지 이동 시 유지 대상이 아니다.
+    function syncTrackerStore() {
+      if (!window.MCProvTracker || !isCurrent()) return;
+      var realTargets = targets.filter(function (t) { return t.real && t.jobId; });
+      if (!realTargets.length) return;
+      var pending = realTargets.filter(function (t) { return t.status !== "done" && t.status !== "failed"; });
+      if (!pending.length) { MCProvTracker.clear(); return; }
+      MCProvTracker.save(realTargets.map(function (t) {
+        return {
+          id: t.jobId,
+          platform: t.platform,
+          service: t.service || (SERVICE_CODE[kind] && SERVICE_CODE[kind][t.platform]),
+          account: t.account,
+          status: t.status === "done" ? "success" : (t.status === "failed" ? "failed" : "running"),
+        };
+      }));
+    }
 
     function setRow(t, status, progress, msg) {
       t.status = status;
@@ -1613,11 +1622,13 @@
         }
       }
       updateMini(targets);
+      syncTrackerStore();
     }
 
     function pollTarget(t, jobId) {
       MCPApi.request("/provisioning/jobs/" + jobId)
         .then(function (job) {
+          if (!isCurrent()) return; // 새 run이 시작됐으면 이 스테일 폴링은 조용히 멈춘다.
           if (job.status === "success") { setRow(t, "done", 100, null); return; }
           if (job.status === "failed") { setRow(t, "failed", t.progress, job.error || "생성에 실패했습니다."); return; }
           if (job.status === "cancelled") { setRow(t, "failed", t.progress, "취소되었습니다."); return; }
@@ -1625,7 +1636,7 @@
           setRow(t, "running", Math.min(90, (t.progress || t.startAt) + t.step + Math.floor(Math.random() * 4)));
           setTimeout(function () { pollTarget(t, jobId); }, 2000);
         })
-        .catch(function (err) { setRow(t, "failed", t.progress, err); });
+        .catch(function (err) { if (isCurrent()) setRow(t, "failed", t.progress, err); });
     }
 
     // 러너가 없는 조합(azure/gcp의 CDN)은 진행률만 애니메이션한다 — 실패 시점은 랜덤.
@@ -1633,6 +1644,7 @@
       var willFail = Math.random() < 0.25;
       var failAt = willFail ? 35 + Math.floor(Math.random() * 45) : null;
       var timer = setInterval(function () {
+        if (!isCurrent()) { clearInterval(timer); return; }
         t.progress += t.step + Math.floor(Math.random() * 6);
         if (failAt != null && t.progress >= failAt) {
           clearInterval(timer);
@@ -1647,6 +1659,15 @@
     }
 
     targets.forEach(function (t) {
+      if (mode === "restore") {
+        // 저장된 종결 상태는 즉시 그리고, 진행 중이면 저장된 job id로 폴링을 재개한다.
+        if (t.status === "done") { setRow(t, "done", 100, null); return; }
+        if (t.status === "failed") { setRow(t, "failed", t.progress || 0, t.errorMsg || "생성에 실패했습니다."); return; }
+        setRow(t, "running", t.progress || t.startAt);
+        if (t.real && t.jobId) pollTarget(t, t.jobId);
+        return;
+      }
+      // mode === "start"
       setRow(t, "running", t.startAt);
       if (!t.real) { simulateTarget(t); return; }
       MCPApi.request("/provisioning/" + t.platform + "/" + SERVICE_CODE[kind][t.platform], {
@@ -1654,9 +1675,65 @@
         headers: { "Idempotency-Key": newIdemKey(), "X-Action-Confirmed": "true" },
         body: { credential_id: t.credentialId, common_spec: common, provider_spec: buildProviderSpec(t.platform) },
       })
-        .then(function (data) { pollTarget(t, data.id); })
-        .catch(function (err) { setRow(t, "failed", t.progress, err); });
+        .then(function (data) { if (!isCurrent()) return; t.jobId = data.id; syncTrackerStore(); pollTarget(t, data.id); })
+        .catch(function (err) { if (isCurrent()) setRow(t, "failed", t.progress, err); });
     });
+  }
+
+  function startProvisioning() {
+    var list = document.getElementById("prov-progress-list");
+    if (!list) return;
+    var creds = (state.selectedCredentials || []).filter(function (c) {
+      return state.platforms.indexOf(c.provider) >= 0 && c.credentialId;
+    });
+    if (!creds.length) {
+      list.innerHTML = '<p class="text-sm" style="color:#c0392b">선택된 자격 증명이 없습니다 — ② 계정에서 선택하세요.</p>';
+      return;
+    }
+
+    var kind = state.resourceKind;
+    var common = buildCommonSpec();
+    var targets = creds.map(function (c, i) {
+      return {
+        idx: i, platform: c.provider, account: c.label, credentialId: c.credentialId,
+        progress: 0, status: "pending", real: hasRealRunner(kind, c.provider),
+        // job별로 다른 시작 오프셋·증가 속도·타이밍 — 여러 개를 동시에 돌려도 진행률이
+        // 제각각 다르게 올라가도록(문제 2). 실제 완료 응답이 오면 즉시 100%로 스냅한다.
+        startAt: 5 + Math.floor(Math.random() * 10),   // 5~14%
+        step: 4 + Math.floor(Math.random() * 7),       // 4~10%씩
+        tickMs: 380 + Math.floor(Math.random() * 240), // 시뮬레이션 job별 간격
+      };
+    });
+    runProvisioning("start", targets, kind, common);
+  }
+
+  // 다른 페이지에 갔다가 프로비저닝 화면으로 돌아왔을 때, localStorage에 살아있는 job이 있으면
+  // 라이브 진행 UI(행·진행바 + 작은 창)를 복원하고 폴링을 재개한다. 새 run(생성하기)이 아직
+  // 시작되지 않은 초기 로드에서만 동작한다.
+  function restoreProvisioning() {
+    if (!document.getElementById("prov-progress-list")) return;
+    if (!window.MCProvTracker) return;
+    var store = MCProvTracker.read();
+    if (!store || !store.jobs || !store.jobs.length) return;
+
+    var targets = store.jobs.map(function (j, i) {
+      var st = j.status === "success" ? "done"
+             : (j.status === "failed" || j.status === "cancelled") ? "failed" : "running";
+      return {
+        idx: i, platform: j.platform, account: j.account || "", credentialId: null,
+        real: true, jobId: j.id, service: j.service,
+        status: st,
+        progress: st === "done" ? 100 : (st === "failed" ? 0 : 30), // 진행 중이면 중간값에서 이어붙인다.
+        errorMsg: j.status === "cancelled" ? "취소되었습니다." : "생성에 실패했습니다.",
+        startAt: 30, step: 4 + Math.floor(Math.random() * 7), tickMs: 500,
+      };
+    });
+    runProvisioning("restore", targets, state.resourceKind, null);
+
+    // 돌아온 맥락이므로 큰 모달을 자동으로 열지 않고 축소형 카드(작은 창)로 복원한다.
+    var anyRunning = targets.some(function (t) { return t.status === "running"; });
+    var mini = document.getElementById("prov-progress-mini");
+    if (mini && anyRunning) mini.classList.remove("hidden");
   }
 
   // ── 이벤트 배선 ──────────────────────────────────────────────────────────
@@ -1737,6 +1814,9 @@
     renderSteps();
     syncSelectionUI();
     revealSteps();
+
+    // 다른 페이지에 갔다가 돌아온 경우, 진행 중인 job의 라이브 UI(작은 창 포함)를 복원한다.
+    restoreProvisioning();
 
     // 실제 등록된 자격 증명을 불러와 ② 계정 스텝을 채운다(로그인 세션 필요 — auth-guard가 보장).
     loadAccountCredentials().then(function () { renderAccounts(); syncSelectionUI(); revealSteps(); });

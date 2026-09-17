@@ -212,33 +212,17 @@
     wireRegionToggle();
   }
 
-  // 개수 → 마커 지름(px). 개수가 많을수록 큰 점.
+  // 개수 → 마커 지름(px). 개수(숫자 라벨)가 들어가야 하므로 최소 18px는 확보한다.
   function markerSize(count) {
-    return Math.round(18 + Math.min(count, 10) * 2.4); // 18~42px
+    return Math.round(18 + Math.min(count, 10) * 1.4); // 18~32px
   }
 
-  // provider 비율에 따른 배경. 단일 provider면 단색, 여러 개면 conic-gradient 파이.
-  function markerBackground(providers) {
-    var entries = Object.keys(providers).map(function (p) { return { p: p, c: providers[p] }; });
-    if (entries.length === 1) return PROVIDER_COLOR[entries[0].p] || "#94a3b8";
-    var total = entries.reduce(function (s, e) { return s + e.c; }, 0);
-    var acc = 0;
-    var stops = entries.map(function (e) {
-      var start = (acc / total) * 360;
-      acc += e.c;
-      var end = (acc / total) * 360;
-      return (PROVIDER_COLOR[e.p] || "#94a3b8") + " " + start + "deg " + end + "deg";
-    });
-    return "conic-gradient(" + stops.join(", ") + ")";
-  }
-
-  function siteTooltip(site, regionsAtSite, regionProvider) {
-    var lines = [site.label];
+  // 원(클라우드) 하나에 대한 툴팁 — 그 지점에서 해당 클라우드의 리전별 개수.
+  function providerTooltip(site, provider, regionsAtSite, regionProvider) {
+    var lines = [(PLATFORM_LABEL[provider] || provider) + " · " + site.label];
     regionsAtSite.forEach(function (region) {
-      var provs = regionProvider[region];
-      Object.keys(provs).sort().forEach(function (p) {
-        lines.push((PLATFORM_LABEL[p] || p) + " " + region + ": " + provs[p] + "개");
-      });
+      var c = regionProvider[region] && regionProvider[region][provider];
+      if (c) lines.push(region + ": " + c + "개");
     });
     return lines.join("\n");
   }
@@ -270,18 +254,26 @@
       markersEl.innerHTML =
         '<div class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">아직 리전 정보가 있는 리소스가 없습니다.</div>';
     } else {
+      // 지점(site)마다 클라우드별 원을 flexbox로 나란히 놓는다. 절대 위치 오프셋 대신 flex+gap을
+      // 쓰면 원이 서로 겹치는 것이 구조적으로 불가능하다(같은 리전에 AWS·Azure·GCP가 있어도
+      // 각 회사 원이 확실히 분리돼 보인다). 각 원 안에는 기존처럼 개수(숫자)를 표시한다.
       markersEl.innerHTML = Object.keys(bySite).map(function (siteKey) {
         var s = bySite[siteKey];
         var site = SITES[siteKey];
-        var d = markerSize(s.total);
-        var tip = siteTooltip(site, s.regions, regionProvider);
+        var circles = Object.keys(s.providers).map(function (p) {
+          var d = markerSize(s.providers[p]);
+          var tip = providerTooltip(site, p, s.regions, regionProvider);
+          return (
+            '<div title="' + escHtml(tip) + '" style="width:' + d + "px;height:" + d +
+            "px;border-radius:9999px;background:" + (PROVIDER_COLOR[p] || "#94a3b8") +
+            ";box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;\">" +
+            '<span style="font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)">' + s.providers[p] + "</span>" +
+            "</div>"
+          );
+        }).join("");
         return (
-          '<div class="absolute" style="left:' + site.x + "%;top:" + site.y + "%;transform:translate(-50%,-50%)\" title=\"" +
-          escHtml(tip) + '">' +
-          '<div style="width:' + d + "px;height:" + d + "px;border-radius:9999px;background:" + markerBackground(s.providers) +
-          ';box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;">' +
-          '<span style="font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)">' + s.total + "</span>" +
-          "</div></div>"
+          '<div class="absolute" style="left:' + site.x + "%;top:" + site.y +
+          '%;transform:translate(-50%,-50%);display:flex;gap:4px;align-items:center;">' + circles + "</div>"
         );
       }).join("");
     }
