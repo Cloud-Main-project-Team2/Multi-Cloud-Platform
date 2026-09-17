@@ -32,17 +32,21 @@
     menu.className = "mc-dd__menu hidden absolute left-0 top-full z-50 mt-1 min-w-full max-h-64 overflow-auto rounded-xl border border-border bg-surface py-1 shadow-lg";
     wrap.appendChild(menu);
 
-    Array.prototype.forEach.call(select.options, function (opt, i) {
-      var item = document.createElement("div");
-      item.className = "mc-dd__item cursor-pointer whitespace-nowrap px-3 py-2 text-sm hover:bg-muted";
-      item.textContent = opt.text;
-      item.addEventListener("click", function () {
-        select.selectedIndex = i;
-        select.dispatchEvent(new Event("change", { bubbles: true }));
-        closeAll();
+    function buildItems() {
+      menu.innerHTML = "";
+      Array.prototype.forEach.call(select.options, function (opt, i) {
+        var item = document.createElement("div");
+        item.className = "mc-dd__item cursor-pointer whitespace-nowrap px-3 py-2 text-sm hover:bg-muted";
+        item.textContent = opt.text;
+        item.addEventListener("click", function () {
+          select.selectedIndex = i;
+          select.dispatchEvent(new Event("change", { bubbles: true }));
+          closeAll();
+        });
+        menu.appendChild(item);
       });
-      menu.appendChild(item);
-    });
+    }
+    buildItems();
 
     function syncLabel() {
       var opt = select.options[select.selectedIndex];
@@ -66,6 +70,15 @@
     if (select.form) {
       select.form.addEventListener("reset", function () { setTimeout(syncLabel, 0); });
     }
+    // 계정 목록처럼 페이지 로드 후 비동기로 fetch해 <option>을 통째로 갈아끼우는 select도 있다
+    // (예: 보안그룹 관리 화면의 계정 선택) — enhance()는 스크립트 로드 시점에 한 번만 돌아서
+    // 그 뒤에 innerHTML로 바뀐 옵션은 네이티브 select엔 반영돼도 커스텀 메뉴/라벨은 그대로 옛
+    // 값에 멈춰 있었다(2026-09-17 실사용 중 "불러오는 중…"에 멈춰 보이는 문제로 발견). 옵션
+    // 목록(childList) 변경을 감지해 메뉴/라벨을 다시 그린다.
+    new MutationObserver(function () {
+      buildItems();
+      syncLabel();
+    }).observe(select, { childList: true });
     syncLabel();
   }
 
