@@ -27,8 +27,16 @@
     </a>
     <div class="flex items-center gap-2">
       <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="grid h-9 w-9 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="테마 전환">🌙</button>
-      <a href="login.html" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">로그인</a>
-      <a href="signup.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">회원가입</a>
+      <!-- 게스트 상태: 로그인/회원가입 (JS가 세션에 맞춰 토글) -->
+      <span data-auth="guest" class="contents">
+        <a href="login.html" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">로그인</a>
+        <a href="signup.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">회원가입</a>
+      </span>
+      <!-- 로그인 상태: 사용자 이름 + 대시보드 -->
+      <span data-auth="user" class="hidden items-center gap-1 sm:gap-2">
+        <a href="mypage.html" data-user-name class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted"></a>
+        <a href="dashboard.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">대시보드</a>
+      </span>
     </div>
   </div>
 
@@ -74,7 +82,9 @@
     </section>
   </main>
 
+  <script src="assets/js/api.js"></script>
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/prov-tracker.js"></script>
+  <script src="assets/js/intro-auth.js"></script>
 </body>
 </html>
