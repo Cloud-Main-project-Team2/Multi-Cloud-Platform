@@ -61,7 +61,7 @@ def test_inline_statements_scope_iam_management_to_ssm_role(client, make_user, a
     data = _setup(client, auth_header(make_user()))
 
     statements = data["inline_statements"]
-    assert len(statements) == 2
+    assert len(statements) == 4
 
     readonly = statements[0]
     assert readonly["Resource"] == "*"
@@ -71,6 +71,8 @@ def test_inline_statements_scope_iam_management_to_ssm_role(client, make_user, a
     # `ec2:DescribeVpcAttribute AccessDenied`로 실패한다(2026-09-17 실사용 중 발견).
     assert "ec2:DescribeVpcAttribute" in readonly["Action"]
     assert "ec2:DescribeAvailabilityZones" in readonly["Action"]
+    # 보안그룹 관리 화면이 규칙을 SecurityGroupRuleId 기준으로 조회하는 데 쓴다.
+    assert "ec2:DescribeSecurityGroupRules" in readonly["Action"]
 
     # EC2 프로비저닝이 만드는 mcp-ssm-* 역할/인스턴스 프로파일을 관리하는 데 필요한 권한 —
     # 이게 없으면 실제 EC2 생성이 `iam:ListRolePolicies AccessDenied`로 막힌다(2026-09-17).
@@ -83,6 +85,21 @@ def test_inline_statements_scope_iam_management_to_ssm_role(client, make_user, a
         "arn:aws:iam::*:role/mcp-ssm-*",
         "arn:aws:iam::*:instance-profile/mcp-ssm-*",
     ]
+
+    # 보안그룹 관리 화면(app/routers/security_groups.py)이 SG를 직접 생성/삭제하고 규칙을
+    # 추가/삭제하는 데 필요한 권한 — SG ID는 생성 시점에야 정해져 mcp-ssm-*처럼 이름으로 미리
+    # 좁힐 수 없어 Resource: "*"다(AmazonEC2FullAccess가 이미 부여하는 것과 같은 위험 수준).
+    sg_mgmt = statements[2]
+    assert "ec2:CreateSecurityGroup" in sg_mgmt["Action"]
+    assert "ec2:AuthorizeSecurityGroupIngress" in sg_mgmt["Action"]
+    assert sg_mgmt["Resource"] == "*"
+
+    # 인벤토리 "AWS CLI로 접속" 기능이 aws ssm start-session을 실제로 열 수 있게 하는 권한 —
+    # 없으면 ssm:StartSession AccessDenied로 막힌다(2026-09-17 실사용 중 발견).
+    ssm_session = statements[3]
+    assert "ssm:StartSession" in ssm_session["Action"]
+    assert "ssm:TerminateSession" in ssm_session["Action"]
+    assert ssm_session["Resource"] == "*"
 
 
 def test_troubleshooting_covers_all_access_denied_causes(client, make_user, auth_header, platform_configured):

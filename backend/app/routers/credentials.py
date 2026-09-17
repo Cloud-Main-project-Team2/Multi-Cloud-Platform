@@ -345,7 +345,10 @@ def aws_delegation_setup(
                     # "aws_availability_zones"`는 (fallback 서브넷을 실제로 만들지 않아도) 매
                     # apply마다 무조건 평가된다(`DescribeAvailabilityZones`) — 둘 다
                     # `AmazonEC2FullAccess`에 포함되지만 그게 제대로 붙지 않은 역할에서 막히는
-                    # 게 실사용으로 확인됐다.
+                    # 게 실사용으로 확인됐다. `ec2:DescribeSecurityGroupRules`는 보안그룹 관리
+                    # 화면(`app/routers/security_groups.py`)이 규칙 목록을 조회하는 데 쓴다 —
+                    # `SecurityGroupRuleId` 기반으로 규칙을 정확히 지정해야 삭제할 수 있어서
+                    # `describe_security_groups()`만으로는 부족하다.
                     "Effect": "Allow",
                     "Action": [
                         "ce:GetCostAndUsage",
@@ -354,6 +357,7 @@ def aws_delegation_setup(
                         "ec2:DescribeVpcAttribute",
                         "ec2:DescribeSubnets",
                         "ec2:DescribeSecurityGroups",
+                        "ec2:DescribeSecurityGroupRules",
                         "ec2:DescribeAvailabilityZones",
                     ],
                     "Resource": "*",
@@ -393,6 +397,45 @@ def aws_delegation_setup(
                         "arn:aws:iam::*:role/mcp-ssm-*",
                         "arn:aws:iam::*:instance-profile/mcp-ssm-*",
                     ],
+                },
+                {
+                    # 보안그룹 관리 화면(2026-09-17, `app/routers/security_groups.py`)이 프로비저닝과
+                    # 별개로 직접 SG를 생성/삭제하고 규칙을 추가/삭제하는 데 쓰는 권한. 새로 만들
+                    # SG의 ID는 생성 시점에야 정해져 `mcp-ssm-*` 같은 이름 접두사 스코핑이 불가능하다
+                    # — 하지만 이 권한들은 `iam:PassRole`(권한 상승 위험, 위 statement 참고)과 달리
+                    # 자기 계정 안의 네트워크 규칙만 바꿀 수 있어 `Resource: "*"`로 둬도
+                    # `AmazonEC2FullAccess`가 이미 부여하는 것과 실질적으로 같은 위험 수준이다.
+                    "Effect": "Allow",
+                    "Action": [
+                        "ec2:CreateSecurityGroup",
+                        "ec2:DeleteSecurityGroup",
+                        "ec2:AuthorizeSecurityGroupIngress",
+                        "ec2:AuthorizeSecurityGroupEgress",
+                        "ec2:RevokeSecurityGroupIngress",
+                        "ec2:RevokeSecurityGroupEgress",
+                        "ec2:CreateTags",
+                    ],
+                    "Resource": "*",
+                },
+                {
+                    # 인벤토리의 "AWS CLI로 접속" 기능(`issue_cli_session()`,
+                    # `POST /resources/{id}/cli-access`)이 실제로 `aws ssm start-session`을 쓰는
+                    # 데 필요한 권한(2026-09-17 실사용 중 `ssm:StartSession AccessDenied`로 발견).
+                    # `mcp-ssm-*` 역할에 붙인 `AmazonSSMManagedInstanceCore`(§7)는 "인스턴스가
+                    # SSM에 등록되는" 권한이고, 이건 그것과 별개로 "사용자가 그 세션을 여는" 권한이라
+                    # 위임 역할 쪽에 따로 있어야 한다. `iam:PassRole`과 달리 이미 갖고 있는 EC2 전체
+                    # 제어 권한(인스턴스 시작/중지/삭제) 이상으로 위험 범위를 넓히지 않아 `Resource:
+                    # "*"`로 둔다.
+                    "Effect": "Allow",
+                    "Action": [
+                        "ssm:StartSession",
+                        "ssm:TerminateSession",
+                        "ssm:ResumeSession",
+                        "ssm:DescribeSessions",
+                        "ssm:DescribeInstanceInformation",
+                        "ssm:GetConnectionStatus",
+                    ],
+                    "Resource": "*",
                 },
             ],
             iam_console_url="https://console.aws.amazon.com/iam/home#/roles/create",
