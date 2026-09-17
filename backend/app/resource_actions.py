@@ -59,6 +59,16 @@ def _redact_sdk_message(message: str, secret_payload: dict) -> str:
     return redact(message, _secret_values(secret_payload)).strip()[:_SDK_MESSAGE_MAX]
 
 
+def fill_message_from_cause(err: ResourceActionError, secret_payload: dict) -> None:
+    """provider 어댑터가 `raise ResourceActionError(code) from exc`로 감싸며 message를 안 채운
+    경우, `__cause__`에 남은 원문 SDK 예외를 secret 제거 후 채운다. `perform_action()`뿐 아니라
+    `app/routers/security_groups.py`처럼 provider 함수를 직접 호출하는 경로도 같은 방식으로
+    "구체 원인"(§14, `app.error_patterns.translate_reason`)을 보여줄 수 있어야 해서 공용
+    함수로 뺐다(2026-09-17)."""
+    if err.message is None and err.__cause__ is not None:
+        err.message = _redact_sdk_message(str(err.__cause__), secret_payload)
+
+
 def supported_actions(provider: str, service_code: str, original_resource_type: str) -> set[str]:
     if provider == "aws" and service_code == "ec2":
         if original_resource_type == "EBS Volume":
@@ -113,8 +123,7 @@ def perform_action(
         # provider 어댑터가 `raise ResourceActionError(code) from exc`로 감쌀 때, 원문 SDK 예외는
         # __cause__에 남아 있다. 코드만으로는 알 수 없는 구체 원인을 여기서 한 번에 채운다(§18 —
         # 원문을 그대로 흘리지 않고 secret을 제거해 담는다).
-        if err.message is None and err.__cause__ is not None:
-            err.message = _redact_sdk_message(str(err.__cause__), secret_payload)
+        fill_message_from_cause(err, secret_payload)
         raise
     except Exception as exc:  # noqa: BLE001 — provider adapter는 원문 SDK 예외를 밖으로 흘리지 않는다(§18).
         raise ResourceActionError(

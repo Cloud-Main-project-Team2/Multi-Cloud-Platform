@@ -11,6 +11,7 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from app.db import engine
 from app.error_catalog import explain
+from app.error_patterns import translate_reason
 from app.errors import ApiError
 from app.logging_config import log_access, log_business_event
 from app.routers import (
@@ -99,8 +100,13 @@ async def request_context_middleware(request: Request, call_next):
 
 def _error_body(request: Request, code: str, message: str, details: list[dict] | None = None) -> dict:
     # code별 자연어 설명(증상·원인·해결책)을 함께 실어 프론트가 코드→문구 매핑을 각자 들고 있지
-    # 않아도 되게 한다. 동기 오류의 message는 우리가 만든 한글 문구라, 원문(terraform stderr) 기반의
-    # '구체 원인' 번역은 여기가 아니라 잡 serializer(프로비저닝/동기화)에서 붙인다.
+    # 않아도 되게 한다. 동기 오류의 message는 대개 우리가 만든 한글 문구지만, CSP SDK 예외를 그대로
+    # 감싸서 올리는 라우터(예: `app/routers/security_groups.py`)는 원문(redact된 SDK 메시지)을
+    # message에 담아 보낸다 — 그런 경우 여기서도 잡 serializer(프로비저닝/동기화/리소스 액션)와
+    # 같은 방식으로 '구체 원인' 번역을 시도한다(2026-09-17 — 권한 부족 에러가 CLOUD_PERMISSION_DENIED
+    # 든 PROVIDER_API_ERROR든, 동기/비동기 어느 경로로 오든 "권한을 추가하세요" 같은 실행 가능한
+    # 안내가 나오게 하기 위함). 우리가 직접 지어낸 한글 문구는 어차피 패턴에 안 걸려 None이라
+    # 기존 동작에 영향이 없다.
     exp = explain(code)
     error: dict = {
         "code": code,
@@ -113,6 +119,9 @@ def _error_body(request: Request, code: str, message: str, details: list[dict] |
             "category": exp.category,
         },
     }
+    specific_reason = translate_reason(message, code=code)
+    if specific_reason:
+        error["specific_reason"] = specific_reason
     if details:
         error["details"] = details
     return {"error": error}
