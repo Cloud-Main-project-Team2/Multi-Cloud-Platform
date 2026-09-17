@@ -73,42 +73,108 @@
     }
   });
 
-  // 🔔 알림 팝오버 — 사이드바 유틸 바의 벨 위에 뜬다.
-  // 아직 알림 API가 없어 목업 데이터로 채우고, 각 항목은 관련 화면으로 이동한다.
+  // 알림 표시용 유틸 -----------------------------------------------------------------
+  function escHtml(text) {
+    return String(text == null ? "" : text).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+  function relTime(iso) {
+    if (!iso) return "";
+    var t = new Date(iso).getTime();
+    if (isNaN(t)) return "";
+    var sec = Math.max(0, Math.floor((Date.now() - t) / 1000));
+    if (sec < 60) return "방금 전";
+    if (sec < 3600) return Math.floor(sec / 60) + "분 전";
+    if (sec < 86400) return Math.floor(sec / 3600) + "시간 전";
+    return Math.floor(sec / 86400) + "일 전";
+  }
+  // 알림 종류 → 아이콘/제목/설명/이동 대상. 문구는 프론트가 message_key/params로 만든다(백엔드 무관).
+  function notifMeta(n) {
+    var p = n.message_params || {};
+    var resource = p.resource || "";
+    var ok = '<span style="color:var(--primary)">' + ICONS.check + "</span>";
+    var bad = '<span style="color:#c0392b">' + ICONS.x + "</span>";
+    var href = n.reference_type === "provisioning_job" ? "provisioning.html" : "#";
+    if (n.type === "provisioning_succeeded") {
+      return { icon: ok, title: "프로비저닝 완료", desc: (resource ? resource + " " : "") + "생성이 완료되었습니다.", href: href };
+    }
+    if (n.type === "provisioning_failed") {
+      var reason = p.reason ? " · " + p.reason : "";
+      return { icon: bad, title: "프로비저닝 실패", desc: (resource ? resource + " " : "") + "생성에 실패했습니다." + reason, href: href };
+    }
+    return { icon: ok, title: n.type || "알림", desc: n.message_key || "", href: href };
+  }
+
+  // 🔔 알림 팝오버 — 사이드바 유틸 바의 벨 위에 뜬다. GET /notifications 실데이터로 채우고,
+  // 열람 시 read-all로 미확인 배지를 0으로 만든다. (알림 생성은 백엔드 프로비저닝이 담당)
   function initNotifications() {
     var utils = document.querySelector(".sidebar__utils");
     var bell = utils && utils.querySelector(".bell");
     if (!utils || !bell) return;
-
-    var NOTIFS = [
-      { icon: "⚡", title: "프로비저닝 완료", desc: "AWS EC2 인스턴스가 생성되었습니다.", time: "방금 전", href: "provisioning.html" },
-      { icon: "🔄", title: "동기화 실패", desc: "GCP 리소스 동기화가 실패했습니다.", time: "12분 전", href: "inventory.html" },
-      { icon: "🔑", title: "자격 증명 검증 실패", desc: "dev-gcp 자격 증명을 다시 등록해 주세요.", time: "1시간 전", href: "mypage.html" }
-    ];
+    var badge = bell.querySelector(".bell__badge");
+    var api = window.MCPApi;
 
     var pop = document.createElement("div");
     pop.className = "notif-pop hidden";
     pop.setAttribute("role", "dialog");
     pop.setAttribute("aria-label", "알림");
-    pop.innerHTML =
-      '<div class="notif-pop__head">알림 <span class="notif-pop__count">' + NOTIFS.length + "</span></div>" +
-      '<ul class="notif-pop__list">' +
-      NOTIFS.map(function (n) {
-        return '<li><a class="notif-pop__item" href="' + n.href + '">' +
-          '<span class="notif-pop__icon">' + n.icon + "</span>" +
-          '<span class="notif-pop__body">' +
-          '<span class="notif-pop__title">' + n.title + "</span>" +
-          '<span class="notif-pop__desc">' + n.desc + "</span>" +
-          '<span class="notif-pop__time">' + n.time + "</span>" +
-          "</span></a></li>";
-      }).join("") +
-      "</ul>";
     utils.appendChild(pop);
+
+    var unread = 0;
+
+    function setBadge(count) {
+      unread = count;
+      if (!badge) return;
+      if (count > 0) { badge.textContent = count > 99 ? "99+" : count; badge.style.display = ""; }
+      else { badge.style.display = "none"; }
+    }
+
+    function render(items) {
+      var head = '<div class="notif-pop__head">알림 <span class="notif-pop__count">' + items.length + "</span></div>";
+      if (!items.length) {
+        pop.innerHTML = head + '<div class="notif-pop__empty" style="padding:1rem;font-size:.8rem;color:var(--muted-foreground)">새 알림이 없습니다.</div>';
+        return;
+      }
+      pop.innerHTML = head + '<ul class="notif-pop__list">' +
+        items.map(function (n) {
+          var m = notifMeta(n);
+          return '<li><a class="notif-pop__item" href="' + m.href + '">' +
+            '<span class="notif-pop__icon">' + m.icon + "</span>" +
+            '<span class="notif-pop__body">' +
+            '<span class="notif-pop__title">' + escHtml(m.title) + "</span>" +
+            '<span class="notif-pop__desc">' + escHtml(m.desc) + "</span>" +
+            '<span class="notif-pop__time">' + escHtml(relTime(n.created_at)) + "</span>" +
+            "</span></a></li>";
+        }).join("") + "</ul>";
+    }
+
+    function load() {
+      if (!api || !api.request) { render([]); setBadge(0); return; }
+      api.request("/notifications")
+        .then(function (resp) {
+          var data = (resp && resp.data) || {};
+          render(data.items || []);
+          setBadge(data.unread_count || 0);
+        })
+        .catch(function () { render([]); setBadge(0); });
+    }
+
+    // 초기 배지: 정적 마크업의 하드코딩 값 대신 실제 미확인 개수 반영 전까지 숨긴다.
+    setBadge(0);
+    load();
 
     bell.style.cursor = "pointer";
     bell.addEventListener("click", function (e) {
       e.stopPropagation();
+      var opening = pop.classList.contains("hidden");
       pop.classList.toggle("hidden");
+      // 열 때: 미확인이 있으면 읽음 처리해 배지를 0으로.
+      if (opening && unread > 0 && api && api.request) {
+        api.request("/notifications/read-all", { method: "POST" })
+          .then(function () { setBadge(0); })
+          .catch(function () {});
+      }
     });
     document.addEventListener("click", function (e) {
       if (!e.target.closest(".notif-pop") && !e.target.closest(".bell")) pop.classList.add("hidden");

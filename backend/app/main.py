@@ -13,7 +13,16 @@ from app.db import engine
 from app.error_catalog import explain
 from app.errors import ApiError
 from app.logging_config import log_access, log_business_event
-from app.routers import agent, auth, client_logs, credentials, provisioning, resources, sync_jobs
+from app.routers import (
+    agent,
+    auth,
+    client_logs,
+    credentials,
+    notifications,
+    provisioning,
+    resources,
+    sync_jobs,
+)
 
 
 @asynccontextmanager
@@ -33,6 +42,7 @@ app.include_router(sync_jobs.router)
 app.include_router(provisioning.router)
 app.include_router(agent.router)
 app.include_router(client_logs.router)
+app.include_router(notifications.router)
 
 # 프론트(:8080, nginx 정적 서빙)와 API(:8000)가 서로 다른 오리진이라 브라우저 fetch에는
 # CORS 허용이 필요하다. Bearer 토큰만 쓰고 쿠키는 쓰지 않으므로 allow_credentials는 False로 둔다.
