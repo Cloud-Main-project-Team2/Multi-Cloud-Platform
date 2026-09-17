@@ -11,5 +11,5 @@ output "primary_blob_endpoint" {
 }
 
 output "resource_group_name" {
-  value = azurerm_resource_group.this.name
+  value = local.resource_group_name
 }

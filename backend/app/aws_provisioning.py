@@ -33,13 +33,29 @@ ALLOWED_REGIONS = ("ap-northeast-2", "us-east-1")
 
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,38}[a-z0-9]$")
 _AMI_RE = re.compile(r"^ami-[0-9a-f]{8,17}$")
+_VPC_ID_RE = re.compile(r"^vpc-[0-9a-f]{8,17}$")
+_SUBNET_ID_RE = re.compile(r"^subnet-[0-9a-f]{8,17}$")
+_SECURITY_GROUP_ID_RE = re.compile(r"^sg-[0-9a-f]{8,17}$")
+
+
+def _optional_id(provider_spec: dict, field: str, pattern: re.Pattern[str]) -> str | None:
+    """기존 리소스 재사용 ID(vpc_id/subnet_id/security_group_id)는 형식만 검사한다 — 실제
+    존재·소유 확인은 apply 시점에 AWS API가 대신 해준다(credential이 이미 그 계정으로 스코프돼
+    있어 타 계정 리소스는 조회 자체가 안 된다 — 크로스 테넌트 위험 없음)."""
+    value = provider_spec.get(field) or None
+    if value is not None and not pattern.fullmatch(value):
+        raise validation_error(
+            f"provider_spec.{field} 형식이 올바르지 않습니다.",
+            details=[{"field": f"provider_spec.{field}", "reason": "invalid"}],
+        )
+    return value
 
 
 def _derive(
     common_spec: dict, provider_spec: dict
-) -> tuple[str, str, str, str | None, dict[str, str], list[InboundRule]]:
-    """`(instance_name, region, instance_type, ami_id, tags, inbound_rules)`를 반환한다.
-    실패 시 422 `ApiError`를 raise한다."""
+) -> tuple[str, str, str, str | None, dict[str, str], list[InboundRule], str | None, str | None, str | None]:
+    """`(instance_name, region, instance_type, ami_id, tags, inbound_rules, vpc_id, subnet_id,
+    security_group_id)`를 반환한다. 실패 시 422 `ApiError`를 raise한다."""
     name = common_spec.get("name")
     if not isinstance(name, str) or not _NAME_RE.fullmatch(name):
         raise validation_error(
@@ -79,7 +95,19 @@ def _derive(
             details=[{"field": "provider_spec.ami_id", "reason": "invalid"}],
         )
 
-    return f"mcp-{name}", region, instance_type, ami_id, common.tags, common.inbound_rules
+    vpc_id = _optional_id(provider_spec, "vpc_id", _VPC_ID_RE)
+    subnet_id = _optional_id(provider_spec, "subnet_id", _SUBNET_ID_RE)
+    if subnet_id is not None and vpc_id is None:
+        raise validation_error(
+            "provider_spec.subnet_id를 지정하려면 provider_spec.vpc_id도 함께 지정해야 합니다.",
+            details=[{"field": "provider_spec.vpc_id", "reason": "required_with_subnet_id"}],
+        )
+    security_group_id = _optional_id(provider_spec, "security_group_id", _SECURITY_GROUP_ID_RE)
+
+    return (
+        f"mcp-{name}", region, instance_type, ami_id, common.tags, common.inbound_rules,
+        vpc_id, subnet_id, security_group_id,
+    )
 
 
 def validate_spec(common_spec: dict, provider_spec: dict) -> None:
@@ -95,6 +123,9 @@ def build_tfvars(
     ami_id: str | None,
     tags: dict[str, str] | None = None,
     inbound_rules: list[InboundRule] | None = None,
+    vpc_id: str | None = None,
+    subnet_id: str | None = None,
+    security_group_id: str | None = None,
 ) -> dict:
     return {
         "region": region,
@@ -103,6 +134,9 @@ def build_tfvars(
         "ami_id": ami_id,
         "tags": {**(tags or {}), "managed-by": "multi-cloud-platform", "job-id": str(job_id)},
         "inbound_rules": [rule.model_dump() for rule in (inbound_rules or [])],
+        "vpc_id": vpc_id,
+        "subnet_id": subnet_id,
+        "security_group_id": security_group_id,
     }
 
 
@@ -132,10 +166,16 @@ def run(
     """백그라운드 job에서 호출된다 — 이미 `validate_spec()`을 통과한 입력이지만, raise 대신
     `TerraformResult`로 실패를 표현해 백그라운드 태스크 밖으로 예외가 새 나가지 않게 한다."""
     try:
-        instance_name, region, instance_type, ami_id, tags, inbound_rules = _derive(common_spec, provider_spec)
+        (
+            instance_name, region, instance_type, ami_id, tags, inbound_rules,
+            vpc_id, subnet_id, security_group_id,
+        ) = _derive(common_spec, provider_spec)
         credential_env = _credential_env(secret_payload)
     except ApiError as exc:
         return TerraformResult(success=False, error_code=exc.code, error_message=exc.message)
 
-    tfvars = build_tfvars(job_id, instance_name, region, instance_type, ami_id, tags, inbound_rules)
+    tfvars = build_tfvars(
+        job_id, instance_name, region, instance_type, ami_id, tags, inbound_rules,
+        vpc_id, subnet_id, security_group_id,
+    )
     return run_apply(workspace_dir, MODULE_DIR, tfvars, credential_env, cancel_check=cancel_check)

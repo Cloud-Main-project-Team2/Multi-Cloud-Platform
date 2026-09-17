@@ -70,6 +70,12 @@ class ProviderSpec(BaseModel):
     admin_password: str
     image: Literal["Ubuntu 22.04", "Windows Server 2022"] = "Ubuntu 22.04"
     create_public_ip: bool = True
+    # 기존 리소스 재사용(2026-09-17 결정, 전부 선택) — null이면 지금까지처럼 매번 새로 만든다.
+    # 존재/소유 확인은 apply 시점에 Azure API가 대신 해준다(credential이 이미 그 구독으로
+    # 스코프돼 있어 다른 구독 리소스는 조회 자체가 안 된다 — 크로스 테넌트 위험 없음).
+    existing_resource_group_name: str | None = None
+    existing_subnet_id: str | None = None
+    existing_network_security_group_id: str | None = None
 
     @field_validator("instance_type")
     @classmethod
@@ -127,6 +133,9 @@ def build_tfvars(job_id: int, workspace_name: str, common: ComputeCommonSpec, pr
         "create_public_ip": provider.create_public_ip,
         "inbound_rules": [rule.model_dump() for rule in common.inbound_rules],
         "tags": tags,
+        "existing_resource_group_name": provider.existing_resource_group_name,
+        "existing_subnet_id": provider.existing_subnet_id,
+        "existing_network_security_group_id": provider.existing_network_security_group_id,
     }
 
 

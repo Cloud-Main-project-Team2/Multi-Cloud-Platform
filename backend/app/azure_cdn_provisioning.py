@@ -120,6 +120,10 @@ class _ProviderSpec(BaseModel):
 
     origin: str
     resource_group: str | None = None
+    # true면 resource_group을 "새로 만들 이름"이 아니라 "조회할 기존 리소스 그룹 이름"으로 쓴다
+    # (2026-09-17 결정 — 그전엔 값이 와도 항상 새로 만들려고 시도해서 기존 이름과 겹치면 그냥
+    # apply가 실패했다). false(기본값)면 지금까지 동작 그대로.
+    use_existing_resource_group: bool = False
     sku: Literal["Standard"]
     query_string_caching_behavior: str = "IgnoreQueryString"
     protocol: str = "http_and_https"
@@ -158,6 +162,12 @@ def _derive(common_spec: dict, provider_spec: dict) -> tuple[_CommonSpec, _Provi
             "마침표로 끝날 수 없습니다.",
             details=[{"field": "provider_spec.resource_group", "reason": "invalid"}],
         )
+    if provider.use_existing_resource_group and provider.resource_group is None:
+        raise validation_error(
+            "provider_spec.use_existing_resource_group을 쓰려면 provider_spec.resource_group(조회할 "
+            "기존 이름)도 함께 지정해야 합니다.",
+            details=[{"field": "provider_spec.resource_group", "reason": "required_with_use_existing"}],
+        )
     if provider.query_string_caching_behavior not in _QUERY_STRING_CODES:
         raise validation_error(
             f"provider_spec.query_string_caching_behavior은 {', '.join(_QUERY_STRING_CODES)} 중 "
@@ -195,6 +205,7 @@ def build_tfvars(job_id: int, workspace_name: str, common: _CommonSpec, provider
 
     return {
         "resource_group_name": resource_group_name,
+        "use_existing_resource_group": provider.use_existing_resource_group,
         # Front Door 리소스 자체는 global이지만 리소스 그룹엔 location이 필요하다 — 다른 Azure
         # 러너들과 같은 기본 리전에 고정한다(사용자 입력 없음, CDN은 지역 선택 UI가 아예 없다).
         "location": "koreacentral",

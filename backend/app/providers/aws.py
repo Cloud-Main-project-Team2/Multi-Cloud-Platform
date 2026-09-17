@@ -223,6 +223,58 @@ def issue_cli_session(secret_payload: dict, *, duration_seconds: int = 900) -> d
     }
 
 
+def list_network_resources(secret_payload: dict, region: str) -> dict:
+    """프로비저닝 폼의 "기존 리소스 사용"에서 실제 VPC/서브넷/보안 그룹 목록을 보여주기 위한
+    조회 전용 API(2026-09-17). `secret_payload`는 이미 해석된(위임이면 AssumeRole 결과) 자격증명을
+    받는다고 가정한다 — `perform_resource_action()`/`discover_resources()`와 동일 관례로, 위임
+    처리는 호출부(라우터)가 `resolve_secret_payload()`로 미리 해 둔다.
+
+    실패 시(권한 부족 등) 빈 목록이 아니라 예외를 올린다 — 사용자가 "왜 하나도 안 보이지"를
+    "권한이 없다"와 "진짜 하나도 없다"로 구분할 수 있어야 한다(리소스 동기화의 "0건은 대부분
+    실패가 아니다" 문제와 반대 방향 결정).
+    """
+    from app.resource_actions import ResourceActionError
+
+    ec2 = _client(secret_payload, "ec2", region)
+    try:
+        vpcs_resp = ec2.describe_vpcs()
+        subnets_resp = ec2.describe_subnets()
+        sgs_resp = ec2.describe_security_groups()
+    except (BotoCoreError, ClientError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+    def _name_tag(tags) -> str | None:
+        for t in tags or []:
+            if t.get("Key") == "Name":
+                return t.get("Value")
+        return None
+
+    vpcs = [
+        {
+            "id": v["VpcId"],
+            "cidr_block": v.get("CidrBlock"),
+            "name": _name_tag(v.get("Tags")),
+            "is_default": v.get("IsDefault", False),
+        }
+        for v in vpcs_resp.get("Vpcs", [])
+    ]
+    subnets = [
+        {
+            "id": s["SubnetId"],
+            "vpc_id": s["VpcId"],
+            "availability_zone": s.get("AvailabilityZone"),
+            "cidr_block": s.get("CidrBlock"),
+            "name": _name_tag(s.get("Tags")),
+        }
+        for s in subnets_resp.get("Subnets", [])
+    ]
+    security_groups = [
+        {"id": g["GroupId"], "vpc_id": g.get("VpcId"), "name": g.get("GroupName")}
+        for g in sgs_resp.get("SecurityGroups", [])
+    ]
+    return {"vpcs": vpcs, "subnets": subnets, "security_groups": security_groups}
+
+
 def _instance_tags(tag_list) -> tuple[dict, str | None]:
     tags = {t["Key"]: t["Value"] for t in tag_list or []}
     return tags, tags.get("Name")

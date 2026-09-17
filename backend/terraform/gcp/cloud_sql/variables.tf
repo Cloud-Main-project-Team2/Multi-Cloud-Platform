@@ -44,3 +44,9 @@ variable "labels" {
   type        = map(string)
   default     = {}
 }
+
+variable "network" {
+  description = "기존 VPC 네트워크를 재사용하려면 그 이름 또는 self_link. null이면 이 job 전용 VPC를 새로 만든다. 재사용 시 그 VPC에 Cloud SQL Private Services Access가 이미 설정돼 있어야 한다(이 모듈이 피어링을 대신 만들지 않는다 — 모듈 상단 주석 참고)."
+  type        = string
+  default     = null
+}

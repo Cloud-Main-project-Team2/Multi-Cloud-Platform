@@ -5,6 +5,7 @@ import re
 from azure.core.exceptions import AzureError, ClientAuthenticationError, HttpResponseError
 from azure.identity import ClientSecretCredential
 from azure.mgmt.compute import ComputeManagementClient
+from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.subscriptions import SubscriptionClient
 
@@ -103,3 +104,70 @@ def discover_resources(secret_payload: dict, subscription_id: str) -> list:
         pass
 
     return results
+
+
+def list_network_resources(secret_payload: dict, subscription_id: str) -> dict:
+    """프로비저닝 폼의 "기존 리소스 사용"에서 실제 리소스 그룹/VNet/NSG 목록을 보여주기 위한
+    조회 전용 API(2026-09-17). AWS와 달리 리전 파라미터가 없다 — 리소스 그룹/VNet/NSG는 구독
+    전체에서 조회하고 각 항목의 location(리전)을 결과에 그대로 담아 보여준다.
+
+    실패 시 빈 목록이 아니라 예외를 올린다(app/providers/aws.py의 list_network_resources와
+    동일 원칙 — "권한 없음"과 "진짜 없음"을 구분해야 한다)."""
+    from app.resource_actions import ResourceActionError
+
+    try:
+        credential = ClientSecretCredential(
+            tenant_id=secret_payload["tenant_id"],
+            client_id=secret_payload["client_id"],
+            client_secret=secret_payload["client_secret"],
+        )
+        resource_client = ResourceManagementClient(credential, subscription_id)
+        network_client = NetworkManagementClient(credential, subscription_id)
+
+        resource_groups = [
+            {"name": rg.name, "location": rg.location} for rg in resource_client.resource_groups.list()
+        ]
+        virtual_networks = [
+            {
+                "id": vnet.id,
+                "name": vnet.name,
+                "resource_group": vnet.id.split("/")[4],
+                "location": vnet.location,
+                "address_space": list((vnet.address_space.address_prefixes if vnet.address_space else None) or []),
+            }
+            for vnet in network_client.virtual_networks.list_all()
+        ]
+        network_security_groups = [
+            {"id": nsg.id, "name": nsg.name, "resource_group": nsg.id.split("/")[4], "location": nsg.location}
+            for nsg in network_client.network_security_groups.list_all()
+        ]
+
+        # azure/vm은 (위임이 필요 없어) 기존 서브넷을 그대로 재사용할 수 있다 — VNet 목록만으론
+        # 고를 수 없어 각 VNet 밑의 서브넷도 따로 나열한다. VNet마다 한 번씩 호출해야 해서
+        # (subnets.list는 VNet 단위 API) VNet이 아주 많은 구독에선 느릴 수 있지만, 이 도구의
+        # 조회 규모(개발/데모용 구독)에선 충분하다.
+        subnets: list[dict] = []
+        for vnet in network_client.virtual_networks.list_all():
+            vnet_rg = vnet.id.split("/")[4]
+            try:
+                for subnet in network_client.subnets.list(vnet_rg, vnet.name):
+                    subnets.append(
+                        {
+                            "id": subnet.id,
+                            "name": subnet.name,
+                            "vnet_name": vnet.name,
+                            "resource_group": vnet_rg,
+                            "address_prefix": subnet.address_prefix,
+                        }
+                    )
+            except (ClientAuthenticationError, HttpResponseError, AzureError):
+                continue
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+    return {
+        "resource_groups": resource_groups,
+        "virtual_networks": virtual_networks,
+        "network_security_groups": network_security_groups,
+        "azure_subnets": subnets,
+    }

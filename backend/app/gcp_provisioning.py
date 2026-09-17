@@ -46,9 +46,28 @@ _ZONE_SUFFIX = "-a"
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,38}[a-z0-9]$")
 
 
-def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str, list[InboundRule]]:
-    """`(instance_name, region, machine_type, inbound_rules)`를 반환한다. 실패 시 422
-    `ApiError`를 raise한다."""
+_NETWORK_NAME_RE = re.compile(r"^[a-z]([-a-z0-9]*[a-z0-9])?$")
+
+
+def _optional_network_name(provider_spec: dict, field: str) -> str | None:
+    """기존 VPC/서브넷 이름(또는 self_link)은 GCP 리소스 이름 규칙만 가볍게 검사한다 — 존재/소유
+    확인은 apply 시점에 GCP API가 대신 해준다(credential이 이미 그 프로젝트로 스코프돼 있어
+    다른 프로젝트 네트워크는 참조 자체가 안 된다 — 크로스 테넌트 위험 없음). self_link
+    (`https://www.googleapis.com/...`)도 그대로 받아준다."""
+    value = provider_spec.get(field) or None
+    if value is not None and not (value.startswith("https://") or _NETWORK_NAME_RE.fullmatch(value)):
+        raise validation_error(
+            f"provider_spec.{field} 형식이 올바르지 않습니다.",
+            details=[{"field": f"provider_spec.{field}", "reason": "invalid"}],
+        )
+    return value
+
+
+def _derive(
+    common_spec: dict, provider_spec: dict
+) -> tuple[str, str, str, list[InboundRule], str | None, str | None]:
+    """`(instance_name, region, machine_type, inbound_rules, network, subnetwork)`를 반환한다.
+    실패 시 422 `ApiError`를 raise한다."""
     name = common_spec.get("name")
     if not isinstance(name, str) or not _NAME_RE.fullmatch(name):
         raise validation_error(
@@ -81,7 +100,10 @@ def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str, list
             details=[{"field": "provider_spec.region", "reason": "invalid"}],
         )
 
-    return f"mcp-{name}", region, machine_type, common.inbound_rules
+    network = _optional_network_name(provider_spec, "network")
+    subnetwork = _optional_network_name(provider_spec, "subnetwork")
+
+    return f"mcp-{name}", region, machine_type, common.inbound_rules, network, subnetwork
 
 
 def validate_spec(common_spec: dict, provider_spec: dict) -> None:
@@ -96,6 +118,8 @@ def build_tfvars(
     region: str,
     machine_type: str,
     inbound_rules: list[InboundRule] | None = None,
+    network: str | None = None,
+    subnetwork: str | None = None,
 ) -> dict:
     return {
         "project_id": project_id,
@@ -105,6 +129,8 @@ def build_tfvars(
         "instance_name": instance_name,
         "labels": {"managed-by": "multi-cloud-platform", "job-id": str(job_id)},
         "inbound_rules": [rule.model_dump() for rule in (inbound_rules or [])],
+        "network": network,
+        "subnetwork": subnetwork,
     }
 
 
@@ -121,11 +147,11 @@ def run(
     """백그라운드 job에서 호출된다 — 이미 `validate_spec()`을 통과한 입력이지만, raise 대신
     `TerraformResult`로 실패를 표현해 백그라운드 태스크 밖으로 예외가 새 나가지 않게 한다."""
     try:
-        instance_name, region, machine_type, inbound_rules = _derive(common_spec, provider_spec)
+        instance_name, region, machine_type, inbound_rules, network, subnetwork = _derive(common_spec, provider_spec)
     except ApiError as exc:
         return TerraformResult(success=False, error_code=exc.code, error_message=exc.message)
 
-    tfvars = build_tfvars(job_id, project_id, instance_name, region, machine_type, inbound_rules)
+    tfvars = build_tfvars(job_id, project_id, instance_name, region, machine_type, inbound_rules, network, subnetwork)
     # GCP는 secret_payload(서비스 계정 키 JSON)를 환경변수가 아니라 파일로 넘긴다 —
     # terraform_runner가 0600 임시 파일로 써서 GOOGLE_APPLICATION_CREDENTIALS로만 노출한다.
     return run_apply(

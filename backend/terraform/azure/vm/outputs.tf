@@ -3,7 +3,7 @@ output "vm_id" {
 }
 
 output "resource_group_name" {
-  value = azurerm_resource_group.this.name
+  value = local.resource_group_name
 }
 
 output "private_ip_address" {

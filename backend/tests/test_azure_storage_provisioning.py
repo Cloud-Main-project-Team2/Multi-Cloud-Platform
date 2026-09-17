@@ -58,6 +58,20 @@ def test_build_tfvars_truncates_account_name_to_24_chars():
     assert tfvars["account_name"] == ("mcp" + "x" * 21)[:24]
 
 
+def test_build_tfvars_defaults_existing_resource_group_to_none():
+    common, provider = azure_storage_provisioning._derive(VALID_COMMON, VALID_PROVIDER)
+    tfvars = azure_storage_provisioning.build_tfvars(42, "user-1-job-42", common, provider)
+    assert tfvars["existing_resource_group_name"] is None
+
+
+def test_build_tfvars_includes_existing_resource_group_when_given():
+    common, provider = azure_storage_provisioning._derive(
+        VALID_COMMON, {**VALID_PROVIDER, "existing_resource_group_name": "my-existing-rg"}
+    )
+    tfvars = azure_storage_provisioning.build_tfvars(42, "user-1-job-42", common, provider)
+    assert tfvars["existing_resource_group_name"] == "my-existing-rg"
+
+
 def test_run_calls_run_apply_with_arm_credential_env(monkeypatch, tmp_path):
     captured = {}
 

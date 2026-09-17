@@ -73,3 +73,21 @@ variable "tags" {
   type    = map(string)
   default = {}
 }
+
+variable "existing_resource_group_name" {
+  description = "기존 리소스 그룹을 재사용하려면 그 이름. null이면 var.resource_group_name으로 새로 만든다."
+  type        = string
+  default     = null
+}
+
+variable "existing_subnet_id" {
+  description = "기존 서브넷을 재사용하려면 그 ARM 리소스 ID(VNet 전체를 포함). null이면 VNet/서브넷을 새로 만든다."
+  type        = string
+  default     = null
+}
+
+variable "existing_network_security_group_id" {
+  description = "기존 NSG를 재사용하려면 그 ARM 리소스 ID. null이면 var.inbound_rules 기반으로 새 NSG를 만든다. 재사용 시 var.inbound_rules는 적용되지 않는다."
+  type        = string
+  default     = null
+}
