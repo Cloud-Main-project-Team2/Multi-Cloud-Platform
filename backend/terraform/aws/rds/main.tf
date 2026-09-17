@@ -16,15 +16,31 @@ provider "aws" {
   region = var.region
 }
 
+# var.vpc_id가 있으면 그 VPC를 그대로 쓰고(존재/소유 확인은 apply 시점에 AWS API가 대신 해준다 —
+# credential이 이미 그 계정으로 스코프돼 있어 타 계정 VPC는 조회 자체가 안 된다), 없으면
+# 지금까지처럼 계정의 기본(default) VPC를 쓴다(2026-09-17 결정, ec2/main.tf와 동일 패턴).
 data "aws_vpc" "default" {
+  count   = var.vpc_id == null ? 1 : 0
   default = true
 }
 
-# aws_db_subnet_group은 서로 다른 AZ의 서브넷이 최소 2개 필요하다 — 기본 VPC의 기본 서브넷을 그대로 쓴다.
-data "aws_subnets" "default" {
+data "aws_vpc" "selected" {
+  count = var.vpc_id != null ? 1 : 0
+  id    = var.vpc_id
+}
+
+locals {
+  vpc_id = var.vpc_id != null ? data.aws_vpc.selected[0].id : data.aws_vpc.default[0].id
+}
+
+# aws_db_subnet_group은 서로 다른 AZ의 서브넷이 최소 2개 필요하다 — 선택된 VPC(기본 또는
+# var.vpc_id)의 서브넷을 읽기 전용으로 조회해서 그대로 쓴다. 개별 서브넷을 직접 고르게 하지
+# 않는 이유: 서브넷 자체를 건드리지 않고(재사용 시에도 변경 없음) 그 VPC의 서브넷을 그대로
+# 활용하는 게 사용자 입력을 줄이면서도 안전하다.
+data "aws_subnets" "selected" {
   filter {
     name   = "vpc-id"
-    values = [data.aws_vpc.default.id]
+    values = [local.vpc_id]
   }
 }
 
@@ -38,38 +54,43 @@ data "aws_availability_zones" "available" {
 }
 
 locals {
-  needs_fallback_subnets = length(data.aws_subnets.default.ids) < 2
+  needs_fallback_subnets = length(data.aws_subnets.selected.ids) < 2
+  vpc_cidr_block          = var.vpc_id != null ? data.aws_vpc.selected[0].cidr_block : data.aws_vpc.default[0].cidr_block
   # engine별 기본 포트 — provider_spec.engine 허용 목록(mysql/postgres)과 짝을 맞춘다.
   port = var.engine == "mysql" ? 3306 : 5432
 }
 
 resource "aws_subnet" "fallback" {
   count             = local.needs_fallback_subnets ? 2 : 0
-  vpc_id            = data.aws_vpc.default.id
-  cidr_block        = cidrsubnet(data.aws_vpc.default.cidr_block, 8, count.index)
+  vpc_id            = local.vpc_id
+  cidr_block        = cidrsubnet(local.vpc_cidr_block, 8, count.index)
   availability_zone = data.aws_availability_zones.available.names[count.index]
   tags              = { Name = "mcp-fallback-subnet-${count.index}" }
 }
 
 resource "aws_db_subnet_group" "this" {
   name_prefix = "${var.instance_name}-"
-  subnet_ids  = local.needs_fallback_subnets ? aws_subnet.fallback[*].id : data.aws_subnets.default.ids
+  subnet_ids  = local.needs_fallback_subnets ? aws_subnet.fallback[*].id : data.aws_subnets.selected.ids
   tags        = var.tags
 }
 
-# 인터넷 전체가 아니라 같은 기본 VPC 안에서만 접근을 허용한다 — publicly_accessible=false와
-# 짝을 맞춘 기본값(EC2 모듈의 inbound_rules처럼 호출자가 여는 게 아니라 이 리소스는 항상
-# 비공개, app/aws_rds_provisioning.py 결정 참고). 같은 VPC의 EC2 인스턴스에서는 접속 가능하다.
+# 인터넷 전체가 아니라 같은 VPC 안에서만 접근을 허용한다 — publicly_accessible=false와 짝을
+# 맞춘 기본값(EC2 모듈의 inbound_rules처럼 호출자가 여는 게 아니라 이 리소스는 항상 비공개,
+# app/aws_rds_provisioning.py 결정 참고). 같은 VPC의 EC2 인스턴스에서는 접속 가능하다.
+# var.security_group_id가 오면 그 보안 그룹을 그대로 쓰고 우리 전용 보안 그룹은 만들지 않는다 —
+# 이 경우 위 "VPC CIDR만 허용" 정책은 적용되지 않는다(그 보안 그룹 자체의 규칙이 그대로 유효,
+# 호출자 책임 — ec2/main.tf의 기존 보안 그룹 재사용과 동일 원칙).
 resource "aws_security_group" "this" {
+  count       = var.security_group_id == null ? 1 : 0
   name_prefix = "${var.instance_name}-"
-  vpc_id      = data.aws_vpc.default.id
+  vpc_id      = local.vpc_id
   description = "Managed by multi-cloud-platform for ${var.instance_name}"
 
   ingress {
     from_port   = local.port
     to_port     = local.port
     protocol    = "tcp"
-    cidr_blocks = [data.aws_vpc.default.cidr_block]
+    cidr_blocks = [local.vpc_cidr_block]
   }
 
   egress {
@@ -80,6 +101,10 @@ resource "aws_security_group" "this" {
   }
 
   tags = var.tags
+}
+
+locals {
+  resolved_security_group_id = var.security_group_id != null ? var.security_group_id : aws_security_group.this[0].id
 }
 
 resource "aws_db_instance" "this" {
@@ -95,7 +120,7 @@ resource "aws_db_instance" "this" {
   password          = var.master_password
 
   db_subnet_group_name   = aws_db_subnet_group.this.name
-  vpc_security_group_ids = [aws_security_group.this.id]
+  vpc_security_group_ids = [local.resolved_security_group_id]
   publicly_accessible    = false
   # 개발/테스트 정리 목적(app/dev_destroy_job.py) — 삭제 시 최종 스냅샷을 만들지 않는다.
   skip_final_snapshot = true

@@ -33,3 +33,21 @@ variable "inbound_rules" {
   default     = []
   description = "인바운드 규칙(공통 설정 항목). 비어 있으면 인바운드를 아무것도 열지 않는다(호출자가 명시적으로 넘긴 규칙만 신뢰)."
 }
+
+variable "vpc_id" {
+  type        = string
+  default     = null
+  description = "기존 VPC를 재사용하려면 그 VPC ID. null이면 계정의 기본(default) VPC를 쓴다."
+}
+
+variable "subnet_id" {
+  type        = string
+  default     = null
+  description = "기존 서브넷을 재사용하려면 그 서브넷 ID. null이면 선택된 VPC의 서브넷을 자동 탐색하고(없으면 새로 만든다)."
+}
+
+variable "security_group_id" {
+  type        = string
+  default     = null
+  description = "기존 보안 그룹을 재사용하려면 그 ID. null이면 var.inbound_rules 기반으로 전용 보안 그룹을 새로 만든다. 기존 보안 그룹을 재사용하면 var.inbound_rules는 적용되지 않는다 — 그 보안 그룹 자체의 규칙이 그대로 쓰인다."
+}

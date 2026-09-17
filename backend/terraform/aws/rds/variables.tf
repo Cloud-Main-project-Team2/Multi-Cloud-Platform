@@ -34,3 +34,15 @@ variable "tags" {
   default     = {}
   description = "추가 태그"
 }
+
+variable "vpc_id" {
+  type        = string
+  default     = null
+  description = "기존 VPC를 재사용하려면 그 VPC ID. null이면 계정의 기본(default) VPC를 쓴다. 이 VPC의 기존 서브넷을 읽기 전용으로 조회해 DB 서브넷 그룹을 구성한다."
+}
+
+variable "security_group_id" {
+  type        = string
+  default     = null
+  description = "기존 보안 그룹을 재사용하려면 그 ID. null이면 '선택된 VPC CIDR만 허용'하는 전용 보안 그룹을 새로 만든다. 기존 보안 그룹을 재사용하면 이 정책은 적용되지 않는다 — 그 보안 그룹 자체의 규칙이 그대로 쓰인다."
+}

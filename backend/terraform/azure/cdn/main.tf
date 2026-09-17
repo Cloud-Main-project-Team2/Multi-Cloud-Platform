@@ -29,15 +29,28 @@ provider "azurerm" {
   features {}
 }
 
+# var.use_existing_resource_group가 true면 var.resource_group_name을 "새로 만들 이름"이 아니라
+# "조회할 기존 이름"으로 쓴다(2026-09-17 결정) — 이전엔 이 이름으로 무조건 새로 만들려고 해서
+# 기존 이름과 겹치면 apply가 그냥 실패했다(app/azure_cdn_provisioning.py 모듈 주석 참고).
 resource "azurerm_resource_group" "this" {
+  count    = var.use_existing_resource_group ? 0 : 1
   name     = var.resource_group_name
   location = var.location
   tags     = var.tags
 }
 
+data "azurerm_resource_group" "existing" {
+  count = var.use_existing_resource_group ? 1 : 0
+  name  = var.resource_group_name
+}
+
+locals {
+  resource_group_name = var.use_existing_resource_group ? data.azurerm_resource_group.existing[0].name : azurerm_resource_group.this[0].name
+}
+
 resource "azurerm_cdn_frontdoor_profile" "this" {
   name                = var.profile_name
-  resource_group_name = azurerm_resource_group.this.name
+  resource_group_name = local.resource_group_name
   # Standard 고정 — app/azure_cdn_provisioning.py의 validate_spec()이 Premium을 거부한다
   # (Premium은 월 $330 vs Standard $35, Microsoft Learn 가격 비교 — 이 프로젝트가 쓰지 않는
   # WAF 관리형 규칙/Private Link 오리진 때문에 10배 가까이 비쌀 이유가 없다).

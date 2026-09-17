@@ -84,6 +84,43 @@ def test_run_calls_run_apply_with_credentials_file_and_password_env(monkeypatch,
     assert captured["secrets"] == ["S3curePassw0rd!"]
 
 
+def test_validate_spec_accepts_existing_network():
+    gcp_cloudsql_provisioning.validate_spec(VALID_COMMON, {**VALID_PROVIDER, "network": "my-existing-vpc"})
+
+
+def test_validate_spec_rejects_invalid_network_name():
+    with pytest.raises(ApiError) as exc_info:
+        gcp_cloudsql_provisioning.validate_spec(VALID_COMMON, {**VALID_PROVIDER, "network": "Not Valid!"})
+    assert exc_info.value.code == "VALIDATION_ERROR"
+
+
+def test_build_tfvars_defaults_network_to_none():
+    engine_config = gcp_cloudsql_provisioning._ENGINE_CONFIG["MySQL"]
+    tfvars = gcp_cloudsql_provisioning.build_tfvars(42, "proj-1", "mcp-web-db", "asia-northeast3", engine_config)
+    assert tfvars["network"] is None
+
+
+def test_run_passes_existing_network_through_to_tfvars(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run_apply(workspace_dir, module_dir, tfvars, credential_env, *, credentials_file=None, secrets=None, cancel_check=None):
+        captured["tfvars"] = tfvars
+        return TerraformResult(success=True, outputs={"instance_name": "mcp-web-db"})
+
+    monkeypatch.setattr(gcp_cloudsql_provisioning, "run_apply", fake_run_apply)
+
+    gcp_cloudsql_provisioning.run(
+        job_id=1,
+        workspace_dir=tmp_path,
+        project_id="proj-1",
+        common_spec=VALID_COMMON,
+        provider_spec={**VALID_PROVIDER, "network": "my-existing-vpc"},
+        secret_payload={"type": "service_account", "token_uri": "https://oauth2.googleapis.com/token"},
+    )
+
+    assert captured["tfvars"]["network"] == "my-existing-vpc"
+
+
 def test_run_returns_failed_result_on_invalid_spec(tmp_path):
     result = gcp_cloudsql_provisioning.run(
         job_id=1,

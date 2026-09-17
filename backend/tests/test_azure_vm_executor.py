@@ -175,3 +175,37 @@ def test_run_uses_workspace_name_for_resource_group(monkeypatch, tmp_path):
         project_id=PROJECT_ID,
     )
     assert captured["rg"] == "rg-user-1-job-7"
+
+
+def test_validate_spec_accepts_existing_resource_fields():
+    azure.validate_spec(
+        COMMON_SPEC,
+        {
+            **PROVIDER_SPEC,
+            "existing_resource_group_name": "my-existing-rg",
+            "existing_subnet_id": "/subscriptions/x/resourceGroups/my-existing-rg/providers/Microsoft.Network/virtualNetworks/vnet1/subnets/subnet1",
+            "existing_network_security_group_id": "/subscriptions/x/resourceGroups/my-existing-rg/providers/Microsoft.Network/networkSecurityGroups/nsg1",
+        },
+    )
+
+
+def test_run_passes_existing_resource_fields_through_to_tfvars(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run_apply(workspace_dir, module_dir, tfvars, credential_env, **_):
+        captured["tfvars"] = tfvars
+        return TerraformResult(success=True, outputs={})
+
+    monkeypatch.setattr(azure, "run_apply", fake_run_apply)
+
+    azure.run(
+        job_id=7,
+        workspace_dir=Path(tmp_path) / "user-1-job-7",
+        common_spec=COMMON_SPEC,
+        provider_spec={**PROVIDER_SPEC, "existing_resource_group_name": "my-existing-rg"},
+        secret_payload=SECRET_PAYLOAD,
+        project_id=PROJECT_ID,
+    )
+    assert captured["tfvars"]["existing_resource_group_name"] == "my-existing-rg"
+    assert captured["tfvars"]["existing_subnet_id"] is None
+    assert captured["tfvars"]["existing_network_security_group_id"] is None

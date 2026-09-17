@@ -25,6 +25,155 @@
     .cloud-card__ico{ transition:background-color .18s ease-out, color .18s ease-out; }
     .cloud-card:hover .cloud-card__ico{ background:var(--primary); color:#fff; }
     @media (prefers-reduced-motion: reduce){ .cloud-card, .cloud-card__ico{ transition:none; } .cloud-card:hover{ transform:none; } }
+
+    /* 페이지 기본 배경을 흰색(surface)으로 — hero만 배경색을 두고 나머지 섹션은 흰색 위에 얹는다. */
+    body{ background:var(--surface); }
+
+    /* 히어로 배경 이미지 — hero 영역에만 배경사진을 깔고, 위에 오버레이를 얹어 텍스트 가독성을 확보한다. */
+    .hero{ position:relative; isolation:isolate; overflow:hidden; }
+    .hero::before{
+      content:""; position:absolute; inset:0; z-index:-2;
+      background:url("assets/imgs/multicloud-hero-background-v2.png") center/cover no-repeat;
+    }
+    /* 라이트: 밝은 배경 위에 어두운 텍스트가 읽히도록 흰색 오버레이. */
+    .hero::after{
+      content:""; position:absolute; inset:0; z-index:-1;
+      background:linear-gradient(to right, rgba(255,255,255,.88), rgba(255,255,255,.55));
+    }
+    /* 다크: 어두운 배경 위에 밝은 텍스트가 읽히도록 어두운 오버레이. */
+    :root[data-theme="dark"] .hero::after{
+      background:linear-gradient(to right, rgba(10,20,32,.85), rgba(10,20,32,.5));
+    }
+
+    /* ===== Explore the workspace 기능 투어 =====
+       외부 시안(main-home-animated.html)의 탭 투어를 이식. 원본의 하드코딩 색상을
+       theme.css 토큰으로 치환해 라이트/다크 모두에서 동작하게 하고, 모든 규칙을
+       .ws-explore로 네임스페이스해 기존 페이지 요소(h2/h3 등)에 영향이 없게 한다. */
+    .ws-explore .section-head{ text-align:center; margin-bottom:44px; }
+    .ws-explore .eyebrow{ font-size:12px; font-weight:800; letter-spacing:2px; color:var(--primary); text-transform:uppercase; }
+    .ws-explore h2{ font-size:clamp(28px,3vw,40px); letter-spacing:-1.6px; line-height:1.35; margin:12px 0 14px; font-weight:800; color:var(--foreground); }
+    .ws-explore .section-head p{ color:var(--muted-foreground); margin:0; font-size:15px; }
+
+    .ws-explore .tour{ border:1px solid var(--border); border-radius:20px; overflow:hidden; box-shadow:0 18px 50px rgba(16,47,75,.06); background:var(--surface); }
+    .ws-explore .tabs{ display:flex; padding:10px; background:var(--muted); gap:6px; border-bottom:1px solid var(--border); }
+    .ws-explore .tab{ flex:1; border:0; background:none; color:var(--muted-foreground); border-radius:10px; padding:15px 8px; font-size:14px; font-weight:700; position:relative; cursor:pointer; }
+    .ws-explore .tab[aria-selected=true]{ background:var(--surface); color:var(--primary); box-shadow:0 3px 12px rgba(25,63,78,.05); }
+    .ws-explore .tab small{ font-size:9px; color:var(--muted-foreground); margin-left:5px; }
+
+    .ws-explore .tour-body{ display:grid; grid-template-columns:.85fr 1.15fr; min-height:365px; align-items:center; gap:38px; padding:40px; }
+    .ws-explore .tour-copy .number{ font-size:12px; letter-spacing:2px; color:var(--muted-foreground); }
+    .ws-explore .tour-copy h3{ font-size:28px; letter-spacing:-1.2px; line-height:1.4; margin:13px 0; font-weight:800; color:var(--foreground); }
+    .ws-explore .tour-copy p{ color:var(--muted-foreground); font-size:14px; word-break:keep-all; }
+    .ws-explore .hint{ display:flex; align-items:flex-start; gap:9px; font-size:12px; color:var(--primary); margin-top:24px; }
+    .ws-explore .hint:before{ content:"↗"; }
+
+    .ws-explore .scene{ min-width:0; padding:23px; border:1px solid var(--border); border-radius:13px; background:var(--muted); box-shadow:0 12px 24px rgba(33,77,103,.06); }
+    .ws-explore .scene-head{ font-size:13px; font-weight:700; display:flex; justify-content:space-between; gap:8px; align-items:center; margin-bottom:18px; color:var(--foreground); }
+    .ws-explore .scene-head small{ font-weight:400; font-size:10px; color:var(--muted-foreground); }
+    .ws-explore .scene .metric strong{ font-size:27px; }
+    .ws-explore .scene-row{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px; background:var(--surface); border-bottom:1px solid var(--border); font-size:11px; color:var(--foreground); }
+    .ws-explore .scene-row:first-of-type{ border-radius:7px 7px 0 0; }
+
+    .ws-explore .metrics{ display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+    .ws-explore .metric{ border:1px solid var(--border); background:var(--surface); border-radius:8px; padding:12px; }
+    .ws-explore .metric label{ font-size:10px; display:block; color:var(--muted-foreground); }
+    .ws-explore .metric strong{ display:block; font-size:25px; letter-spacing:-1px; color:var(--foreground); }
+
+    .ws-explore .pill{ font-size:10px; border-radius:30px; background:rgba(52,119,97,.15); color:#2f7460; padding:2px 8px; white-space:nowrap; }
+    :root[data-theme="dark"] .ws-explore .pill{ color:#6fce9f; background:rgba(52,119,97,.22); }
+    .ws-explore .pill.gray{ background:var(--muted); color:var(--muted-foreground); }
+
+    .ws-explore .chips{ display:flex; gap:6px; margin-bottom:13px; flex-wrap:wrap; }
+    .ws-explore .chip{ font-size:10px; background:var(--surface); border:1px solid var(--border); padding:4px 10px; border-radius:5px; color:var(--foreground); }
+    .ws-explore .chip.active{ background:var(--primary); border-color:var(--primary); color:#fff; }
+
+    .ws-explore .steps{ display:flex; justify-content:space-between; gap:6px; margin:20px 0; }
+    .ws-explore .step{ font-size:10px; color:var(--muted-foreground); text-align:center; flex:1; }
+    .ws-explore .step b{ display:grid; place-items:center; width:29px; height:29px; margin:0 auto 7px; border-radius:50%; background:var(--muted); color:var(--primary); }
+    .ws-explore .step.done b{ background:var(--primary); color:#fff; }
+
+    .ws-explore .deploy{ background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:17px; font-size:12px; color:var(--foreground); }
+    .ws-explore .deploy div{ display:flex; justify-content:space-between; margin:6px 0; }
+    .ws-explore .bar-track{ height:7px; background:var(--muted); border-radius:10px; overflow:hidden; margin-top:7px; }
+    .ws-explore .bar{ height:100%; background:var(--primary); border-radius:10px; transform-origin:left; animation:ws-grow .9s both; }
+    .ws-explore .bars{ padding:15px; background:var(--surface); border:1px solid var(--border); border-radius:8px; }
+    .ws-explore .bar-label{ display:flex; justify-content:space-between; font-size:11px; margin:12px 0 0; color:var(--muted-foreground); }
+
+    .ws-explore .notice{ font-size:10px; color:#886321; background:#fff5df; padding:8px 10px; border-radius:5px; margin-top:14px; }
+    :root[data-theme="dark"] .ws-explore .notice{ color:#e6c463; background:rgba(236,200,21,.12); }
+
+    .ws-explore .tour-controls{ display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding:13px 22px; color:var(--muted-foreground); font-size:11px; }
+    .ws-explore .tour-controls button{ border:0; background:transparent; color:var(--primary); font-size:12px; padding:5px 10px; cursor:pointer; }
+
+    .ws-explore .fade{ animation:ws-enter .45s ease both; }
+    .ws-explore .scene .metric{ animation:ws-enter .6s both; }
+    .ws-explore .scene .metric:nth-child(2){ animation-delay:.08s; }
+    .ws-explore .scene .metric:nth-child(3){ animation-delay:.16s; }
+
+    .ws-explore .reveal{ transition:opacity .7s ease, transform .7s ease; }
+    .js .ws-explore .reveal:not(.visible){ opacity:0; transform:translateY(25px); }
+
+    @keyframes ws-enter{ from{ opacity:0; transform:translateY(12px); } to{ opacity:1; transform:translateY(0); } }
+    @keyframes ws-grow{ from{ transform:scaleX(0); } to{ transform:scaleX(1); } }
+
+    @media (max-width:800px){
+      .ws-explore .tour-body{ grid-template-columns:1fr; padding:25px; gap:22px; }
+      .ws-explore .tour-copy h3{ font-size:25px; }
+    }
+    @media (max-width:540px){
+      .ws-explore .tabs{ gap:2px; padding:6px; }
+      .ws-explore .tab{ font-size:11px; padding:13px 3px; }
+      .ws-explore .tab small{ display:block; margin:2px 0 0; }
+      .ws-explore .tour-body{ padding:22px 17px; }
+      .ws-explore .scene{ padding:15px; }
+    }
+    @media (prefers-reduced-motion:reduce){
+      .ws-explore *, .ws-explore *:before, .ws-explore *:after{ animation:none !important; transition:none !important; }
+      .js .ws-explore .reveal:not(.visible){ opacity:1; transform:none; }
+    }
+
+    /* ===== 사용 흐름(스토리) + 마무리 CTA (외부 시안 이식, .ws-explore 네임스페이스 공유) ===== */
+    .ws-explore .story{ display:grid; grid-template-columns:1fr 1fr; align-items:center; gap:100px; padding:58px 0; }
+    .ws-explore .story+.story{ border-top:1px solid var(--border); }
+    .ws-explore .story.reverse .story-copy{ order:2; }
+    .ws-explore .story h3{ font-size:30px; letter-spacing:-1.3px; line-height:1.45; margin:14px 0; font-weight:800; color:var(--foreground); }
+    .ws-explore .story p{ color:var(--muted-foreground); font-size:15px; word-break:keep-all; }
+    .ws-explore .story-tags{ display:flex; gap:8px; flex-wrap:wrap; margin-top:20px; }
+    .ws-explore .story-tags span{ padding:4px 10px; border:1px solid var(--border); border-radius:5px; font-size:11px; color:var(--muted-foreground); }
+
+    .ws-explore .flow-art{ background:var(--muted); border:1px solid var(--border); border-radius:20px; padding:34px; text-align:center; }
+    .ws-explore .cloud-nodes{ display:flex; gap:12px; justify-content:center; }
+    .ws-explore .cloud-node{ background:var(--surface); border:1px solid var(--border); border-radius:9px; padding:12px 18px; font-weight:800; font-size:13px; box-shadow:0 5px 10px rgba(24,63,78,.03); color:var(--foreground); }
+    .ws-explore .flow-lines{ display:flex; justify-content:space-around; padding:8px 40px; color:var(--sky); font-size:25px; }
+    .ws-explore .hub{ background:var(--sidebar); color:#fff; padding:17px; border-radius:10px; font-size:14px; max-width:230px; margin:auto; box-shadow:0 12px 24px rgba(22,61,83,.2); }
+    .ws-explore .flow-caption{ margin-top:18px; font-size:11px; color:var(--muted-foreground); }
+
+    .ws-explore .checklist{ text-align:left; display:grid; gap:10px; }
+    .ws-explore .checkitem{ display:flex; gap:12px; background:var(--surface); border:1px solid var(--border); padding:15px; border-radius:8px; font-size:12px; color:var(--foreground); }
+    .ws-explore .checkitem b{ color:var(--primary); }
+    .ws-explore .checkitem small{ color:var(--muted-foreground); display:block; }
+
+    .ws-explore .ending{ text-align:center; }
+    .ws-explore .ending h2{ font-size:clamp(28px,3vw,33px); }
+    .ws-explore .ending p{ color:var(--muted-foreground); font-size:14px; margin:0 auto; max-width:520px; word-break:keep-all; }
+
+    .ws-explore .actions{ display:flex; justify-content:center; gap:12px; margin-top:30px; flex-wrap:wrap; }
+    .ws-explore .button{ display:inline-flex; align-items:center; gap:10px; padding:12px 21px; border-radius:9px; border:1px solid var(--border); background:var(--surface); font-size:14px; font-weight:700; color:var(--foreground); transition:transform .2s, box-shadow .2s; }
+    .ws-explore .button:hover{ transform:translateY(-3px); box-shadow:0 8px 20px rgba(22,61,83,.08); }
+    .ws-explore .button.primary{ background:var(--primary); border-color:var(--primary); color:#fff; }
+
+    @media (max-width:800px){
+      .ws-explore .story{ gap:35px; }
+      .ws-explore .story h3{ font-size:25px; }
+      .ws-explore .flow-art{ padding:20px; }
+      .ws-explore .cloud-node{ padding:10px; }
+    }
+    @media (max-width:540px){
+      .ws-explore .story{ grid-template-columns:1fr; padding:35px 0; gap:20px; }
+      .ws-explore .story.reverse .story-copy{ order:0; }
+      .ws-explore .story h3{ font-size:26px; }
+      .ws-explore .ending h2{ font-size:28px; }
+    }
   </style>
   <!-- 오류 리포터: window.onerror/rejection을 서버 로그로 보낸다. 다른 스크립트보다 먼저 로드한다. -->
   <script src="assets/js/error-reporter.js"></script>
@@ -94,7 +243,8 @@
   </header>
 
   <!-- ===== 히어로 ===== -->
-  <section class="mx-auto max-w-content px-6 py-20 md:py-28">
+  <section class="hero">
+    <div class="mx-auto max-w-content px-6 py-20 md:py-28">
     <div class="max-w-2xl">
       <span class="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted-foreground">
         <span class="h-1.5 w-1.5 rounded-full bg-sky"></span> AWS · Azure · GCP 통합 운영
@@ -117,6 +267,95 @@
           <a href="dashboard.html" class="rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white shadow-sm hover:opacity-90">대시보드로 이동 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
           <a href="inventory.html" class="rounded-xl border border-border bg-surface px-6 py-3 text-base font-semibold hover:bg-muted">리소스 조회</a>
         </span>
+      </div>
+    </div>
+    </div>
+  </section>
+
+  <!-- ===== Explore the workspace — 기능 탭 투어 (외부 시안 이식) ===== -->
+  <section id="features" class="ws-explore border-t border-border">
+    <div class="mx-auto max-w-content px-6 py-20">
+      <div class="section-head reveal">
+        <span class="eyebrow">Explore the workspace</span>
+        <h2>메뉴는 간단하게.<br>운영은 한곳에서.</h2>
+        <p>메뉴를 선택해 어떤 일을 할 수 있는지 확인해 보세요.</p>
+      </div>
+      <div class="tour reveal" id="tour">
+        <div class="tabs" role="tablist" aria-label="기능 소개">
+          <button class="tab" id="tab-0" role="tab" aria-selected="true" aria-controls="tour-panel" data-index="0">대시보드</button>
+          <button class="tab" id="tab-1" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-index="1">인벤토리</button>
+          <button class="tab" id="tab-2" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-index="2">프로비저닝</button>
+          <button class="tab" id="tab-3" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-index="3">비용 관리 <small>일부 준비 중</small></button>
+        </div>
+        <div class="tour-body" id="tour-panel" role="tabpanel" aria-labelledby="tab-0" tabindex="0">
+          <div class="tour-copy">
+            <span class="number">01 / DASHBOARD</span>
+            <h3>오늘의 클라우드 현황을<br>한눈에 파악하세요.</h3>
+            <p>리소스 수, 리전 분포, 최근 작업 결과를 모아 보여줍니다. 전체 상태를 확인하고 필요한 작업으로 이동하세요.</p>
+            <div class="hint">전체 규모 확인 → 최근 활동 점검</div>
+          </div>
+          <div class="scene">
+            <div class="scene-head">통합 대시보드 <small>예시 화면</small></div>
+            <div class="metrics">
+              <div class="metric"><label>리소스</label><strong>8</strong></div>
+              <div class="metric"><label>리전</label><strong>4</strong></div>
+              <div class="metric"><label>클라우드</label><strong>3</strong></div>
+            </div>
+            <div class="scene-row" style="margin-top:15px"><span>최근 작업 · test-s3</span><span class="pill">생성 성공</span></div>
+            <div class="scene-row"><span>최근 작업 · test-ec2</span><span class="pill gray">실패 확인</span></div>
+          </div>
+        </div>
+        <div class="tour-controls">
+          <span id="position">01 — 04 &nbsp; · &nbsp; 메뉴별 사용 안내</span>
+          <button id="play" type="button" aria-pressed="false">▶ 자동 재생</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== 사용 흐름(스토리) — 외부 시안 이식 ===== -->
+  <section id="workflow" class="ws-explore border-t border-border">
+    <div class="mx-auto max-w-content px-6">
+      <article class="story reveal">
+        <div class="story-copy">
+          <span class="eyebrow">01 · Connect &amp; Explore</span>
+          <h3>어디에 있는 자원이든,<br>찾는 곳은 하나면 됩니다.</h3>
+          <p>연결한 AWS, Azure, GCP 자원을 인벤토리에서 조회하세요. 클라우드, 상태, 리전으로 범위를 좁히면 필요한 자원을 빠르게 찾을 수 있습니다.</p>
+          <div class="story-tags"><span>클라우드별 필터</span><span>상태 확인</span><span>리전별 조회</span></div>
+        </div>
+        <div class="flow-art">
+          <div class="cloud-nodes"><div class="cloud-node">AWS</div><div class="cloud-node">Azure</div><div class="cloud-node">GCP</div></div>
+          <div class="flow-lines" aria-hidden="true"><span>↓</span><span>↓</span><span>↓</span></div>
+          <div class="hub">하나의 리소스 인벤토리</div>
+          <div class="flow-caption">흩어진 자원을 한 목록에서 조회</div>
+        </div>
+      </article>
+      <article class="story reverse reveal">
+        <div class="story-copy">
+          <span class="eyebrow">02 · Create &amp; Review</span>
+          <h3>설정은 순서대로.<br>작업 결과까지 확인하세요.</h3>
+          <p>프로비저닝에서 클라우드와 자원 유형을 선택하고 필요한 설정을 입력하세요. 생성 후에는 대시보드의 최근 활동에서 성공·실패 결과를 확인할 수 있습니다.</p>
+          <div class="story-tags"><span>클라우드 선택</span><span>설정 검토</span><span>작업 이력</span></div>
+        </div>
+        <div class="flow-art checklist">
+          <div class="checkitem"><b>01</b><div>클라우드와 자원 선택<small>생성할 자원의 종류를 정합니다.</small></div></div>
+          <div class="checkitem"><b>02</b><div>세부 설정 입력·검토<small>리전과 자원 사양을 확인합니다.</small></div></div>
+          <div class="checkitem"><b>03</b><div>생성 요청 후 결과 확인<small>최근 작업 이력에서 상태를 점검합니다.</small></div></div>
+        </div>
+      </article>
+    </div>
+  </section>
+
+  <!-- ===== 마무리 CTA — 외부 시안 이식 ===== -->
+  <section class="ws-explore border-t border-border">
+    <div class="mx-auto max-w-content px-6 py-20 ending reveal">
+      <span class="eyebrow">One workspace. Multiple clouds.</span>
+      <h2>복잡했던 운영을,<br>익숙한 하나의 흐름으로.</h2>
+      <p>먼저 대시보드에서 전체를 보고, 필요한 메뉴로 이어가세요.</p>
+      <div class="actions">
+        <!-- 게스트: 회원가입으로 / 로그인 상태: 대시보드로 (하단 스크립트가 data-auth로 토글) -->
+        <span data-auth="guest" class="contents"><a class="button primary" href="signup.html">시작하기 <span>→</span></a></span>
+        <span data-auth="user" class="hidden"><a class="button primary" href="dashboard.html">대시보드로 이동 <span>→</span></a></span>
       </div>
     </div>
   </section>
@@ -170,6 +409,75 @@
       <p>© 2026 <span data-service-name>MultiCloud Ops</span></p>
     </div>
   </footer>
+
+  <!-- Explore the workspace 탭 투어: 탭 전환/자동재생/scene 렌더. JS 없이도 초기 화면은 그대로 보인다(점진적 향상). -->
+  <script>
+    (function () {
+      "use strict";
+      var reduced = matchMedia('(prefers-reduced-motion: reduce)');
+      var tabs = [].slice.call(document.querySelectorAll('.ws-explore .tab'));
+      var panel = document.getElementById('tour-panel');
+      var play = document.getElementById('play');
+      var tourEl = document.getElementById('tour');
+      if (!tabs.length || !panel || !play || !tourEl) return;
+      var entries = [
+        {name:'DASHBOARD',title:'오늘의 클라우드 현황을<br>한눈에 파악하세요.',text:'리소스 수, 리전 분포, 최근 작업 결과를 모아 보여줍니다. 전체 상태를 확인하고 필요한 작업으로 이동하세요.',hint:'전체 규모 확인 → 최근 활동 점검',scene:panel.querySelector('.scene').innerHTML},
+        {name:'INVENTORY',title:'필요한 자원을<br>빠르게 찾아보세요.',text:'클라우드마다 흩어진 자원을 한 목록에서 조회합니다. 클라우드, 상태, 리전으로 필터링해 원하는 자원부터 살펴보세요.',hint:'필터 선택 → 자원 조회 → 상태 확인',scene:'<div class="scene-head">리소스 인벤토리 <small>예시 화면</small></div><div class="chips"><span class="chip active">전체 클라우드</span><span class="chip">상태 ▾</span><span class="chip">리전 ▾</span></div><div class="scene-row"><b>web-server</b><span>AWS · 서울</span><span class="pill">실행 중</span></div><div class="scene-row"><b>api-instance</b><span>GCP · 서울</span><span class="pill">실행 중</span></div><div class="scene-row"><b>test-server</b><span>AWS · 미국</span><span class="pill gray">중지</span></div>'},
+        {name:'PROVISIONING',title:'새 자원 생성도<br>단계별로 간편하게.',text:'클라우드와 자원 유형을 선택하고 필요한 설정을 입력합니다. 생성 전 내용을 검토하고, 요청 후 작업 결과를 확인하세요.',hint:'클라우드 선택 → 설정 입력 → 검토 및 생성',scene:'<div class="scene-head">새 리소스 만들기 <small>예시 화면</small></div><div class="steps"><div class="step done"><b>1</b>클라우드</div><div class="step done"><b>2</b>설정</div><div class="step done"><b>3</b>검토</div></div><div class="deploy"><div><span>클라우드</span><b>AWS</b></div><div><span>리전</span><b>서울</b></div><div><span>리소스 이름</span><b>web-server</b></div></div><div class="notice">설정 검토 후 생성 요청을 진행합니다.</div>'},
+        {name:'COST OVERVIEW',title:'예상 비용을 확인하고,<br>자원 구성을 점검하세요.',text:'대시보드에서 정가 기준 예상 비용과 서비스별 비중을 확인할 수 있습니다. 실제 청구액과 다를 수 있으며, 추정 불가 자원은 합계에서 제외됩니다.',hint:'월별 비용 추이·예산 초과 경고는 준비 중',scene:'<div class="scene-head">예상 비용 요약 <small>예시 · 추정치</small></div><div class="bars"><div class="bar-label"><span>월 예상 비용</span><b>$6.13 / mo</b></div><div class="bar-label"><span>Compute</span><span>100%</span></div><div class="bar-track"><div class="bar" style="width:100%"></div></div><div class="bar-label"><span>추정 가능한 자원 기준</span></div></div><div class="notice">월별 비용 수집과 예산 경고는 준비 중입니다.</div>'}
+      ];
+      var index = 0, timer = null, playing = false, inView = false;
+      function show(next) {
+        index = (next + entries.length) % entries.length;
+        var item = entries[index];
+        tabs.forEach(function (tab, i) { tab.setAttribute('aria-selected', String(i === index)); tab.tabIndex = i === index ? 0 : -1; });
+        panel.setAttribute('aria-labelledby', tabs[index].id);
+        panel.innerHTML = '<div class="tour-copy fade"><span class="number">0' + (index + 1) + ' / ' + item.name + '</span><h3>' + item.title + '</h3><p>' + item.text + '</p><div class="hint">' + item.hint + '</div></div><div class="scene fade">' + item.scene + '</div>';
+        document.getElementById('position').textContent = '0' + (index + 1) + ' — 04 · 메뉴별 사용 안내';
+      }
+      function schedule() {
+        clearInterval(timer); timer = null;
+        if (playing && inView && !document.hidden && !tourEl.matches(':hover') && tabs.indexOf(document.activeElement) === -1 && !panel.contains(document.activeElement)) {
+          timer = setInterval(function () { show(index + 1); }, 6000);
+        }
+      }
+      function setPlaying(value) {
+        playing = value;
+        play.textContent = playing ? 'Ⅱ 자동 재생 정지' : '▶ 자동 재생';
+        play.setAttribute('aria-pressed', String(playing));
+        schedule();
+      }
+      tabs.forEach(function (tab, i) {
+        tab.addEventListener('click', function () { setPlaying(false); show(i); });
+        tab.addEventListener('keydown', function (event) {
+          var next = i;
+          if (event.key === 'ArrowRight') next = (i + 1) % tabs.length;
+          else if (event.key === 'ArrowLeft') next = (i + tabs.length - 1) % tabs.length;
+          else if (event.key === 'Home') next = 0;
+          else if (event.key === 'End') next = tabs.length - 1;
+          else return;
+          event.preventDefault(); setPlaying(false); show(next); tabs[next].focus();
+        });
+      });
+      play.addEventListener('click', function () { setPlaying(!playing); });
+      tourEl.addEventListener('mouseenter', schedule);
+      tourEl.addEventListener('mouseleave', schedule);
+      tourEl.addEventListener('focusin', schedule);
+      tourEl.addEventListener('focusout', function () { setTimeout(schedule, 0); });
+      document.addEventListener('visibilitychange', schedule);
+      if ('IntersectionObserver' in window) {
+        document.documentElement.classList.add('js');
+        var revealObserver = new IntersectionObserver(function (items) {
+          items.forEach(function (item) { if (item.isIntersecting) { item.target.classList.add('visible'); revealObserver.unobserve(item.target); } });
+        }, { threshold: .12 });
+        document.querySelectorAll('.ws-explore .reveal').forEach(function (el) { revealObserver.observe(el); });
+        new IntersectionObserver(function (items) { inView = items[0].isIntersecting; schedule(); }, { threshold: .25 }).observe(tourEl);
+      } else {
+        inView = true;
+      }
+      reduced.addEventListener('change', function () { if (reduced.matches) setPlaying(false); });
+    })();
+  </script>
 
   <script src="assets/js/ui.js"></script>
   <!-- 로그인 상태 반영: 유효한 세션이 있으면 로그인/회원가입 → 사용자 이름 + 대시보드로 교체.

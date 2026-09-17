@@ -78,6 +78,28 @@ def test_build_tfvars_auto_generates_resource_group_when_absent():
     common, provider = azure_cdn_provisioning._derive(VALID_COMMON, VALID_PROVIDER)
     tfvars = azure_cdn_provisioning.build_tfvars(1, "user-1-job-1", common, provider)
     assert tfvars["resource_group_name"] == "rg-cdn-user-1-job-1"
+    assert tfvars["use_existing_resource_group"] is False
+
+
+def test_validate_spec_accepts_use_existing_resource_group_with_name():
+    azure_cdn_provisioning.validate_spec(
+        VALID_COMMON, {**VALID_PROVIDER, "resource_group": "my-existing-rg", "use_existing_resource_group": True}
+    )
+
+
+def test_validate_spec_rejects_use_existing_resource_group_without_name():
+    with pytest.raises(ApiError) as exc_info:
+        azure_cdn_provisioning.validate_spec(VALID_COMMON, {**VALID_PROVIDER, "use_existing_resource_group": True})
+    assert exc_info.value.code == "VALIDATION_ERROR"
+
+
+def test_build_tfvars_passes_use_existing_resource_group_through():
+    common, provider = azure_cdn_provisioning._derive(
+        VALID_COMMON, {**VALID_PROVIDER, "resource_group": "my-existing-rg", "use_existing_resource_group": True}
+    )
+    tfvars = azure_cdn_provisioning.build_tfvars(1, "user-1-job-1", common, provider)
+    assert tfvars["resource_group_name"] == "my-existing-rg"
+    assert tfvars["use_existing_resource_group"] is True
 
 
 def test_build_tfvars_https_redirect_forces_both_protocols():

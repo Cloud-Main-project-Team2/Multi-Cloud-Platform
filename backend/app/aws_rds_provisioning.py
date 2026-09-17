@@ -54,6 +54,8 @@ ALLOWED_INSTANCE_CLASSES = ("db.t3.micro", "db.t3.small", "db.t3.medium")
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,38}[a-z0-9]$")
 # RDS 마스터 비밀번호 허용 문자 규칙(AWS 공통: 8~41자, '/', '"', '@', 공백 금지).
 _PASSWORD_FORBIDDEN_CHARS = set('/"@ ')
+_VPC_ID_RE = re.compile(r"^vpc-[0-9a-f]{8,17}$")
+_SECURITY_GROUP_ID_RE = re.compile(r"^sg-[0-9a-f]{8,17}$")
 
 
 class _CommonSpec(BaseModel):
@@ -70,6 +72,25 @@ class _ProviderSpec(BaseModel):
     engine: str
     instance_class: str = "db.t3.micro"
     master_password: str
+    # 기존 리소스 재사용(2026-09-17 결정, aws_provisioning.py/EC2와 동일 원칙) — null이면 지금
+    # 까지처럼 기본 VPC + 전용 보안 그룹을 새로 만든다. 서브넷은 개별 지정을 안 받고 선택된 VPC의
+    # 기존 서브넷을 읽기 전용으로 조회해 구성한다(terraform/aws/rds/main.tf 참고).
+    vpc_id: str | None = None
+    security_group_id: str | None = None
+
+    @field_validator("vpc_id")
+    @classmethod
+    def _check_vpc_id(cls, v: str | None) -> str | None:
+        if v is not None and not _VPC_ID_RE.fullmatch(v):
+            raise ValueError("vpc_id 형식이 올바르지 않습니다.")
+        return v
+
+    @field_validator("security_group_id")
+    @classmethod
+    def _check_security_group_id(cls, v: str | None) -> str | None:
+        if v is not None and not _SECURITY_GROUP_ID_RE.fullmatch(v):
+            raise ValueError("security_group_id 형식이 올바르지 않습니다.")
+        return v
 
     @field_validator("master_password")
     @classmethod
@@ -133,6 +154,8 @@ def build_tfvars(job_id: int, common: _CommonSpec, provider: _ProviderSpec) -> d
         "instance_class": provider.instance_class,
         "db_name": common.name.replace("-", "_"),
         "tags": {**common.tags, "managed-by": "multi-cloud-platform", "job-id": str(job_id)},
+        "vpc_id": provider.vpc_id,
+        "security_group_id": provider.security_group_id,
     }
 
 

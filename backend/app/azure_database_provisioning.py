@@ -102,6 +102,12 @@ class _ProviderSpec(BaseModel):
     engine: Literal["MySQL", "PostgreSQL", "SQL Server"]
     master_username: str
     master_password: str
+    # 기존 리소스 재사용(2026-09-17 결정, 전부 선택) — null이면 지금까지처럼 매번 새로 만든다.
+    # 서브넷 자체는 위임/private-endpoint 정책 강제 변경 위험 때문에 재사용 대상에서 뺐다(모듈
+    # 주석 참고) — 리소스 그룹/VNet만 재사용 가능하다.
+    existing_resource_group_name: str | None = None
+    existing_vnet_id: str | None = None
+    existing_vnet_subnet_cidr: str | None = None
 
     @field_validator("master_password")
     @classmethod
@@ -182,6 +188,9 @@ def build_tfvars(
         "admin_login": provider.master_username,
         "database_name": common.name.replace("-", "_"),
         "tags": {**common.tags, "managed-by": "multi-cloud-platform", "job-id": str(job_id)},
+        "existing_resource_group_name": provider.existing_resource_group_name,
+        "existing_vnet_id": provider.existing_vnet_id,
+        "existing_vnet_subnet_cidr": provider.existing_vnet_subnet_cidr,
     }
     module_dir = MODULE_BASE / _ENGINE_MODULE[provider.engine]
     return tfvars, module_dir

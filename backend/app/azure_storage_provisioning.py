@@ -66,6 +66,9 @@ class _ProviderSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     region: str
+    # 기존 리소스 그룹 재사용(2026-09-17 결정, azure/vm과 동일 패턴) — null이면 새로 만든다.
+    # 이 모듈엔 VNet/NSG가 없어 재사용할 대상이 리소스 그룹뿐이다.
+    existing_resource_group_name: str | None = None
 
 
 def _derive(common_spec: dict, provider_spec: dict) -> tuple[_CommonSpec, _ProviderSpec]:
@@ -109,6 +112,7 @@ def build_tfvars(job_id: int, workspace_name: str, common: _CommonSpec, provider
         "location": provider.region,
         "account_name": account_name,
         "tags": {**common.tags, "managed-by": "multi-cloud-platform", "job-id": str(job_id)},
+        "existing_resource_group_name": provider.existing_resource_group_name,
     }
 
 

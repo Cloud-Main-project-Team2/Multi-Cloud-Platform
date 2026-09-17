@@ -60,6 +60,42 @@ def test_build_tfvars_merges_user_tags_and_custom_instance_class():
     assert tfvars["instance_class"] == "db.t3.small"
 
 
+def test_build_tfvars_defaults_existing_resource_ids_to_none():
+    common, provider = aws_rds_provisioning._derive(VALID_COMMON, VALID_PROVIDER)
+    tfvars = aws_rds_provisioning.build_tfvars(42, common, provider)
+    assert tfvars["vpc_id"] is None
+    assert tfvars["security_group_id"] is None
+
+
+def test_validate_spec_accepts_existing_vpc_and_security_group():
+    aws_rds_provisioning.validate_spec(
+        VALID_COMMON,
+        {**VALID_PROVIDER, "vpc_id": "vpc-0123456789abcdef0", "security_group_id": "sg-0123456789abcdef0"},
+    )
+
+
+@pytest.mark.parametrize(
+    "provider_spec",
+    [
+        {**VALID_PROVIDER, "vpc_id": "not-a-vpc-id"},
+        {**VALID_PROVIDER, "security_group_id": "not-an-sg"},
+    ],
+)
+def test_validate_spec_rejects_invalid_existing_resource_ids(provider_spec):
+    with pytest.raises(ApiError) as exc_info:
+        aws_rds_provisioning.validate_spec(VALID_COMMON, provider_spec)
+    assert exc_info.value.code == "VALIDATION_ERROR"
+
+
+def test_build_tfvars_includes_existing_resource_ids_when_given():
+    common, provider = aws_rds_provisioning._derive(
+        VALID_COMMON, {**VALID_PROVIDER, "vpc_id": "vpc-0123456789abcdef0", "security_group_id": "sg-0123456789abcdef0"}
+    )
+    tfvars = aws_rds_provisioning.build_tfvars(42, common, provider)
+    assert tfvars["vpc_id"] == "vpc-0123456789abcdef0"
+    assert tfvars["security_group_id"] == "sg-0123456789abcdef0"
+
+
 def test_run_calls_run_apply_with_credential_env_and_password_via_tfvar(monkeypatch, tmp_path):
     captured = {}
 

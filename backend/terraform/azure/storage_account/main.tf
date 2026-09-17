@@ -28,16 +28,30 @@ provider "azurerm" {
   features {}
 }
 
+# 기존 리소스 그룹을 재사용하려면 var.existing_resource_group_name(2026-09-17 결정, azure/vm과
+# 동일 패턴) — null이면 지금까지처럼 새로 만든다. 이 모듈엔 VNet/NSG가 없어(Storage Account
+# 자체에 네트워크 개념이 없음) 재사용할 대상이 리소스 그룹뿐이다.
 resource "azurerm_resource_group" "this" {
+  count    = var.existing_resource_group_name == null ? 1 : 0
   name     = var.resource_group_name
   location = var.location
   tags     = var.tags
 }
 
+data "azurerm_resource_group" "existing" {
+  count = var.existing_resource_group_name != null ? 1 : 0
+  name  = var.existing_resource_group_name
+}
+
+locals {
+  resource_group_name = var.existing_resource_group_name != null ? data.azurerm_resource_group.existing[0].name : azurerm_resource_group.this[0].name
+  location             = var.existing_resource_group_name != null ? data.azurerm_resource_group.existing[0].location : azurerm_resource_group.this[0].location
+}
+
 resource "azurerm_storage_account" "this" {
   name                = var.account_name
-  resource_group_name = azurerm_resource_group.this.name
-  location            = azurerm_resource_group.this.location
+  resource_group_name = local.resource_group_name
+  location            = local.location
 
   account_tier             = "Standard" # 맵핑 문서: 스토리지 등급 입력은 GCP 전용 — Azure는 고정값
   account_replication_type = "LRS"      # 맵핑 문서 "중복성" 완전 제외 — 가장 저렴한 기본값 고정
