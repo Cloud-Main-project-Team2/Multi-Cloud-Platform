@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+from datetime import timedelta
 
 from azure.core.exceptions import AzureError, ClientAuthenticationError, HttpResponseError
 from azure.identity import ClientSecretCredential
@@ -8,6 +9,7 @@ from azure.mgmt.compute import ComputeManagementClient
 from azure.mgmt.network import NetworkManagementClient
 from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.subscriptions import SubscriptionClient
+from azure.monitor.query import MetricAggregationType, MetricsQueryClient
 
 from app.providers import VerificationResult
 
@@ -70,6 +72,57 @@ def perform_resource_action(service_code: str, action: str, secret_payload: dict
         poller.result()
     except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
         raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+
+def get_cpu_utilization(secret_payload: dict, resource_ids: list[str]) -> dict[str, float | None]:
+    """최근 1시간 평균 CPU 사용률(%)을 VM별로 조회한다 — 보고서 "리소스 사용률 상위" 섹션
+    (2026-09-17)의 실데이터 소스. `Percentage CPU`는 에이전트 없이도 나오는 플랫폼 메트릭이다.
+
+    `azure-mgmt-monitor`(`MonitorManagementClient`, 레거시 — MS 문서도 "archive-previous"로
+    분류)가 아니라 현재 권장되는 `azure-monitor-query`(`MetricsQueryClient`)를 쓴다. 이미 쓰고
+    있는 `azure-identity`의 `ClientSecretCredential`을 그대로 재사용할 수 있어 인증 코드가
+    늘지 않는다.
+
+    Azure Monitor Metrics API는 AWS/GCP와 달리 리소스 하나씩만 조회한다(공식 배치 조회는 같은
+    리소스 유형·리전 제약이 커서 이번 범위에서는 단순하게 순회한다) — 이 앱 규모(리소스 수가
+    적은 데모/과제 환경)에서는 직렬 호출로도 충분하다.
+
+    메모리는 다루지 않는다(Azure Monitor Agent 설치 전제) — AWS/GCP와 같은 이유."""
+    if not resource_ids:
+        return {}
+
+    try:
+        credential = ClientSecretCredential(
+            tenant_id=secret_payload["tenant_id"],
+            client_id=secret_payload["client_id"],
+            client_secret=secret_payload["client_secret"],
+        )
+        client = MetricsQueryClient(credential)
+    except KeyError:
+        return {resource_id: None for resource_id in resource_ids}
+
+    out: dict[str, float | None] = {}
+    for resource_id in resource_ids:
+        try:
+            response = client.query_resource(
+                resource_id,
+                metric_names=["Percentage CPU"],
+                timespan=timedelta(hours=1),
+                granularity=timedelta(minutes=5),
+                aggregations=[MetricAggregationType.AVERAGE],
+            )
+            points = [
+                (data.timestamp, data.average)
+                for metric in response.metrics
+                for series in metric.timeseries
+                for data in series.data
+                if data.average is not None
+            ]
+            points.sort(key=lambda p: p[0], reverse=True)
+            out[resource_id] = round(points[0][1], 1) if points else None
+        except (ClientAuthenticationError, HttpResponseError, AzureError):
+            out[resource_id] = None
+    return out
 
 
 def discover_resources(secret_payload: dict, subscription_id: str) -> list:
@@ -171,3 +224,113 @@ def list_network_resources(secret_payload: dict, subscription_id: str) -> dict:
         "network_security_groups": network_security_groups,
         "azure_subnets": subnets,
     }
+
+
+def _network_client(secret_payload: dict, subscription_id: str) -> NetworkManagementClient:
+    credential = ClientSecretCredential(
+        tenant_id=secret_payload["tenant_id"],
+        client_id=secret_payload["client_id"],
+        client_secret=secret_payload["client_secret"],
+    )
+    return NetworkManagementClient(credential, subscription_id)
+
+
+def _security_rule_out(rule) -> dict:
+    return {
+        "name": rule.name,
+        "priority": rule.priority,
+        "direction": rule.direction,
+        "access": rule.access,
+        "protocol": rule.protocol,
+        "source_address_prefix": rule.source_address_prefix,
+        "destination_port_range": rule.destination_port_range,
+        "description": rule.description,
+    }
+
+
+def list_security_groups(secret_payload: dict, subscription_id: str) -> list[dict]:
+    """보안그룹 관리 화면(2026-09-17)의 목록 조회 — NSG + 중첩된 보안 규칙 전체를 돌려준다.
+    `list_network_resources()`의 `network_security_groups`(id/name/rg/location 요약)와 달리
+    각 NSG의 `security_rules`를 함께 담는다(Azure SDK가 이미 중첩해서 주므로 AWS처럼 별도
+    API를 한 번 더 부를 필요가 없다)."""
+    from app.resource_actions import ResourceActionError
+
+    try:
+        network_client = _network_client(secret_payload, subscription_id)
+        groups = [
+            {
+                "id": nsg.id,
+                "name": nsg.name,
+                "resource_group": nsg.id.split("/")[4],
+                "location": nsg.location,
+                "rules": [_security_rule_out(r) for r in (nsg.security_rules or [])],
+            }
+            for nsg in network_client.network_security_groups.list_all()
+        ]
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return groups
+
+
+def create_security_group(secret_payload: dict, subscription_id: str, resource_group: str, name: str, location: str) -> dict:
+    from app.resource_actions import ResourceActionError
+
+    try:
+        network_client = _network_client(secret_payload, subscription_id)
+        poller = network_client.network_security_groups.begin_create_or_update(
+            resource_group, name, {"location": location}
+        )
+        nsg = poller.result()
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return {"id": nsg.id, "name": nsg.name, "resource_group": resource_group, "location": nsg.location, "rules": []}
+
+
+def delete_security_group(secret_payload: dict, subscription_id: str, resource_group: str, name: str) -> None:
+    from app.resource_actions import ResourceActionError
+
+    try:
+        network_client = _network_client(secret_payload, subscription_id)
+        network_client.network_security_groups.begin_delete(resource_group, name).result()
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+
+def add_security_group_rule(
+    secret_payload: dict, subscription_id: str, resource_group: str, nsg_name: str, rule: dict
+) -> dict:
+    from app.resource_actions import ResourceActionError
+
+    try:
+        network_client = _network_client(secret_payload, subscription_id)
+        poller = network_client.security_rules.begin_create_or_update(
+            resource_group,
+            nsg_name,
+            rule["name"],
+            {
+                "priority": rule["priority"],
+                "direction": rule["direction"],
+                "access": rule["access"],
+                "protocol": rule["protocol"],
+                # source/destination 포트·주소 중 사용자가 실제로 고르는 건 source 주소와
+                # destination 포트뿐이다(§3 스키마) — 나머지 절반은 "전체 허용"으로 고정한다.
+                "source_port_range": "*",
+                "destination_port_range": rule["destination_port_range"],
+                "source_address_prefix": rule["source_address_prefix"],
+                "destination_address_prefix": "*",
+            },
+        )
+        created = poller.result()
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    return _security_rule_out(created)
+
+
+def remove_security_group_rule(secret_payload: dict, subscription_id: str, resource_group: str, nsg_name: str, rule_name: str) -> None:
+    from app.resource_actions import ResourceActionError
+
+    try:
+        network_client = _network_client(secret_payload, subscription_id)
+        network_client.security_rules.begin_delete(resource_group, nsg_name, rule_name).result()
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc

@@ -100,7 +100,12 @@ _PATTERNS: tuple[_Pattern, ...] = (
         regex=r"ami .*does not exist|image .*not found",
     ),
     _Pattern(
-        friendly="권한이 부족합니다. 자격 증명에 이 작업 권한을 추가하거나, 권한 있는 자격 증명으로 시도하세요.",
+        # 2026-09-17: "자격 증명에 권한을 추가하거나"는 무엇을 어디에 추가해야 하는지가 막연했다
+        # — 실제로는 사용자가 자기 AWS 콘솔(IAM 역할)/Azure(RBAC)/GCP(서비스 계정 역할)에 가서
+        # 권한을 추가해야 하는데, 그 사실과 "어디서 확인하면 되는지"(마이페이지)를 명시한다.
+        friendly="권한이 부족합니다. 사용 중인 자격 증명(AWS는 IAM 역할, Azure/GCP는 각각의 역할·"
+        "권한)에 이 작업에 필요한 권한이 없습니다 — 마이페이지의 해당 자격 증명 안내를 참고해 "
+        "역할/정책에 권한을 추가한 뒤 다시 시도하세요.",
         keywords=(
             "accessdenied",
             "unauthorizedoperation",

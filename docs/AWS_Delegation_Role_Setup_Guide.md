@@ -117,6 +117,7 @@ PLATFORM_AWS_SESSION_DURATION_SECONDS=3600
            "ec2:DescribeVpcAttribute",
            "ec2:DescribeSubnets",
            "ec2:DescribeSecurityGroups",
+           "ec2:DescribeSecurityGroupRules",
            "ec2:DescribeAvailabilityZones"
          ],
          "Resource": "*"
@@ -132,9 +133,10 @@ PLATFORM_AWS_SESSION_DURATION_SECONDS=3600
    매번 `enableDnsSupport`/`enableDnsHostnames` 속성을 읽고, `data "aws_availability_zones"`도
    서브넷을 새로 만들 필요가 없을 때조차 매 apply마다 평가되기 때문이다(2026-09-17 실제 AWS
    계정으로 EC2 생성을 테스트하다가 `ec2:DescribeVpcAttribute AccessDenied`로 막히는 걸
-   발견했다). 전부 `AmazonEC2FullAccess`에 포함되지만, 그 관리형 정책 없이(또는 콘솔에서
-   체크가 빠진 채) 좁은 인라인 정책만으로 역할을 만들면 이 5개 중 하나가 막혀 조회 실패
-   또는 **EC2 생성 자체 실패**로 이어진다.
+   발견했다). `ec2:DescribeSecurityGroupRules`는 보안그룹 관리 화면이 규칙을
+   `SecurityGroupRuleId` 기준으로 조회하는 데 쓴다(§8). 전부 `AmazonEC2FullAccess`에 포함되지만,
+   그 관리형 정책 없이(또는 콘솔에서 체크가 빠진 채) 좁은 인라인 정책만으로 역할을 만들면 이
+   중 하나가 막혀 조회 실패 또는 **EC2 생성 자체 실패**로 이어진다.
 7. **여기서 끝내지 말고 같은 인라인 정책 화면에서 statement를 하나 더 추가한다** — 없으면 EC2
    생성 자체가 실패한다(⚠️ 아래 참고):
    ```json
@@ -164,7 +166,43 @@ PLATFORM_AWS_SESSION_DURATION_SECONDS=3600
    주면 위임 세션이 그 역할로 권한을 상승시킬 수 있어(예: 관리자 역할을 다른 리소스에 붙이는
    식), 우리가 만드는 `mcp-ssm-*` 역할/프로파일로만 좁힌다(§2의 `MultiCloudOps*` 이름 제한과
    같은 원칙).
-8. 만들어진 **역할 ARN**을 마이페이지에 붙여넣고 저장한다. 계정 ID는 ARN에서 자동으로 읽는다.
+8. **보안그룹 관리 화면**(프로비저닝과 별개로 SG를 직접 만들고 지우는 기능)을 쓰려면 statement를
+   하나 더 추가한다:
+   ```json
+   {
+     "Effect": "Allow",
+     "Action": [
+       "ec2:CreateSecurityGroup", "ec2:DeleteSecurityGroup",
+       "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
+       "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress",
+       "ec2:CreateTags"
+     ],
+     "Resource": "*"
+   }
+   ```
+   새로 만들 보안그룹의 ID는 생성 시점에야 정해져 `mcp-ssm-*` 같은 이름 접두사로 미리 좁힐 수
+   없다 — 하지만 `iam:PassRole`(§7, 권한 상승 위험)과 달리 이 권한들은 자기 계정 안의 네트워크
+   규칙만 바꿀 수 있어 `Resource: "*"`로 둬도 `AmazonEC2FullAccess`가 이미 부여하는 것과 실질적
+   위험 수준이 같다. 없어도 EC2/RDS 생성 자체는 되고, 보안그룹 관리 화면에서 생성·규칙 추가만
+   막힌다(§6의 조회는 이미 됨).
+9. **인벤토리 "AWS CLI로 접속" 기능**(SSM Session Manager로 인스턴스에 셸 접속)을 쓰려면
+   statement를 하나 더 추가한다:
+   ```json
+   {
+     "Effect": "Allow",
+     "Action": [
+       "ssm:StartSession", "ssm:TerminateSession", "ssm:ResumeSession",
+       "ssm:DescribeSessions", "ssm:DescribeInstanceInformation", "ssm:GetConnectionStatus"
+     ],
+     "Resource": "*"
+   }
+   ```
+   `mcp-ssm-*` 역할에 붙는 `AmazonSSMManagedInstanceCore`(§7)는 "인스턴스가 SSM에 등록되는"
+   권한이고, 이건 그것과 별개로 "**사용자**가 그 세션을 여는" 권한이라 위임 역할 쪽에 따로 있어야
+   한다 — 없으면 `aws ssm start-session`이 `ssm:StartSession AccessDenied`로 막힌다(2026-09-17
+   실사용 중 발견). `iam:PassRole`과 달리 이미 갖고 있는 EC2 전체 제어 권한(인스턴스 시작·중지·
+   삭제) 이상으로 위험 범위를 넓히지 않아 `Resource: "*"`로 둔다.
+10. 만들어진 **역할 ARN**을 마이페이지에 붙여넣고 저장한다. 계정 ID는 ARN에서 자동으로 읽는다.
 
 ### ⚠️ ExternalId — 가장 흔한 실패 원인
 
@@ -207,8 +245,8 @@ ExternalId는 **그 페이지를 열었을 때 발급된 값**이고 서버에 �
 >    ```
 > 3. 권한: `AmazonEC2FullAccess`, `AmazonRDSFullAccess`, `AmazonS3FullAccess`,
 >    `CloudFrontFullAccess` + 마이페이지 → AWS → "역할 위임" 화면에 표시되는 인라인 정책
->    2개(비용/조회용 + `mcp-ssm-*` IAM 관리용, ⚠️ 두 번째가 없으면 EC2 생성이 실패합니다)를
->    그대로 복사해 붙여주세요
+>    4개(비용/조회용 + `mcp-ssm-*` IAM 관리용 + 보안그룹 관리용 + SSM 세션 접속용, ⚠️ 두 번째가
+>    없으면 EC2 생성이 실패합니다)를 그대로 복사해 붙여주세요
 > 4. 역할 이름은 **`MultiCloudOpsAccess`** 로 만들어주세요
 > 5. 만들어진 **역할 ARN**만 알려주시면 됩니다
 >
@@ -232,3 +270,4 @@ ExternalId는 **그 페이지를 열었을 때 발급된 값**이고 서버에 �
 | EC2 생성 job이 `CLOUD_PERMISSION_DENIED`로 실패, 원문에 `reading inline policies for IAM role mcp-ssm-...`/`ListRolePolicies`/`AssumeRole` 대상이 `MultiCloudOps*`가 자기 계정의 `mcp-ssm-*` 역할인 경우 | AssumeRole 자체는 성공했고, 그 뒤 terraform이 SSM용 IAM 역할을 만들다 막힌 것이다(§3-7의 두 번째 인라인 statement 누락, 2026-09-17 실사용 중 발견). 역할을 §3 이전 버전으로 만들어 뒀다면 인라인 정책에 `mcp-ssm-*` 관리 statement를 추가한다 |
 | EC2 생성 job이 `CLOUD_PERMISSION_DENIED`로 실패, 원문에 `reading EC2 VPC ... Attribute (enableDnsHostnames)`/`DescribeVpcAttribute` | VPC/서브넷/보안 그룹을 **자동 생성**(기존 리소스 미지정)하는 경로에서도 항상 거치는 조회다 — `AmazonEC2FullAccess`를 안 붙였거나 콘솔에서 체크가 빠졌을 가능성이 높다. §3-6의 첫 번째 인라인 statement에 `ec2:DescribeVpcAttribute`/`DescribeAvailabilityZones`가 있는지 확인(2026-09-17 실사용 중 발견 — "기존 리소스 사용" 여부와 무관하게 모든 EC2 생성이 이 두 조회를 한다) |
 | 코드를 고쳤는데 화면이 그대로 | 브라우저 캐시. 한 번 Ctrl+Shift+R. (2026-09-15에 `nginx/default.conf`에 `no-cache`를 넣어 이후로는 재발하지 않는다) |
+| `aws ssm start-session`이 `AccessDeniedException: ... is not authorized to perform: ssm:StartSession` | 인벤토리 "AWS CLI로 접속"이 발급한 임시 자격증명은 위임 역할의 권한을 그대로 물려받는다 — §3-9의 SSM 세션 접속용 statement가 역할에 없다는 뜻. 추가하면 바로 해결된다(⚠️ 터미널에 붙여넣은 Access Key/Secret/Session Token은 짧게 만료되는 임시 값이어도 채팅에 남기지 않는다) |

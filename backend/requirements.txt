@@ -16,6 +16,7 @@ azure-identity==1.16.1
 azure-mgmt-resource==23.1.1
 azure-mgmt-compute==31.0.0
 azure-mgmt-network==27.0.0
+azure-monitor-query==1.4.0
 google-auth==2.32.0
 google-cloud-resource-manager==1.12.5
 google-cloud-compute==1.19.2

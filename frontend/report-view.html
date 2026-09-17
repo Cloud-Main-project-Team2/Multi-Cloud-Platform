@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>멀티클라우드 운영 보고서 · MultiCloud Ops</title>
+
+<!-- 데모 인증 가드: 세션 없으면 login.html로 리다이렉트(본문 렌더 전). 이 문서는 인쇄 전용
+     레이아웃이라 사이드바 셸은 쓰지 않지만, 다른 보호 화면과 동일하게 로그인 세션은 요구한다. -->
+<script src="assets/js/api.js"></script>
+<script src="assets/js/auth-guard.js"></script>
+<script src="assets/js/error-reporter.js"></script>
+
+<style>
+/* multicloud_report_template_v5_draft.html 기반 — 인쇄용 문서라 앱 셸(theme.css/shell.css)과
+   별개의 색·타이포 체계를 그대로 유지한다(보고서_구현명세_v5.md §7 "유지 대상"). */
+:root {
+  --ink: #1a1d21;
+  --ink-soft: #5c6470;
+  --ink-faint: #8b929c;
+  --line: #e2e5ea;
+  --line-soft: #eef0f3;
+  --paper: #ffffff;
+  --tint: #f6f7f9;
+  --aws: #c2680d;
+  --azure: #1a5fb4;
+  --gcp: #1a7f4f;
+  --danger: #b3261e;
+  --warn: #8a5a00;
+  --ok: #1a6b3f;
+  --draft: #7a3ea3;
+  --draft-bg: #f5eefb;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Pretendard", "Malgun Gothic", sans-serif;
+  color: var(--ink);
+  background: var(--tint);
+  line-height: 1.6;
+  padding: 32px 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 도구모음 — 인쇄되지 않는다 */
+.toolbar {
+  max-width: 860px; margin: 0 auto 14px; display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px;
+}
+.toolbar a { color: var(--ink-soft); text-decoration: none; }
+.toolbar a:hover { color: var(--ink); text-decoration: underline; }
+.toolbar button {
+  border: 1px solid var(--line); background: var(--paper); border-radius: 6px;
+  padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer; color: var(--ink);
+}
+.toolbar button:hover { background: var(--tint); }
+
+.sheet {
+  max-width: 860px;
+  margin: 0 auto;
+  background: var(--paper);
+  border: 1px solid var(--line);
+  padding: 44px 48px 36px;
+}
+
+/* ── 초안 배지 ─────────────────────────── */
+.draft-banner {
+  background: var(--draft-bg);
+  border: 1px solid #e0cdf0;
+  border-radius: 4px;
+  padding: 10px 14px;
+  font-size: 12.5px;
+  color: var(--draft);
+  margin-bottom: 24px;
+  line-height: 1.6;
+}
+.draft-banner b { font-weight: 600; }
+
+/* ── 머리말 ───────────────────────────── */
+.masthead { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 28px; }
+.masthead .titlerow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.masthead h1 { font-size: 23px; font-weight: 600; letter-spacing: -0.02em; }
+.badge-draft {
+  font-size: 11.5px; font-weight: 500; padding: 3px 9px; border-radius: 3px;
+  background: var(--draft-bg); color: var(--draft);
+}
+.masthead .sub { font-size: 14px; color: var(--ink-soft); margin-top: 4px; }
+.masthead dl {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 4px 24px;
+  margin-top: 16px;
+  font-size: 13px;
+}
+.masthead dl div { display: flex; gap: 8px; }
+.masthead dt { color: var(--ink-faint); flex-shrink: 0; }
+.masthead dd { color: var(--ink-soft); }
+
+/* ── 섹션 ─────────────────────────────── */
+section { margin-bottom: 34px; }
+section > h2 {
+  font-size: 15px;
+  font-weight: 600;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+section > h2 .pending {
+  font-size: 11.5px; font-weight: 500; padding: 2px 8px; border-radius: 3px;
+  background: var(--draft-bg); color: var(--draft);
+}
+.caption { font-size: 12.5px; color: var(--ink-faint); margin-top: 9px; }
+
+/* ── 수치 카드 ─────────────────────────── */
+.figures { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.fig { background: var(--paper); padding: 13px 15px; }
+.fig .k { font-size: 12px; color: var(--ink-faint); }
+.fig .v { font-size: 21px; font-weight: 600; letter-spacing: -0.02em; margin-top: 3px; }
+.fig .v.aws { color: var(--aws); }
+.fig .v.azure { color: var(--azure); }
+.fig .v.gcp { color: var(--gcp); }
+.fig .d { font-size: 11.5px; margin-top: 2px; }
+.rise { color: var(--danger); }
+.fall { color: var(--ok); }
+
+/* ── 차트 영역 ─────────────────────────── */
+.charts {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+.chart-box { border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px 12px; }
+.chart-box h3 { font-size: 12.5px; font-weight: 500; color: var(--ink-soft); margin-bottom: 10px; }
+.chart-box svg { width: 100%; height: auto; display: block; }
+
+/* 범례 */
+.chart-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; margin-top: 10px; font-size: 12px; }
+.chart-legend span { display: inline-flex; align-items: center; gap: 6px; color: var(--ink-soft); }
+.chart-legend i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+
+/* 도넛 중앙 라벨 */
+.donut-center { text-anchor: middle; }
+.donut-center .amount { font-size: 15px; font-weight: 600; fill: var(--ink); }
+.donut-center .label { font-size: 9px; fill: var(--ink-faint); }
+
+/* ── 비용 증감 원인 ────────────────────── */
+.drivers { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.driver {
+  display: inline-flex; align-items: baseline; gap: 7px;
+  border: 1px solid var(--line); border-radius: 3px;
+  padding: 5px 10px; font-size: 12.5px;
+}
+.driver .who { font-weight: 500; }
+.driver .who.aws { color: var(--aws); }
+.driver .who.azure { color: var(--azure); }
+.driver .who.gcp { color: var(--gcp); }
+.driver .what { color: var(--ink-soft); }
+.driver .amt { font-variant-numeric: tabular-nums; font-weight: 500; }
+
+/* ── 표 ───────────────────────────────── */
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  text-align: left; font-weight: 500; font-size: 12px; color: var(--ink-faint);
+  padding: 0 10px 7px; border-bottom: 1px solid var(--line);
+}
+tbody td { padding: 9px 10px; border-bottom: 1px solid var(--line-soft); }
+tbody tr:last-child td { border-bottom: none; }
+td.num, th.num { text-align: right; }
+td.num { font-variant-numeric: tabular-nums; }
+.csp { font-weight: 500; font-size: 12px; }
+.csp.aws { color: var(--aws); }
+.csp.azure { color: var(--azure); }
+.csp.gcp { color: var(--gcp); }
+
+/* ── 사용률 막대 ───────────────────────── */
+.bar { display: flex; align-items: center; gap: 9px; }
+.bar .track { flex: 1; height: 5px; background: var(--line-soft); border-radius: 3px; overflow: hidden; min-width: 50px; }
+.bar .fill { height: 100%; border-radius: 3px; background: var(--ink-faint); }
+.bar .fill.hot { background: var(--danger); }
+.bar .fill.warm { background: var(--warn); }
+.bar .pct { font-size: 12.5px; font-variant-numeric: tabular-nums; width: 36px; text-align: right; }
+
+.legend { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 9px; font-size: 12.5px; color: var(--ink-faint); }
+.legend span { display: inline-flex; align-items: center; gap: 5px; }
+.legend i { width: 18px; height: 4px; border-radius: 2px; display: inline-block; }
+.legend i.hot { background: var(--danger); }
+.legend i.warm { background: var(--warn); }
+.legend i.cool { background: var(--ink-faint); }
+
+/* ── 인수인계 ──────────────────────────── */
+.handover { display: flex; flex-direction: column; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+.item { background: var(--paper); padding: 13px 16px; }
+.item .row { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+.item .kind { font-size: 11.5px; font-weight: 500; color: var(--ink-faint); }
+.item .title { font-size: 13.5px; font-weight: 500; }
+.item .body { font-size: 13px; color: var(--ink-soft); margin-top: 4px; }
+.item .foot { font-size: 12px; color: var(--ink-faint); margin-top: 5px; }
+
+/* ── AI 요약 ──────────────────────────── */
+.summary { border-left: 3px solid var(--ink); padding: 2px 0 2px 16px; }
+.summary p { font-size: 13.5px; line-height: 1.75; }
+.summary ul { list-style: none; margin-top: 10px; }
+.summary li { font-size: 13px; color: var(--ink-soft); padding: 3px 0 3px 15px; position: relative; }
+.summary li::before { content: "—"; position: absolute; left: 0; color: var(--ink-faint); }
+
+/* ── 꼬리말 ───────────────────────────── */
+footer { border-top: 1px solid var(--line); padding-top: 14px; font-size: 12px; color: var(--ink-faint); line-height: 1.7; }
+
+.hidden { display: none !important; }
+
+/* ── 인쇄 ─────────────────────────────── */
+@media print {
+  .toolbar { display: none; }
+  body { background: #fff; padding: 0; }
+  .sheet { border: none; max-width: none; padding: 0; }
+  section { break-inside: avoid; }
+  table { break-inside: auto; }
+  thead { display: table-header-group; }
+  tr { break-inside: avoid; }
+  .item, .summary, .chart-box { break-inside: avoid; }
+}
+
+@media (max-width: 720px) {
+  .charts { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .sheet { padding: 28px 20px 24px; }
+  body { padding: 0; }
+  .toolbar { padding: 0 4px; }
+}
+</style>
+</head>
+<body>
+
+<div class="toolbar">
+  <a href="reports.html">← 보고서 목록</a>
+  <button type="button" onclick="window.print()">🖨 인쇄 / PDF 저장</button>
+</div>
+
+<article class="sheet">
+
+  <div class="draft-banner">
+    <b>초안 — 레이아웃 검토용</b><br>
+    비용 대시보드 개발이 완료되지 않아 비용 섹션은 샘플 데이터로 작성되었습니다. 실제 수치가 아닙니다.<br>
+    보안 현황 섹션은 향후 과제로 분리되어 이번 보고서에 포함하지 않습니다.
+  </div>
+
+  <header class="masthead">
+    <div class="titlerow">
+      <h1 id="rv-title">멀티클라우드 운영 보고서</h1>
+      <span class="badge-draft">초안</span>
+    </div>
+    <p class="sub" id="rv-sub">—</p>
+    <dl>
+      <div><dt>조회 기간</dt><dd id="rv-period">—</dd></div>
+      <div><dt>비교 기간</dt><dd id="rv-compare">—</dd></div>
+      <div><dt>담당자</dt><dd id="rv-owner">—</dd></div>
+      <div><dt>생성 일시</dt><dd id="rv-created">—</dd></div>
+    </dl>
+  </header>
+
+  <!-- 1. AI 분석 요약 -->
+  <section>
+    <h2>AI 분석 요약</h2>
+    <div class="summary">
+      <p id="rv-summary-p">—</p>
+      <ul id="rv-summary-actions"></ul>
+    </div>
+  </section>
+
+  <!-- 2. 비용 요약 -->
+  <section>
+    <h2>비용 요약 <span class="pending">샘플 데이터</span></h2>
+
+    <div class="figures" id="rv-figs"></div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h3>기간별 비용 추이</h3>
+        <svg id="rv-bar-svg" viewBox="0 0 400 190" role="img" aria-label="기간별 CSP 비용 누적 막대 그래프"></svg>
+        <div class="chart-legend" id="rv-bar-legend">
+          <span><i style="background:#c2680d"></i>AWS</span>
+          <span><i style="background:#1a5fb4"></i>Azure</span>
+          <span><i style="background:#1a7f4f"></i>GCP</span>
+        </div>
+      </div>
+
+      <div class="chart-box">
+        <h3>서비스별 비용 비중</h3>
+        <svg id="rv-donut-svg" viewBox="0 0 220 190" role="img" aria-label="서비스별 비용 비중 도넛 그래프"></svg>
+        <div class="chart-legend" id="rv-donut-legend"></div>
+      </div>
+    </div>
+
+    <div class="drivers" id="rv-drivers"></div>
+    <p class="caption" id="rv-cost-caption">—</p>
+  </section>
+
+  <!-- 3. 리소스 사용률 -->
+  <section id="rv-util-section">
+    <h2>리소스 사용률 상위</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:11%">CSP</th>
+          <th style="width:23%">리소스명</th>
+          <th style="width:19%">유형</th>
+          <th style="width:23%">최대 CPU</th>
+          <th style="width:24%">최대 메모리</th>
+        </tr>
+      </thead>
+      <tbody id="rv-util-body"></tbody>
+    </table>
+    <div class="legend">
+      <span><i class="hot"></i>90% 이상 — 스케일업 검토</span>
+      <span><i class="warm"></i>70~90% — 관찰</span>
+      <span><i class="cool"></i>70% 미만 — 여유</span>
+    </div>
+    <p class="caption" id="rv-util-caption">—</p>
+  </section>
+
+  <!-- 4. 미사용 리소스 -->
+  <section id="rv-unused-section">
+    <h2>미사용 리소스</h2>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:11%">CSP</th>
+          <th style="width:25%">리소스명</th>
+          <th style="width:25%">유형</th>
+          <th style="width:19%">유휴 기간</th>
+          <th style="width:20%" class="num">월 예상 비용</th>
+        </tr>
+      </thead>
+      <tbody id="rv-unused-body"></tbody>
+    </table>
+    <p class="caption" id="rv-unused-caption">—</p>
+  </section>
+
+  <!-- 5. 인수인계 사항 -->
+  <section>
+    <h2>인수인계 사항</h2>
+    <div class="handover" id="rv-handover"></div>
+    <p class="caption">이 섹션은 담당자가 직접 입력합니다.</p>
+  </section>
+
+  <footer>
+    비용·사용률·미사용 리소스는 CSP API로 자동 수집되며, 요약문은 ChatGPT API가 생성합니다. 인수인계 사항은 담당자가 직접 작성합니다.<br>
+    보안 현황은 향후 과제로 분리되어 이번 범위에 포함되지 않습니다.<br>
+    본 보고서의 AI 생성 내용은 참고용입니다. 운영 결정 전 원본 데이터를 확인하세요.
+  </footer>
+
+</article>
+
+<script src="assets/js/reports-data.js"></script>
+<script src="assets/js/report-view.js"></script>
+</body>
+</html>
