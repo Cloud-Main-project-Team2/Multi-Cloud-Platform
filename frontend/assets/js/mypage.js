@@ -120,7 +120,7 @@
         '<label for="cred-aws-secret-access-key" class="mb-1 block text-sm font-medium">Secret Access Key</label>' +
         '<div class="relative">' +
           '<input id="cred-aws-secret-access-key" type="password" class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary" />' +
-          '<button type="button" onclick="MCUI.togglePassword(\'cred-aws-secret-access-key\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환">👁</button>' +
+          '<button type="button" onclick="MCUI.togglePassword(\'cred-aws-secret-access-key\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>' +
         '</div>' +
         '<p class="mt-1 text-xs text-yellow">장기 Access Key는 만료가 없어 보관 위험이 큽니다. 새로 연결한다면 역할 위임 방식을 권장합니다.</p>' +
       '</div>',
@@ -172,7 +172,7 @@
           '<label for="cred-azure-client-secret" class="mb-1 block text-sm font-medium">클라이언트 Secret</label>' +
           '<div class="relative">' +
             '<input id="cred-azure-client-secret" type="password" class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary" />' +
-            '<button type="button" onclick="MCUI.togglePassword(\'cred-azure-client-secret\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환">👁</button>' +
+            '<button type="button" onclick="MCUI.togglePassword(\'cred-azure-client-secret\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>' +
           '</div>' +
         '</div>',
       isValid: function () {
@@ -299,7 +299,7 @@
             "관리형 정책에 없는 권한입니다. 비용 표시와 권한 자동 판별에 쓰이며, 없어도 연결은 됩니다.",
             inlinePolicy
           ) +
-          '<p class="mt-2"><a href="' + escapeHtml(data.iam_console_url) + '" target="_blank" rel="noopener" class="text-primary underline">IAM 콘솔에서 역할 만들기 ↗</a></p>' +
+          '<p class="mt-2"><a href="' + escapeHtml(data.iam_console_url) + '" target="_blank" rel="noopener" class="text-primary underline">IAM 콘솔에서 역할 만들기 ' + MCUI.icons.externalLink + '</a></p>' +
           '<p class="mt-2 text-xs text-muted-foreground">이 방식에서는 Access Key를 저장하지 않습니다. 저장되는 값은 역할 ARN과 External ID뿐이며, 둘 다 그 자체로는 권한이 없습니다.</p>';
       })
       .catch(function (err) {
@@ -589,12 +589,12 @@
     var statusTd = cell("");
     var badge = document.createElement("span");
     if (credential.verified) {
-      badge.className = "rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary";
-      badge.textContent = "✓ 검증" + (credential.verified_at ? " · " + formatRelative(credential.verified_at) : "");
+      badge.className = "inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary";
+      badge.innerHTML = MCUI.icons.check + "<span>검증" + (credential.verified_at ? " · " + escapeHtml(formatRelative(credential.verified_at)) : "") + "</span>";
     } else {
-      badge.className = "rounded-full px-2 py-0.5 text-[11px] text-white";
+      badge.className = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] text-white";
       badge.style.background = "#c0392b";
-      badge.textContent = "✗ 검증 실패";
+      badge.innerHTML = MCUI.icons.x + "<span>검증 실패</span>";
     }
     statusTd.appendChild(badge);
 
