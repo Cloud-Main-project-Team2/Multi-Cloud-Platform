@@ -62,6 +62,27 @@
       }
       tick();
       setInterval(tick, 1000);
+
+      // "연장" 버튼 — refresh token으로 새 access token(1시간)을 발급받아 세션을 연장한다.
+      // (백엔드 POST /auth/refresh + MCPApi.refreshSession이 이미 있어 새 엔드포인트 불필요)
+      var box = value.closest(".sidebar__remaining") || value.parentNode;
+      if (box && !box.querySelector(".sidebar__extend")) {
+        var extendBtn = document.createElement("button");
+        extendBtn.type = "button";
+        extendBtn.className = "sidebar__extend";
+        extendBtn.textContent = "연장";
+        extendBtn.setAttribute("aria-label", "세션 연장");
+        box.appendChild(extendBtn);
+        extendBtn.addEventListener("click", function () {
+          if (extendBtn.disabled || !window.MCPApi) return;
+          extendBtn.disabled = true;
+          extendBtn.textContent = "연장 중…";
+          window.MCPApi.refreshSession()
+            .then(function () { tick(); })
+            .catch(function () { /* refresh 실패 시 곧 만료되면 가드가 로그인으로 보낸다 */ })
+            .then(function () { extendBtn.disabled = false; extendBtn.textContent = "연장"; });
+        });
+      }
     });
   }
 
