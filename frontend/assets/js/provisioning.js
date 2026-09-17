@@ -1582,6 +1582,26 @@
     list.innerHTML = targets.map(rowHtml).join("");
     updateMini(targets);
 
+    // 진행 중인 real job(백엔드 job id를 가진 대상)을 localStorage에 기록해, 다른 페이지로
+    // 이동해도(풀 리로드) 공통 셸(prov-tracker.js)이 작은 창과 폴링을 이어가게 한다.
+    // 시뮬레이션 대상(러너 없는 azure/gcp CDN 등)은 job id가 없어 페이지 이동 시 유지 대상이 아니다.
+    function syncTrackerStore() {
+      if (!window.MCProvTracker) return;
+      var realTargets = targets.filter(function (t) { return t.real && t.jobId; });
+      if (!realTargets.length) return;
+      var pending = realTargets.filter(function (t) { return t.status !== "done" && t.status !== "failed"; });
+      if (!pending.length) { MCProvTracker.clear(); return; }
+      MCProvTracker.save(realTargets.map(function (t) {
+        return {
+          id: t.jobId,
+          platform: t.platform,
+          service: SERVICE_CODE[kind][t.platform],
+          account: t.account,
+          status: t.status === "done" ? "success" : (t.status === "failed" ? "failed" : "running"),
+        };
+      }));
+    }
+
     function setRow(t, status, progress, msg) {
       t.status = status;
       t.progress = progress;
@@ -1613,6 +1633,7 @@
         }
       }
       updateMini(targets);
+      syncTrackerStore();
     }
 
     function pollTarget(t, jobId) {
@@ -1654,7 +1675,7 @@
         headers: { "Idempotency-Key": newIdemKey(), "X-Action-Confirmed": "true" },
         body: { credential_id: t.credentialId, common_spec: common, provider_spec: buildProviderSpec(t.platform) },
       })
-        .then(function (data) { pollTarget(t, data.id); })
+        .then(function (data) { t.jobId = data.id; syncTrackerStore(); pollTarget(t, data.id); })
         .catch(function (err) { setRow(t, "failed", t.progress, err); });
     });
   }
