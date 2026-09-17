@@ -52,7 +52,7 @@
             <span class="lang-dd__current">KOR</span>
           </button>
         </div>
-        <span class="bell topbar__btn" role="button" aria-label="알림"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="bell-ico"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="bell__badge">3</span></span>
+        <span class="bell topbar__btn" role="button" aria-label="알림"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="bell-ico"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="bell__badge" style="display:none">0</span></span>
       </div>
 
       <div class="sidebar__foot">
@@ -243,7 +243,8 @@
     class="fixed bottom-6 right-6 z-40 flex items-center gap-2 rounded-full bg-primary px-4 py-3 text-sm font-semibold text-white shadow-lg hover:opacity-90"
     aria-label="AI 비용 어시스턴트 열기"
   >
-    💬 AI 비용 어시스턴트
+    <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+    AI 비용 어시스턴트
   </button>
 
   <div id="agent-chat-modal" data-modal class="hidden fixed inset-0 z-50 flex items-end justify-end bg-black/40 p-4 sm:items-center sm:justify-center">
@@ -253,7 +254,13 @@
           <h2 class="text-base font-bold">AI 비용 어시스턴트</h2>
           <p class="text-xs text-muted-foreground">플랫폼 비용을 비교하고, 절감 방법을 찾아보세요.</p>
         </div>
-        <button type="button" data-modal-close class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+        <div class="flex items-center gap-1.5">
+          <button type="button" id="agent-new-session" class="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted" aria-label="새 세션 시작">
+            <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+            새 세션
+          </button>
+          <button type="button" data-modal-close class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+        </div>
       </div>
 
       <div id="agent-chat-messages" class="flex-1 space-y-3 overflow-y-auto p-4 text-sm"></div>

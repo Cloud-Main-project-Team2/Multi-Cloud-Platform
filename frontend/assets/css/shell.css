@@ -35,6 +35,14 @@
 .sidebar__foot{ border-top:1px solid rgba(255,255,255,.08); padding:.85rem 1rem; font-size:.8rem; }
 .sidebar__remaining{ margin-bottom:.4rem; font-size:.72rem; color:#8fa3b6; display:flex; align-items:baseline; gap:.15rem; }
 .sidebar__remaining-value{ color:#c3d2e0; font-variant-numeric:tabular-nums; }
+/* 세션 연장 버튼 — 배경은 사이드바와 동일, 테두리만 달라 시선을 크게 끌지 않는다. */
+.sidebar__extend{
+  margin-left:.4rem; padding:.05rem .4rem; font-size:.68rem; line-height:1.5;
+  color:#c3d2e0; background:var(--sidebar); border:1px solid rgba(255,255,255,.28);
+  border-radius:.4rem; cursor:pointer; white-space:nowrap;
+}
+.sidebar__extend:hover{ border-color:#fff; color:#fff; }
+.sidebar__extend:disabled{ opacity:.6; cursor:default; }
 .sidebar__email{ color:#aebfd0; word-break:break-all; }
 .sidebar__logout{ margin-top:.5rem; width:100%; text-align:left; color:#c3d2e0; background:transparent; border:0; padding:.35rem 0; cursor:pointer; font-size:.85rem; }
 .sidebar__logout:hover{ color:#fff; }

@@ -138,6 +138,19 @@
         }
       });
     });
+
+    // "새 세션" — 새로고침 없이 대화 상태(history·DOM)를 초기화하고 인트로를 다시 그린다.
+    var newSessionBtn = document.getElementById("agent-new-session");
+    if (newSessionBtn) {
+      newSessionBtn.addEventListener("click", function () {
+        history = [];
+        sending = false;
+        input.value = "";
+        renderIntro();
+        introRendered = true;
+        input.focus();
+      });
+    }
   }
 
   if (document.readyState === "loading") {

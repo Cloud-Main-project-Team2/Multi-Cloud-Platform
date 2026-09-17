@@ -120,7 +120,7 @@
         '<label for="cred-aws-secret-access-key" class="mb-1 block text-sm font-medium">Secret Access Key</label>' +
         '<div class="relative">' +
           '<input id="cred-aws-secret-access-key" type="password" class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary" />' +
-          '<button type="button" onclick="MCUI.togglePassword(\'cred-aws-secret-access-key\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환">👁</button>' +
+          '<button type="button" onclick="MCUI.togglePassword(\'cred-aws-secret-access-key\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>' +
         '</div>' +
         '<p class="mt-1 text-xs text-yellow">장기 Access Key는 만료가 없어 보관 위험이 큽니다. 새로 연결한다면 역할 위임 방식을 권장합니다.</p>' +
       '</div>',
@@ -172,7 +172,7 @@
           '<label for="cred-azure-client-secret" class="mb-1 block text-sm font-medium">클라이언트 Secret</label>' +
           '<div class="relative">' +
             '<input id="cred-azure-client-secret" type="password" class="w-full rounded-lg border border-border bg-background px-3 py-2 pr-10 text-sm outline-none focus:border-primary" />' +
-            '<button type="button" onclick="MCUI.togglePassword(\'cred-azure-client-secret\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환">👁</button>' +
+            '<button type="button" onclick="MCUI.togglePassword(\'cred-azure-client-secret\', this)" class="absolute right-2 top-1/2 -translate-y-1/2 grid h-7 w-7 place-items-center rounded text-base hover:bg-muted" aria-label="키 표시 전환"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></button>' +
           '</div>' +
         '</div>',
       isValid: function () {
@@ -299,7 +299,7 @@
             "관리형 정책에 없는 권한입니다. 비용 표시와 권한 자동 판별에 쓰이며, 없어도 연결은 됩니다.",
             inlinePolicy
           ) +
-          '<p class="mt-2"><a href="' + escapeHtml(data.iam_console_url) + '" target="_blank" rel="noopener" class="text-primary underline">IAM 콘솔에서 역할 만들기 ↗</a></p>' +
+          '<p class="mt-2"><a href="' + escapeHtml(data.iam_console_url) + '" target="_blank" rel="noopener" class="text-primary underline">IAM 콘솔에서 역할 만들기 ' + MCUI.icons.externalLink + '</a></p>' +
           '<p class="mt-2 text-xs text-muted-foreground">이 방식에서는 Access Key를 저장하지 않습니다. 저장되는 값은 역할 ARN과 External ID뿐이며, 둘 다 그 자체로는 권한이 없습니다.</p>';
       })
       .catch(function (err) {
@@ -436,10 +436,18 @@
   providerSelect.addEventListener("change", renderProviderFields);
   renderProviderFields();
 
+  var submitBusyStop = null;
   function setSubmitting(busy) {
-    submitBtn.disabled = busy;
     submitBtn.classList.toggle("opacity-50", busy);
     submitBtn.classList.toggle("cursor-not-allowed", busy);
+    if (busy) {
+      if (!submitBusyStop) submitBusyStop = MCUI.buttonBusy(submitBtn, "저장 중");
+    } else if (submitBusyStop) {
+      submitBusyStop();
+      submitBusyStop = null;
+    } else {
+      submitBtn.disabled = false;
+    }
   }
 
   function submitCreate(provider, tpl, name) {
@@ -568,11 +576,11 @@
       return td;
     }
 
-    cell("⋮⋮", "px-3 py-3 cursor-grab text-muted-foreground");
+    cell("⋮⋮", "px-2 py-3 cursor-grab text-muted-foreground");
     cell(credential.name, "px-3 py-3 font-medium");
     cell(PROVIDER_LABELS[account.provider] || account.provider);
-    cell(account.external_account_id);
-    var keyTd = cell(credential.masked_public_identifier || "—");
+    cell(account.external_account_id, "px-2 py-3");
+    var keyTd = cell(credential.masked_public_identifier || "—", "px-2 py-3");
     if (account.provider === "aws") {
       var authBadge = document.createElement("span");
       var delegated = credential.auth_type === "assume_role";
@@ -589,12 +597,12 @@
     var statusTd = cell("");
     var badge = document.createElement("span");
     if (credential.verified) {
-      badge.className = "rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary";
-      badge.textContent = "✓ 검증" + (credential.verified_at ? " · " + formatRelative(credential.verified_at) : "");
+      badge.className = "inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-[11px] text-primary";
+      badge.innerHTML = MCUI.icons.check + "<span>검증" + (credential.verified_at ? " · " + escapeHtml(formatRelative(credential.verified_at)) : "") + "</span>";
     } else {
-      badge.className = "rounded-full px-2 py-0.5 text-[11px] text-white";
+      badge.className = "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] text-white";
       badge.style.background = "#c0392b";
-      badge.textContent = "✗ 검증 실패";
+      badge.innerHTML = MCUI.icons.x + "<span>검증 실패</span>";
     }
     statusTd.appendChild(badge);
 
@@ -603,7 +611,7 @@
     var actionsTd = document.createElement("td");
     actionsTd.className = "px-3 py-3";
     var actions = document.createElement("div");
-    actions.className = "flex flex-wrap gap-1";
+    actions.className = "flex flex-nowrap gap-1";
 
     function actionButton(label, className, handler) {
       var btn = document.createElement("button");
@@ -801,5 +809,34 @@
 
   tbody.addEventListener("pointerdown", onDown);
 
+  // --- 계정 정보 (GET /auth/me) — 하드코딩 대신 실제 로그인 사용자 정보 렌더링 ---------------
+  function renderAffiliation(user) {
+    if (user.affiliation_type === "company") {
+      return user.affiliation_name ? "회사 · " + user.affiliation_name : "회사";
+    }
+    return "개인";
+  }
+
+  function loadProfile() {
+    var emailEl = document.getElementById("profile-email");
+    var nameEl = document.getElementById("profile-name");
+    var affEl = document.getElementById("profile-affiliation");
+    if (!emailEl && !nameEl && !affEl) return;
+    MCPApi.request("/auth/me")
+      .then(function (resp) {
+        var user = (resp && resp.data) || {};
+        if (emailEl) emailEl.textContent = user.email || "—";
+        if (nameEl) nameEl.textContent = user.name || "—";
+        if (affEl) affEl.textContent = renderAffiliation(user);
+      })
+      .catch(function (err) {
+        // 실패 시 자리표시자 유지(auth-guard가 세션 만료는 이미 로그인으로 보낸다).
+        var msg = errorMessage(err);
+        [emailEl, nameEl, affEl].forEach(function (el) { if (el) el.textContent = "불러오지 못했습니다"; });
+        if (window.console) console.warn("profile load failed:", msg);
+      });
+  }
+
+  loadProfile();
   loadAccounts();
 })();

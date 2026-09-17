@@ -497,7 +497,7 @@
           (copyBtn ? '<div class="mt-2">' + copyBtn + "</div>" : "") +
         "</div>" +
         '<button type="button" id="console-open-btn" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">' +
-          escHtml(PLATFORM_LABEL[provider]) + " Cloud Shell 새 창으로 열기 ↗</button>" +
+          escHtml(PLATFORM_LABEL[provider]) + " Cloud Shell 새 창으로 열기 " + MCUI.icons.externalLink + "</button>" +
       "</div>"
     );
   }
@@ -552,7 +552,7 @@
         var cmd = btn.getAttribute("data-copy") || "";
         var done = function () {
           var original = btn.innerHTML;
-          btn.textContent = "복사됨 ✓";
+          btn.innerHTML = '<span class="inline-flex items-center gap-1">' + MCUI.icons.check + "복사됨</span>";
           setTimeout(function () { btn.innerHTML = original; }, 1500);
         };
         if (navigator.clipboard && navigator.clipboard.writeText) {

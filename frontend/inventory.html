@@ -49,7 +49,7 @@
             <span class="lang-dd__current">KOR</span>
           </button>
         </div>
-        <span class="bell topbar__btn" role="button" aria-label="알림"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="bell-ico"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="bell__badge">3</span></span>
+        <span class="bell topbar__btn" role="button" aria-label="알림"><svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" class="bell-ico"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg><span class="bell__badge" style="display:none">0</span></span>
       </div>
 
       <div class="sidebar__foot">
@@ -190,7 +190,7 @@
           <button type="button" data-modal-action="delete" class="rounded-lg px-3 py-2 text-sm font-medium text-white" style="background:#c0392b">delete</button>
           <button type="button" id="inv-modal-cli-access" hidden class="rounded-lg border border-border bg-surface px-3 py-2 text-sm font-medium hover:bg-muted">AWS CLI로 접속</button>
         </div>
-        <a id="inv-modal-console" href="#" target="_blank" rel="noopener" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">콘솔에서 열기 ↗</a>
+        <a id="inv-modal-console" href="#" target="_blank" rel="noopener" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">콘솔에서 열기 <svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><path d="M7 17 17 7"/><polyline points="7 7 17 7 17 17"/></svg></a>
       </div>
     </div>
   </div>
@@ -211,6 +211,33 @@
       <div id="inv-error-modal-body" class="max-h-[60vh] space-y-3 overflow-y-auto p-5"></div>
       <div class="flex justify-end gap-2 border-t border-border p-5">
         <button type="button" data-modal-close class="rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 액션 확인 모달 — 시작(과금 안내) / 중지·삭제(문자열 입력 확인). window.confirm 대체. -->
+  <div id="inv-confirm-modal" data-modal class="hidden fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/40 py-10 pr-4 pl-[220px]">
+    <div class="w-full max-w-md rounded-2xl border border-border bg-surface shadow-xl">
+      <div class="flex items-start justify-between gap-3 border-b border-border p-5">
+        <h2 id="inv-confirm-title" class="text-lg font-bold">확인</h2>
+        <button type="button" data-modal-close class="grid h-8 w-8 flex-none place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+      </div>
+      <div class="space-y-3 p-5 text-sm">
+        <p id="inv-confirm-message" class="text-foreground"></p>
+        <!-- 시작(과금) 안내 -->
+        <div id="inv-confirm-billing" class="hidden items-center gap-2 rounded-xl border border-yellow bg-surface px-3 py-2.5 text-sm">
+          <svg class="flex-none" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--yellow)"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>리소스를 시작하면 실행 시간만큼 과금이 발생할 수 있습니다.</span>
+        </div>
+        <!-- 중지·삭제 텍스트 확인 입력 -->
+        <div id="inv-confirm-typed" class="hidden">
+          <label for="inv-confirm-input" class="mb-1 block text-xs text-muted-foreground">계속하려면 <b id="inv-confirm-word" class="text-foreground"></b> 를 정확히 입력하세요.</label>
+          <input id="inv-confirm-input" type="text" autocomplete="off" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-foreground outline-none focus:border-primary" />
+        </div>
+      </div>
+      <div class="flex justify-end gap-2 border-t border-border p-5">
+        <button type="button" data-modal-close class="rounded-xl border border-border px-4 py-2 text-sm font-semibold hover:bg-muted">취소</button>
+        <button type="button" id="inv-confirm-execute" class="rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">실행</button>
       </div>
     </div>
   </div>
