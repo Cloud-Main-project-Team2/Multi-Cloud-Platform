@@ -80,6 +80,25 @@ class ResourceSummaryResponse(BaseModel):
     data: ResourceSummaryData
 
 
+class UtilizationItem(BaseModel):
+    resource_id: str
+    provider: str
+    name: str | None
+    original_resource_type: str
+    cpu_percent: float | None
+    mem_percent: float | None  # 항상 None — 에이전트 미설치(app/metrics.py 참고)
+
+
+class UtilizationData(BaseModel):
+    items: list[UtilizationItem]
+    # "그 보고서 기간의 값"이 아니라 "이 응답을 만든 시점의 값" — app/metrics.py 참고.
+    as_of: str
+
+
+class UtilizationResponse(BaseModel):
+    data: UtilizationData
+
+
 class ResourceActionRequest(BaseModel):
     action: Literal["start", "stop", "delete"]
     resource_ids: list[str] = Field(min_length=1)
