@@ -241,6 +241,10 @@
     return { dx: Math.round(Math.cos(angle) * r), dy: Math.round(Math.sin(angle) * r) };
   }
 
+  // calc()용 부호 표기: 음수는 `calc(-50% + -11px)`처럼 쓰면 CSS가 통째로 무효가 돼 transform이
+  // 무시된다(그러면 원들이 같은 지점에 겹쳐 하나처럼 보인다) — 부호를 분리해 `- 11px`로 만든다.
+  function offPx(n) { return n < 0 ? "- " + (-n) + "px" : "+ " + n + "px"; }
+
   // 원(클라우드) 하나에 대한 툴팁 — 그 지점에서 해당 클라우드의 리전별 개수.
   function providerTooltip(site, provider, regionsAtSite, regionProvider) {
     var lines = [(PLATFORM_LABEL[provider] || provider) + " · " + site.label];
@@ -290,7 +294,7 @@
           var tip = providerTooltip(site, p, s.regions, regionProvider);
           return (
             '<div class="absolute" style="left:' + site.x + "%;top:" + site.y +
-            "%;transform:translate(calc(-50% + " + off.dx + "px),calc(-50% + " + off.dy + "px));z-index:" + (10 + i) + '" title="' +
+            "%;transform:translate(calc(-50% " + offPx(off.dx) + "),calc(-50% " + offPx(off.dy) + "));z-index:" + (10 + i) + '" title="' +
             escHtml(tip) + '">' +
             '<div style="width:' + d + "px;height:" + d + "px;border-radius:9999px;background:" + (PROVIDER_COLOR[p] || "#94a3b8") +
             ';box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);"></div>' +
