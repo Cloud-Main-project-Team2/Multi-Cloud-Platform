@@ -436,10 +436,18 @@
   providerSelect.addEventListener("change", renderProviderFields);
   renderProviderFields();
 
+  var submitBusyStop = null;
   function setSubmitting(busy) {
-    submitBtn.disabled = busy;
     submitBtn.classList.toggle("opacity-50", busy);
     submitBtn.classList.toggle("cursor-not-allowed", busy);
+    if (busy) {
+      if (!submitBusyStop) submitBusyStop = MCUI.buttonBusy(submitBtn, "저장 중");
+    } else if (submitBusyStop) {
+      submitBusyStop();
+      submitBusyStop = null;
+    } else {
+      submitBtn.disabled = false;
+    }
   }
 
   function submitCreate(provider, tpl, name) {

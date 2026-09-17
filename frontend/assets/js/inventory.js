@@ -515,8 +515,13 @@
   if (confirmExecute) {
     confirmExecute.addEventListener("click", function () {
       if (confirmExecute.disabled) return;
-      MCPModal.close("#inv-confirm-modal");
-      executeAction(pendingAction, pendingIds);
+      // 실행 중에는 확인 모달을 열어 둔 채 버튼에 "…중." 진행 표시를 띄우고, 완료되면 닫는다.
+      var label = ACTION_LABELS[pendingAction] || pendingAction;
+      var stop = MCUI.buttonBusy(confirmExecute, label + " 중");
+      executeAction(pendingAction, pendingIds).then(function () {
+        stop();
+        MCPModal.close("#inv-confirm-modal");
+      });
     });
   }
 
@@ -548,7 +553,7 @@
 
   function executeAction(action, resourceIds) {
     MCErr.clear(invNotice);
-    MCPApi.request("/resources/action", {
+    return MCPApi.request("/resources/action", {
       method: "POST",
       headers: { "X-Action-Confirmed": "true" },
       body: { action: action, resource_ids: resourceIds },

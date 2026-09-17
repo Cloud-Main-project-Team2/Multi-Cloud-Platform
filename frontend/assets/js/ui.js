@@ -46,6 +46,23 @@
 
   window.MCUI = {
     icons: ICONS,
+    // 버튼을 "처리 중" 상태로 — 텍스트를 "<라벨>." → ".." → "..."로 순환하고 비활성화한다.
+    // 반환한 stop()을 호출하면 원래 내용/활성 상태로 복원한다. (진행률 바가 아닌 간이 표시)
+    buttonBusy: function (btn, baseLabel) {
+      if (!btn) return function () {};
+      var originalHtml = btn.innerHTML;
+      var wasDisabled = btn.disabled;
+      btn.disabled = true;
+      var dots = 1;
+      var paint = function () { btn.textContent = baseLabel + Array(dots + 1).join("."); };
+      paint();
+      var timer = setInterval(function () { dots = (dots % 3) + 1; paint(); }, 400);
+      return function stop() {
+        clearInterval(timer);
+        btn.innerHTML = originalHtml;
+        btn.disabled = wasDisabled;
+      };
+    },
     toggleTheme: function () {
       var next = currentTheme() === "dark" ? "light" : "dark";
       document.documentElement.dataset.theme = next;
