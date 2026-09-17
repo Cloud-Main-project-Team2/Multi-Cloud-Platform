@@ -801,5 +801,34 @@
 
   tbody.addEventListener("pointerdown", onDown);
 
+  // --- 계정 정보 (GET /auth/me) — 하드코딩 대신 실제 로그인 사용자 정보 렌더링 ---------------
+  function renderAffiliation(user) {
+    if (user.affiliation_type === "company") {
+      return user.affiliation_name ? "회사 · " + user.affiliation_name : "회사";
+    }
+    return "개인";
+  }
+
+  function loadProfile() {
+    var emailEl = document.getElementById("profile-email");
+    var nameEl = document.getElementById("profile-name");
+    var affEl = document.getElementById("profile-affiliation");
+    if (!emailEl && !nameEl && !affEl) return;
+    MCPApi.request("/auth/me")
+      .then(function (resp) {
+        var user = (resp && resp.data) || {};
+        if (emailEl) emailEl.textContent = user.email || "—";
+        if (nameEl) nameEl.textContent = user.name || "—";
+        if (affEl) affEl.textContent = renderAffiliation(user);
+      })
+      .catch(function (err) {
+        // 실패 시 자리표시자 유지(auth-guard가 세션 만료는 이미 로그인으로 보낸다).
+        var msg = errorMessage(err);
+        [emailEl, nameEl, affEl].forEach(function (el) { if (el) el.textContent = "불러오지 못했습니다"; });
+        if (window.console) console.warn("profile load failed:", msg);
+      });
+  }
+
+  loadProfile();
   loadAccounts();
 })();
