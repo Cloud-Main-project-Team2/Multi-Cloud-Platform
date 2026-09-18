@@ -263,14 +263,24 @@
         doc: { label: "GCP Cloud SQL 인스턴스 ID 규칙", url: "https://docs.cloud.google.com/sql/docs/mysql/instance-settings" } },
     },
     storage_object: {
-      aws: { chars: "a-z0-9-", startLetter: false, max: 40,
-        note: "소문자/숫자/하이픈(-)만 · 3~63자 · 전역에서 고유해야 함",
+      // 2026-09-18: 실사용 중 "영어+숫자만 써도 생성이 안 된다"는 신고로 조사 — AWS/Azure는
+      // mcp- 접두사+job_id 접미사를 자동으로 붙여 전역 유일성을 대신 보장해 주는데(백엔드
+      // aws_s3_provisioning.py/azure_storage_provisioning.py), GCP만 사용자가 입력한 이름을
+      // 그대로 써서 흔한 이름이 이미 다른 프로젝트가 선점했을 확률이 높았다. GCP도 같은
+      // 접두사/접미사 패턴으로 통일(gcp_storage_provisioning.py)했고, 여기 max도 원래 GCS
+      // 자체 한도(63자)에서 그 여유분(약 15자)을 뺀 40으로 맞췄다(AWS와 동일한 값).
+      // startLetter: true — app/aws_s3_provisioning.py의 _NAME_RE(`^[a-z]...`)가 실제로 첫
+      // 글자를 소문자로만 강제한다(숫자 시작 거부, 2026-09-18 실제 API 호출로 확인) — 여기를
+      // false로 뒀던 게 "숫자로 시작하는 이름은 프론트는 통과하는데 AWS만 422로 막히는" 불일치의
+      // 원인이었다.
+      aws: { chars: "a-z0-9-", startLetter: true, max: 40,
+        note: "소문자로 시작 · 소문자/숫자/하이픈(-)만 · 원래 3~63자 규칙에 접두사(mcp)+job 번호 여유를 둬 최대 40자까지 입력 가능",
         doc: { label: "AWS S3 버킷 명명 규칙", url: "https://docs.aws.amazon.com/AmazonS3/latest/userguide/bucketnamingrules.html" } },
       azure: { chars: "a-z0-9", startLetter: false, max: 21,
         note: "하이픈 없이 영소문자/숫자만 · 원래 3~24자 규칙에 접두사(mcp) 여유를 둬 최대 21자까지 입력 가능",
         doc: { label: "Azure Storage 계정 명명 규칙", url: "https://learn.microsoft.com/en-us/azure/azure-resource-manager/management/resource-name-rules" } },
-      gcp: { chars: "a-z0-9._-", startLetter: false, max: 63,
-        note: "소문자/숫자/하이픈(-)/밑줄(_)/점(.)만 · 3~63자 · 전역에서 고유해야 함",
+      gcp: { chars: "a-z0-9._-", startLetter: false, max: 40,
+        note: "소문자/숫자/하이픈(-)/밑줄(_)/점(.)만 · 원래 3~63자 규칙에 접두사(mcp)+job 번호 여유를 둬 최대 40자까지 입력 가능",
         doc: { label: "GCP Cloud Storage 버킷 명명 규칙", url: "https://docs.cloud.google.com/storage/docs/buckets" } },
     },
   };
