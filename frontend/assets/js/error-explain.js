@@ -34,6 +34,11 @@ window.MCErr = (function () {
       cause: "버킷 안에 객체가 남아 있습니다.",
       remedy: "버킷을 비운 뒤 다시 삭제하거나, 강제 삭제 옵션으로 다시 시도하세요.",
     },
+    CloudFrontNotDisabled: {
+      symptom: "배포가 활성화된 상태라 바로 삭제할 수 없습니다.",
+      cause: "CloudFront는 활성화된 배포를 지우기 전에 먼저 비활성화 반영을 기다려야 합니다.",
+      remedy: "비활성화를 요청해 두었습니다 — 보통 수 분~수십 분 후 다시 삭제를 시도하세요.",
+    },
     // AI 에이전트(agent) — 카탈로그 범위 밖이라 여기서 폴백 문구를 관리한다.
     AGENT_NOT_CONFIGURED: {
       symptom: "AI 에이전트가 아직 설정되지 않았습니다.",

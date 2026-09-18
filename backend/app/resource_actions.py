@@ -14,8 +14,9 @@ Terraform과 무관하게 서비스별 SDK 어댑터(`app/providers/{aws,azure,g
 - Azure: Virtual Machine(start/stop/delete) — 목업 리소스(mcp-c3d4-vm)가 이 경로를 타므로 추가
 - GCP: Compute Engine 인스턴스(start/stop/delete) — 같은 이유로 추가
 
-나머지(Azure SQL Database/Storage Account/CDN, AWS CloudFront)는 `UNSUPPORTED_OPERATION`으로
-명시적으로 막는다 — 어댑터가 없어서가 아니라 이번 세션 범위 밖으로 의도적으로 뺀 것이다.
+나머지(Azure SQL Database/Storage Account/CDN, AWS CloudFront)는 당시 `UNSUPPORTED_OPERATION`으로
+명시적으로 막았다 — 어댑터가 없어서가 아니라 그 세션 범위 밖으로 의도적으로 뺀 것이었다(전부
+아래에서 후속 세션에 채워졌다).
 
 **GCP Cloud SQL/Storage/CDN 지원 추가(2026-09-17, `gwonhyung/be-gcp-resource-actions`)**:
 AWS는 RDS(start/stop/delete)·S3(delete)까지 지원하는데 GCP는 Compute Engine만 지원해 3사 간
@@ -30,6 +31,14 @@ AWS는 RDS(start/stop/delete)·S3(delete)까지 지원하는데 GCP는 Compute E
 
 세 서비스 모두 RDS/EC2처럼 **호출이 accept되면 성공으로 본다**(작업 완료까지 폴링하지 않음) —
 "CSP 호출은 완료를 기다리지 않을 수 있다"는 기존 결정과 같은 비대칭 정책을 그대로 따른다.
+
+**AWS CloudFront 삭제 지원 추가(2026-09-18)**: 3사 프로비저닝 가능 서비스 중 유일하게 어떤
+동작도 안 되던 서비스였다(사용자 확인 — "프로비저닝으로 만든 건 다 start/stop/delete가 돼야
+한다"). delete만 지원한다(배포 자체엔 시작/중지 개념이 없음, S3/GCS/CDN류와 동일). CloudFront는
+활성화된 배포를 바로 못 지우게 막는다(`DistributionNotDisabled`) — 지우기 전에 먼저 비활성화를
+요청하고, 그 반영에 보통 수 분~수십 분이 걸려 같은 요청 안에서 끝낼 수 없으므로(S3의
+`force_empty`처럼 즉시 재시도가 안 됨) `CloudFrontNotDisabled` 에러로 안내만 하고 끝낸다 —
+사용자가 잠시 후 삭제를 다시 시도하면 된다.
 """
 
 from __future__ import annotations
@@ -90,6 +99,8 @@ def supported_actions(provider: str, service_code: str, original_resource_type: 
     if provider == "aws" and service_code == "rds":
         return {"start", "stop", "delete"}
     if provider == "aws" and service_code == "s3":
+        return {"delete"}
+    if provider == "aws" and service_code == "cloudfront":
         return {"delete"}
     if provider == "azure" and service_code == "vm":
         return {"start", "stop", "delete"}
