@@ -66,47 +66,68 @@
   // ── 비용 집계(/resources 각 항목의 cost_summary.estimated_monthly_cost) ────
   // app/pricing.py가 정가 기준으로 채워준 값을 그대로 합산한다 — 사용량 기반 서비스(S3/CDN 등)나
   // 허용 목록 밖 스펙은 cost_summary 자체가 없어 자동으로 missing 카운트에 들어간다.
+  // 합계는 MCPCostFormat.sumWithGuard로 낸다(비용 파트 PR 6) — Number() 합산은 통화가 섞이면
+  // $와 ₩을 그대로 더하는 사고로 이어진다(docs/비용_개발문서 QA-03). byProvider/byCategory는
+  // 카드·막대 보조 지표라 이번 범위에서는 통화 혼재를 가정하지 않고 그대로 둔다.
   function computeCostAggregates(items) {
-    var totalCost = 0, hasAny = false, missing = 0;
+    var rawItems = [], missing = 0;
     var byProvider = {}, byCategory = {};
     items.forEach(function (r) {
       var raw = r.cost_summary && r.cost_summary.estimated_monthly_cost;
       var amount = raw != null ? parseFloat(raw) : NaN;
-      if (isNaN(amount)) { missing++; return; }
-      hasAny = true;
-      totalCost += amount;
+      if (raw == null || isNaN(amount)) { missing++; return; }
+      var currency = (r.cost_summary && r.cost_summary.currency) || "USD";
+      rawItems.push({ amount: raw, cost_kind: "list_price_estimate", currency: currency, period_start: "current", period_end: "current" });
       var prov = r.cloud_account && r.cloud_account.provider;
       if (prov) byProvider[prov] = (byProvider[prov] || 0) + amount;
       var cat = r.service && r.service.category;
       if (cat) byCategory[cat] = (byCategory[cat] || 0) + amount;
     });
-    return { totalCost: totalCost, hasAny: hasAny, missing: missing, byProvider: byProvider, byCategory: byCategory };
+    var guarded = window.MCPCostFormat ? window.MCPCostFormat.sumWithGuard(rawItems) : { mixed: false, groups: [] };
+    var totalCost = 0, currency = null;
+    if (guarded.groups.length) { totalCost = parseFloat(guarded.groups[0].total); currency = guarded.groups[0].currency; }
+    return {
+      totalCost: totalCost, currency: currency, mixedCurrencies: guarded.mixed,
+      hasAny: rawItems.length > 0, missing: missing, byProvider: byProvider, byCategory: byCategory
+    };
   }
 
   // ── 전체 리소스 수 + 예상 총 비용 + 클라우드별 카드(/resources/summary + costInfo) ─
-  function renderResourceSummary(summary, costInfo) {
+  function renderResourceSummary(summary, costInfo, failures) {
+    failures = failures || {};
     var byProvider = (summary && summary.by_provider) || [];
     costInfo = costInfo || { totalCost: 0, hasAny: false, missing: 0, byProvider: {}, byCategory: {} };
 
     var totalEl = document.getElementById("dash-total-resources");
-    if (totalEl) totalEl.textContent = (summary && summary.total_resources) || 0;
+    if (totalEl) totalEl.textContent = failures.summaryFailed ? "—" : (summary && summary.total_resources) || 0;
 
     var breakdownEl = document.getElementById("dash-total-resources-breakdown");
     if (breakdownEl) {
-      breakdownEl.textContent = byProvider.length
-        ? byProvider.map(function (p) { return (PLATFORM_LABEL[p.provider] || p.provider) + " " + p.count; }).join(" · ")
-        : "아직 리소스가 없습니다.";
+      breakdownEl.textContent = failures.summaryFailed
+        ? "조회 실패 — 리소스 요약을 불러오지 못했습니다."
+        : (byProvider.length
+          ? byProvider.map(function (p) { return (PLATFORM_LABEL[p.provider] || p.provider) + " " + p.count; }).join(" · ")
+          : "아직 리소스가 없습니다.");
     }
 
     var countByProvider = {};
     byProvider.forEach(function (p) { countByProvider[p.provider] = p.count; });
 
+    var F = window.MCPCostFormat;
     var costEl = document.getElementById("dash-total-cost");
     var costNoteEl = document.getElementById("dash-total-cost-note");
-    if (costEl) costEl.textContent = costInfo.hasAny ? "$" + costInfo.totalCost.toFixed(2) + "/mo" : "—";
+    if (costEl) {
+      costEl.textContent = costInfo.hasAny
+        ? (F ? F.money(costInfo.totalCost.toFixed(6), costInfo.currency) : "$" + costInfo.totalCost.toFixed(2)) + "/mo"
+        : "—";
+    }
     if (costNoteEl) {
-      if (!costInfo.hasAny) {
+      if (failures.itemsFailed) {
+        costNoteEl.textContent = "조회 실패 — 리소스 목록을 불러오지 못해 비용을 계산할 수 없습니다.";
+      } else if (!costInfo.hasAny) {
         costNoteEl.textContent = "정가 기준으로 추정 가능한 리소스가 없습니다(사용량 기반 서비스만 있거나 리소스 없음).";
+      } else if (costInfo.mixedCurrencies) {
+        costNoteEl.textContent = "정가(list price) 기준 추정 · 통화가 섞여 있어 " + costInfo.currency + " 기준 합계만 표시합니다.";
       } else if (costInfo.missing > 0) {
         costNoteEl.textContent = "정가(list price) 기준 추정 · 사용량 기반 리소스 " + costInfo.missing + "개는 제외됨.";
       } else {
@@ -119,7 +140,7 @@
       container.innerHTML = PLATFORMS.map(function (p) {
         var count = countByProvider[p] || 0;
         var cost = costInfo.byProvider[p];
-        var costText = cost != null ? "$" + cost.toFixed(2) + "/mo · 추정치" : "추정 불가";
+        var costText = cost != null ? "$" + cost.toFixed(2) + "/mo · Estimated · 정가 730h" : "추정 불가";
         return (
           '<div class="rounded-2xl border border-border bg-surface p-5">' +
           '<div class="flex items-center justify-between">' +
@@ -137,9 +158,13 @@
   }
 
   // ── 서비스별 비용 비중(카테고리별 합산 막대) ────────────────────────────────
-  function renderCostBreakdown(costInfo) {
+  function renderCostBreakdown(costInfo, itemsFailed) {
     var el = document.getElementById("dash-cost-by-category");
     if (!el) return;
+    if (itemsFailed) {
+      el.innerHTML = '<p class="text-sm text-muted-foreground">조회 실패 — 리소스 목록을 불러오지 못했습니다.</p>';
+      return;
+    }
     if (!costInfo.hasAny) {
       el.innerHTML = '<p class="text-sm text-muted-foreground">추정 가능한 리소스가 없습니다.</p>';
       return;
@@ -602,18 +627,28 @@
     // 같이 기다린다 — 비용 집계는 /resources 쪽 데이터로 하고, 그 결과를 요약 카드/클라우드별
     // 카드에도 같이 써야 해서 두 응답이 다 와야 렌더링이 정확하다(따로 부르면 순서에 따라
     // 클라우드별 카드가 비용 없이 먼저 그려질 수 있음).
+    // .catch(()=>null) 대신 {ok, value|error}로 감싼다 — null로 뭉개면 "조회 실패"와
+    // "데이터 없음"이 같은 모양이 되어 실패한 조회가 0/빈 상태로 보인다(비용 파트 PR 6,
+    // docs/비용_개발문서 QA-01과 같은 원칙).
+    function settle(promise) {
+      return promise.then(
+        function (v) { return { ok: true, value: v }; },
+        function (e) { return { ok: false, error: e }; }
+      );
+    }
     Promise.all([
-      MCPApi.request("/resources/summary").catch(function () { return null; }),
-      MCPApi.request("/resources").catch(function () { return null; }),
-      MCPApi.request("/cloud-accounts").catch(function () { return null; }),
+      settle(MCPApi.request("/resources/summary")),
+      settle(MCPApi.request("/resources")),
+      settle(MCPApi.request("/cloud-accounts")),
     ]).then(function (results) {
-      var summary = results[0];
-      var items = (results[1] && results[1].items) || [];
-      var accounts = (results[2] && results[2].items) || [];
+      var summaryRes = results[0], itemsRes = results[1], accountsRes = results[2];
+      var summary = summaryRes.ok ? summaryRes.value : null;
+      var items = itemsRes.ok ? (itemsRes.value && itemsRes.value.items) || [] : [];
+      var accounts = accountsRes.ok ? (accountsRes.value && accountsRes.value.items) || [] : [];
       var costInfo = computeCostAggregates(items);
-      renderResourceSummary(summary, costInfo);
+      renderResourceSummary(summary, costInfo, { summaryFailed: !summaryRes.ok, itemsFailed: !itemsRes.ok });
       renderCategoriesAndRegions(items);
-      renderCostBreakdown(costInfo);
+      renderCostBreakdown(costInfo, !itemsRes.ok);
       initConsoleLauncher(accounts, items);
     });
 
