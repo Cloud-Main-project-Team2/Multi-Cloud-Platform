@@ -70,7 +70,15 @@ select, input, textarea {
 }
 .dash { font-size: 27px; line-height: 1; }
 .note { font-size: 11px; color: var(--muted-foreground); margin-top: 10px; }
-.warning { border-left: 3px solid var(--cost-warn); background: var(--muted); padding: 12px; border-radius: 5px; }
+/* 04 §1-3 경고 배너 — 원래 여백이 없어 바로 위 요소(예: CF-001의 meta-grid)와 맞닿아
+   보였다(2026-09-19 실사용 중 발견). 패딩·글자 크기도 줄여 전체폭 블록 안에서 덩치가
+   과하지 않게 한다 — 문구+버튼 한 줄이면 그 이상 차지할 이유가 없다. */
+.warning {
+  border-left: 3px solid var(--cost-warn); background: var(--muted); padding: 8px 12px;
+  border-radius: 5px; margin-top: 10px; font-size: 12px; line-height: 1.5;
+}
+.warning + .warning { margin-top: 8px; }
+.warning .btn { margin-left: 4px; padding: 3px 9px; font-size: 11px; }
 
 /* 상태 6종(금액 칸을 비우는 상태) 공통 뷰 */
 .state-view {
@@ -90,9 +98,30 @@ select, input, textarea {
   font-size: 11px; color: var(--muted-foreground);
 }
 
-.filter-grid { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
-.filter-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
-.chip { display: inline-flex; align-items: center; background: var(--muted); padding: 4px 8px; border-radius: 6px; color: var(--primary); font-size: 11px; }
+.filter-grid { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-end; }
+.filter-grid label, .filter-grid .filter-field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+/* 시작일·종료일·CSP·계정·통화·요금 분류 — 상자 크기를 모두 맞추고(2026-09-19 요청), 한 줄에
+   다 들어오도록 폭도 줄인다(2026-09-19 후속 요청). 고정 너비를 주면 안의 <input>·<select>
+   (dropdown.js가 씌운 버튼 포함)·커스텀 드롭다운 div가 전부 column flex의 기본 정렬
+   (align-items: stretch)로 그 너비를 그대로 채운다 — 컨트롤마다 따로 폭을 맞출 필요가 없다.
+   버튼 여러 개인 "기간 프리셋"은 이 클래스를 붙이지 않는다. */
+.filter-grid .filter-box { flex: 0 0 108px; }
+/* 필터 줄의 컨트롤 종류가 제각각(button/input[date]/드롭다운 버튼)이라 높이 계산 방식이
+   서로 달라 1~3px씩 어긋났다(2026-09-19 발견) — 전부 같은 고정 높이로 맞춘다. */
+.filter-grid .btn, .filter-grid input[type="date"], .filter-grid .mc-dd > button { height: 34px; box-sizing: border-box; }
+.chip {
+  display: inline-flex; align-items: center; background: var(--muted); padding: 4px 8px;
+  border-radius: 6px; color: var(--primary); font-size: 11px;
+  /* .note·.contract-row와 같은 10px 규칙 — 원래 여백이 없어 바로 위 필터 줄과 붙어 보였다
+     (2026-09-19 발견, .warning 때와 같은 종류의 버그). */
+  margin-top: 10px;
+}
+
+/* CSP·계정처럼 다중 선택이 필요한 필터 — dropdown.js(MCDropdown)는 단일 <select>만 다루므로
+   같은 .mc-dd/.mc-dd__menu/.mc-dd__item 모양(다른 화면의 단일 선택 드롭다운과 동일한 룩)을
+   재사용해 cost.js가 직접 그린다. 체크박스 없이 행 자체가 선택되면 배경이 강조된다(Tailwind
+   유틸리티 클래스는 cost.js가 인라인으로 붙인다). 클래스가 같아서 dropdown.js의 바깥 클릭·Esc
+   닫기 전역 리스너가 이 메뉴도 그대로 닫아준다. */
 
 .cloud-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
 .cloud-card { border: 1px solid var(--border); border-radius: 9px; padding: 14px; }

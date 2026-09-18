@@ -25,7 +25,7 @@
     var btn = document.createElement("button");
     btn.type = "button";
     btn.className = origClass + " flex items-center justify-between gap-2 text-left";
-    btn.innerHTML = '<span class="mc-dd__label truncate"></span>' + chevron();
+    btn.innerHTML = '<span class="mc-dd__label truncate min-w-0"></span>' + chevron();
     wrap.appendChild(btn);
 
     var menu = document.createElement("div");
@@ -89,4 +89,10 @@
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") closeAll(); });
 
   document.querySelectorAll("select").forEach(enhance);
+
+  // 페이지 로드 이후 fetch 응답으로 <select>를 통째로 새로 만들어 붙이는 화면(비용 화면의
+  // 필터 등)을 위해 enhance()를 외부에 연다 — 위 querySelectorAll은 스크립트 실행 시점의
+  // DOM만 보므로 그 뒤에 생긴 select는 저절로 꾸며지지 않는다. closeAll도 같이 연다 — 커스텀
+  // 드롭다운(체크박스형 다중 선택 등)을 열 때 다른 드롭다운을 먼저 닫는 용도로 재사용한다.
+  window.MCDropdown = { enhance: enhance, closeAll: closeAll };
 })();
