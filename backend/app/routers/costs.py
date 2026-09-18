@@ -1,18 +1,32 @@
-"""비용 수집 실행 API 3종(docs/01_API_Specification_v1.2.md §11-9 — 제안, 팀 승인 전).
+"""비용 수집 실행 API 3종 + 조회 API 6종(docs/01_API_Specification_v1.2.md §11 — 제안, 팀
+승인 전).
 
-CSP API를 실제로 호출하는 유일한 경로다. 비용 조회 6종(PR 5)은 전부 DB만 읽는다 — 이
-파일에 `boto3`/`azure`/`google` import가 있는 건 여기뿐이어야 한다(§11-1-2 CSP 호출 경계).
+수집 실행 3종만 CSP API를 실제로 호출한다. 조회 6종은 `app/cost/query.py`·
+`app/cost/capability.py`를 통해 **전부 DB만 읽는다** — 이 파일에 `boto3`/`azure`/`google`
+import가 있는 건 수집 실행 부분뿐이어야 한다(§11-1-2 CSP 호출 경계, ADR-040).
 """
 
 from __future__ import annotations
 
 import datetime as dt
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
 from app.cost import COST_ADAPTERS, is_cost_supported
+from app.cost.capability import account_capability
 from app.cost.ingest import AccountLockedError, replace_cost_rows
+from app.cost.query import (
+    CostQuery,
+    breakdown,
+    changes,
+    collection_status,
+    owned_accounts,
+    parse_period,
+    staleness_threshold_hours,
+    summary,
+    trend,
+)
 from app.db import SessionLocal, get_db
 from app.deps import get_current_user
 from app.errors import ApiError, validation_error
@@ -20,6 +34,14 @@ from app.logging_config import log_background_task, log_business_event
 from app.models import CloudAccount, Credential, CostIngestionRun, User
 from app.providers.session import CredentialResolutionError, resolve_secret_payload
 from app.schemas.costs import (
+    CostBreakdownResponse,
+    CostCapabilitiesData,
+    CostCapabilitiesResponse,
+    CostCapabilityItem,
+    CostChangesResponse,
+    CostCollectionStatusData,
+    CostCollectionStatusItem,
+    CostCollectionStatusResponse,
     CostIngestionRunCreateData,
     CostIngestionRunCreateItem,
     CostIngestionRunCreateRequest,
@@ -29,6 +51,8 @@ from app.schemas.costs import (
     CostIngestionRunListResponse,
     CostIngestionRunOut,
     CostIngestionRunSkipped,
+    CostSummaryResponse,
+    CostTrendResponse,
 )
 from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json
 from app.serialization import iso_z, str_id
@@ -355,3 +379,171 @@ def get_cost_ingestion_run(
 
     run, provider = row
     return CostIngestionRunDetailResponse(data=_serialize_run(run, provider))
+
+
+# --- 조회 6종(PR 5) — 전부 DB만 읽는다 ------------------------------------------------------
+
+
+def _build_query(
+    period_start: str | None,
+    period_end: str | None,
+    provider: list[str],
+    cloud_account_id: list[str],
+    currency: str | None,
+    charge_category: list[str],
+) -> CostQuery:
+    start, end = parse_period(period_start, period_end)
+    account_ids = _parse_int_list(cloud_account_id, "cloud_account_id") if cloud_account_id else []
+    return CostQuery(
+        period_start=start, period_end=end, providers=provider, cloud_account_ids=account_ids,
+        currency=currency, charge_categories=charge_category or ["usage"],
+    )
+
+
+@router.get("/costs/capabilities", response_model=CostCapabilitiesResponse)
+def get_cost_capabilities(
+    provider: list[str] = Query(default=[]),
+    cloud_account_id: list[str] = Query(default=[]),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CostCapabilitiesResponse:
+    q = _build_query(None, None, provider, cloud_account_id, None, [])
+    accounts = owned_accounts(db, current_user.id, q)
+
+    items = []
+    for account in accounts:
+        cap = account_capability(db, account)
+        items.append(
+            CostCapabilityItem(
+                cloud_account_id=str_id(account.id), provider=account.provider,
+                external_account_id=account.external_account_id, account_label=account.account_label,
+                team_id=str_id(account.team_id), status=cap["status"], as_of=iso_z(cap["as_of"]),
+                ingestion_running=cap["ingestion_running"], cost_read=cap["cost_read"],
+                capability_source=cap["capability_source"], currency=cap["currency"],
+                setup_hint=cap["setup_hint"], last_error_code=cap["last_error_code"],
+            )
+        )
+    return CostCapabilitiesResponse(
+        data=CostCapabilitiesData(
+            staleness_threshold_hours=staleness_threshold_hours(), items=items, total=len(items)
+        )
+    )
+
+
+def _iso_z_fields(d: dict, fields: tuple[str, ...]) -> dict:
+    out = dict(d)
+    for f in fields:
+        if f in out:
+            out[f] = iso_z(out[f])
+    return out
+
+
+@router.get("/costs/summary", response_model=CostSummaryResponse)
+def get_cost_summary(
+    period_start: str | None = None,
+    period_end: str | None = None,
+    provider: list[str] = Query(default=[]),
+    cloud_account_id: list[str] = Query(default=[]),
+    currency: str | None = None,
+    charge_category: list[str] = Query(default=[]),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CostSummaryResponse:
+    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, charge_category)
+    data = summary(db, current_user.id, q)
+    data["as_of"] = iso_z(data["as_of"])
+    data["accounts"] = [_iso_z_fields(a, ("as_of", "resources_synced_at")) for a in data["accounts"]]
+    return CostSummaryResponse(data=data)
+
+
+@router.get("/costs/trend", response_model=CostTrendResponse)
+def get_cost_trend(
+    period_start: str | None = None,
+    period_end: str | None = None,
+    provider: list[str] = Query(default=[]),
+    cloud_account_id: list[str] = Query(default=[]),
+    currency: str | None = None,
+    charge_category: list[str] = Query(default=[]),
+    granularity: str = "daily",
+    group_by: str = "provider",
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CostTrendResponse:
+    if granularity not in ("daily", "weekly", "monthly", "quarterly"):
+        raise validation_error("granularity는 daily|weekly|monthly|quarterly 중 하나여야 합니다.")
+    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, charge_category)
+    data = trend(db, current_user.id, q, granularity, group_by, currency)
+    data.update({"granularity": granularity, "group_by": group_by, "staleness_threshold_hours": staleness_threshold_hours()})
+    return CostTrendResponse(data=data)
+
+
+@router.get("/costs/breakdown", response_model=CostBreakdownResponse)
+def get_cost_breakdown(
+    period_start: str | None = None,
+    period_end: str | None = None,
+    provider: list[str] = Query(default=[]),
+    cloud_account_id: list[str] = Query(default=[]),
+    currency: str | None = None,
+    charge_category: list[str] = Query(default=[]),
+    dimension: str = "provider",
+    top_n: int = 6,
+    tag_key: str | None = None,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CostBreakdownResponse:
+    if dimension == "tag":
+        # 태그 배분은 설계만(확정 7) — 501로 응답한다.
+        raise ApiError(501, "UNSUPPORTED_OPERATION", "태그 기준 비용 배분은 아직 지원하지 않습니다.")
+    if dimension not in ("provider", "service", "category", "account", "team"):
+        raise validation_error("dimension이 올바르지 않습니다.")
+    top_n = max(1, min(top_n, 20))
+    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, charge_category)
+    data = breakdown(db, current_user.id, q, dimension, top_n, currency)
+    return CostBreakdownResponse(data=data)
+
+
+@router.get("/costs/changes", response_model=CostChangesResponse)
+def get_cost_changes(
+    period_start: str | None = None,
+    period_end: str | None = None,
+    provider: list[str] = Query(default=[]),
+    cloud_account_id: list[str] = Query(default=[]),
+    charge_category: list[str] = Query(default=[]),
+    compare: str = "previous_period",
+    dimension: str = "service",
+    top_n: int = 10,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CostChangesResponse:
+    if compare not in ("previous_period", "previous_month"):
+        raise validation_error("compare는 previous_period|previous_month 중 하나여야 합니다.")
+    top_n = max(1, min(top_n, 50))
+    q = _build_query(period_start, period_end, provider, cloud_account_id, None, charge_category)
+    data = changes(db, current_user.id, q, compare, dimension, top_n)
+    return CostChangesResponse(data=data)
+
+
+@router.get("/costs/collection-status", response_model=CostCollectionStatusResponse)
+def get_cost_collection_status(
+    provider: list[str] = Query(default=[]),
+    cloud_account_id: list[str] = Query(default=[]),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CostCollectionStatusResponse:
+    q = _build_query(None, None, provider, cloud_account_id, None, [])
+    raw_items = collection_status(db, current_user.id, q)
+    items = [
+        CostCollectionStatusItem(
+            cloud_account_id=str_id(item["cloud_account_id"]), provider=item["provider"], status=item["status"],
+            as_of=iso_z(item["as_of"]), ingestion_running=item["ingestion_running"],
+            last_success_at=iso_z(item["last_success_at"]), last_attempt_at=iso_z(item["last_attempt_at"]),
+            last_error_code=item["last_error_code"], next_manual_allowed_at=iso_z(item["next_manual_allowed_at"]),
+            covered_through=item["covered_through"], missing_days=item["missing_days"],
+        )
+        for item in raw_items
+    ]
+    return CostCollectionStatusResponse(
+        data=CostCollectionStatusData(
+            staleness_threshold_hours=staleness_threshold_hours(), items=items, total=len(items)
+        )
+    )
