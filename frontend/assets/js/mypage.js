@@ -269,14 +269,24 @@
         };
 
         // JSON 블록은 길어서 접어 둔다(<details>는 브라우저 기본 토글이라 JS가 필요 없다).
+        // 이 정책들은 실제로 AWS IAM 콘솔에 붙여넣는 값이라 "관리자 전용"임을 제목에 명시하고,
+        // 손으로 긁어 복사하다 줄이 잘리는 실수를 막기 위해 클립보드 복사 버튼을 둔다.
+        var jsonBlockSeq = 0;
         function jsonBlock(summary, note, value) {
+          var blockId = "cred-aws-json-" + (jsonBlockSeq++);
+          var text = JSON.stringify(value, null, 2);
           return (
             '<details class="mt-2 rounded-lg border border-border bg-background">' +
-              '<summary class="cursor-pointer select-none px-3 py-2 text-sm font-medium">' + escapeHtml(summary) + '</summary>' +
+              '<summary class="flex cursor-pointer select-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium">' +
+                '<span>' + escapeHtml(summary) + ' <span class="font-normal text-yellow">(관리자 전용)</span></span>' +
+              '</summary>' +
               '<div class="border-t border-border px-3 py-2">' +
                 (note ? '<p class="mb-2 text-xs text-muted-foreground">' + note + '</p>' : '') +
-                '<textarea readonly rows="10" class="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-[11px]">' +
-                  escapeHtml(JSON.stringify(value, null, 2)) +
+                '<div class="flex justify-end">' +
+                  '<button type="button" class="cred-aws-json-copy mb-1 rounded-md border border-border px-2 py-1 text-xs hover:bg-muted" data-copy-target="' + blockId + '">복사</button>' +
+                '</div>' +
+                '<textarea id="' + blockId + '" readonly rows="10" class="w-full rounded-lg border border-border bg-background px-3 py-2 font-mono text-[11px]">' +
+                  escapeHtml(text) +
                 '</textarea>' +
               '</div>' +
             '</details>'
@@ -295,14 +305,46 @@
             '<li>역할을 만든 뒤 <b>권한 탭 → 인라인 정책 추가</b>로 아래 ②를 붙여넣습니다.</li>' +
             '<li>만들어진 <b>역할 ARN</b>을 아래에 붙여넣습니다.</li>' +
           '</ol>' +
-          jsonBlock("① 신뢰 정책 (역할 만들기 중 붙여넣기)", "역할 생성 화면의 \"사용자 지정 신뢰 정책\"에만 들어갑니다.", data.trust_policy) +
+          jsonBlock("① 신뢰 정책 (역할 만들기 중 붙여넣기)", "역할 생성 화면의 \"사용자 지정 신뢰 정책\"에만 들어갑니다. 우리 플랫폼 계정을 신뢰하는 값이라 역할을 만드는 관리자만 다뤄야 합니다.", data.trust_policy) +
           jsonBlock(
             "② 인라인 권한 정책 (역할 생성 후 추가)",
-            "관리형 정책에 없는 권한입니다. 첫 번째 항목(비용 표시·권한 자동 판별·기존 네트워크 조회)은 없어도 연결 자체는 되지만, 두 번째 항목(mcp-ssm-* 역할 관리)이 없으면 EC2 생성 시 SSM 콘솔 접속용 역할을 만들지 못해 프로비저닝이 실패합니다.",
+            "관리형 정책에 없는 권한입니다. 첫 번째 항목(비용 표시·권한 자동 판별·기존 네트워크 조회)은 없어도 연결 자체는 되지만, 두 번째 항목(mcp-ssm-* 역할 관리)이 없으면 EC2 생성 시 SSM 콘솔 접속용 역할을 만들지 못해 프로비저닝이 실패합니다. 다섯 번째 항목은 프로비저닝(EC2/RDS/S3/CloudFront)이 실제로 리소스를 생성·삭제하는 데 쓰는 권한을 그대로 옮겨 적은 것으로, ①의 관리형 정책 4개가 이미 포함하고 있어 필수는 아니지만 최소 권한으로 좁혀 쓰고 싶다면 참고해 복사해 쓸 수 있습니다.",
             inlinePolicy
           ) +
           '<p class="mt-2"><a href="' + escapeHtml(data.iam_console_url) + '" target="_blank" rel="noopener" class="text-primary underline">IAM 콘솔에서 역할 만들기 ' + MCUI.icons.externalLink + '</a></p>' +
           '<p class="mt-2 text-xs text-muted-foreground">이 방식에서는 Access Key를 저장하지 않습니다. 저장되는 값은 역할 ARN과 External ID뿐이며, 둘 다 그 자체로는 권한이 없습니다.</p>';
+
+        guide.querySelectorAll(".cred-aws-json-copy").forEach(function (btn) {
+          btn.addEventListener("click", function () {
+            var textarea = document.getElementById(btn.getAttribute("data-copy-target"));
+            if (!textarea) return;
+            var restoreLabel = function () { btn.textContent = "복사"; };
+            var onCopied = function () {
+              btn.textContent = "복사됨";
+              window.setTimeout(restoreLabel, 1500);
+            };
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+              navigator.clipboard.writeText(textarea.value).then(onCopied, function () {
+                btn.textContent = "복사 실패";
+                window.setTimeout(restoreLabel, 1500);
+              });
+            } else {
+              // Clipboard API를 못 쓰는 환경(구형 브라우저·비-HTTPS) 폴백.
+              textarea.removeAttribute("readonly");
+              textarea.focus();
+              textarea.select();
+              try {
+                document.execCommand("copy");
+                onCopied();
+              } catch (e) {
+                btn.textContent = "복사 실패";
+                window.setTimeout(restoreLabel, 1500);
+              } finally {
+                textarea.setAttribute("readonly", "readonly");
+              }
+            }
+          });
+        });
       })
       .catch(function (err) {
         guide.innerHTML = '<p class="text-yellow">' + escapeHtml(errorMessage(err)) + '</p>';
