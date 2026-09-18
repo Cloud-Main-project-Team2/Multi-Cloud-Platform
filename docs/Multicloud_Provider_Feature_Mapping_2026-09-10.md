@@ -43,6 +43,70 @@
 | 스토리지(부분매핑) | 제외 | 제외 | 제외 | **완전 제외**(기본값으로 설정) |
 | 권한(애매) | 제외 | 제외 | 제외 | **완전 제외**(IAM Role/Managed Identity/Service Account — 자동/기본 처리) |
 
+### 1-1. "사양" 행 정정 — 등급명은 공통이어도 실제 값은 3사가 다르다 (2026-09-18 추가)
+
+위 표의 "사양" 행은 **공통 설정 스텝에 노출되는 UI 구조**(등급 선택 하나)가 3사 공통이라는
+뜻이지, 실제 vCPU·메모리 수치가 같다는 뜻이 아니다. 예전에는 등급 라벨 자체에 "1 vCPU · 2GB"
+같은 문구를 박아 넣어 3사 공통 사양처럼 보였는데, 실측 결과 전혀 달랐다(예: Azure B1s는
+1 vCPU/1GiB인데 AWS t3.micro는 2 vCPU/1GiB) — 사용자에게 틀린 스펙을 안내하고 있었다.
+
+`frontend/assets/js/provisioning.js`의 `SPEC_TIERS`는 이제 등급 이름(경량/표준/고성능)만 공통이고
+실제 SKU·vCPU·메모리는 플랫폼별 메타데이터로 따로 관리한다(재검증한 실제 값):
+
+| 등급 | AWS | Azure | GCP |
+|---|---|---|---|
+| 경량 | t3.micro (2 vCPU / 1 GiB) | **B1s** (1 vCPU / 1 GiB, 무료 대상) | e2-micro (2 vCPU / 1 GiB) |
+| 표준 | t3.medium (2 vCPU / 4 GiB) | B2s (2 vCPU / 4 GiB) | e2-medium (2 vCPU / 4 GiB) |
+| 고성능 | t3.large (2 vCPU / 8 GiB) | B4ms (4 vCPU / 16 GiB) | e2-standard-4 (4 vCPU / 16 GiB) |
+
+화면에는 등급 선택 후 플랫폼별 실제 사양을 별도 영역에 나열하고(`specDetailHtml()`), 리뷰
+화면에도 실제로 전송될 SKU를 그대로 노출한다(`renderReview()`) — 등급 라벨과 전송값이 어긋나지
+않도록 한다.
+
+#### Azure 무료 구독 후보와 "무료 대상"≠"이 구독·리전에서 생성 가능"
+
+Azure 무료 체험 계정 공식 안내 기준 "경량" 등급 후보는 세 가지다:
+
+- **B1s** (x86-64, 1 vCPU/1 GiB) — 기본값.
+- **B2ats_v2** (x86-64, 2 vCPU/1 GiB) — 무료 대상 대안. 프론트에서 사용자가 **명시적으로**
+  체크해야만 적용되고(`data-ps="useFreeAltSku"`), 자동으로 바꿔치기하지 않는다. 실제 전송되는
+  SKU는 리뷰 화면에 그대로 보인다.
+- **B2pts_v2** (**ARM64**, 2 vCPU/1 GiB) — 이번 작업 범위에서는 **선택지에서 제외**했다. 지금
+  프로비저닝이 쓰는 이미지(Ubuntu 22.04/Windows Server 2022, `azure_provisioning.py`의
+  `IMAGE_REFERENCES`)는 x86-64 전용이라 ARM64 이미지 호환성이 구현돼 있지 않다 — 이미지 호환
+  작업이 끝나기 전까지는 절대 자동으로 고르면 안 된다.
+
+**"무료 혜택 대상 SKU"라는 것과 "실제 이 구독·리전에서 지금 생성할 수 있음"은 별개다.** 무료
+혜택은 신규 계정의 12개월/월별 사용 시간 한도 조건부일 뿐이고, 구독·리전 단위의 실제 SKU
+가용성(용량 배정 여부)은 이와 무관하게 결정된다 — 실측 사례(2026-09-18, koreacentral/eastus의
+B1s/B2s/D2s_v3)로 실제 거부가 확인됐다. 그래서:
+
+- 프론트 안내 문구(`AZURE_FREE_TIER_NOTE`)가 "무료 혜택 대상"과 "생성 가능 여부는 별개"를 항상
+  같이 명시한다. "표준"/"고성능" 등급은 무료 혜택 대상이 아니라는 점도 별도 안내(`AZURE_PAID_NOTE`)한다.
+- `app/providers/azure.py`의 `list_vm_sku_availability()` + `GET
+  /credentials/{credential_id}/vm-sku-availability`가 실제 생성 전에 그 구독·리전에서 SKU가
+  `available`/`restricted`/`not_offered_in_region`인지 읽기 전용으로 미리 확인해준다. 조회
+  실패는 "사용 가능"으로 간주하지 않으며, "available"이었다는 결과도 실시간 용량(capacity)까지
+  보장하지 않는다 — 스냅샷일 뿐이고, 실제 생성 시 Azure가 다시 검증한다.
+
+#### `SkuNotAvailable` vs 할당량(quota) 초과 — 원인이 다르므로 안내도 다르다
+
+Azure VM 생성 실패의 두 원인을 혼동하면 사용자가 잘못된 조치를 하게 된다(`app/error_patterns.py`
+참고):
+
+- **`SkuNotAvailable` / `Capacity Restrictions`**: 그 SKU 자체가 이 구독·리전에 배정돼 있지
+  않다는 뜻 — 할당량을 늘려도 해결되지 않는 경우가 흔하다. 안내: 다른 SKU·리전·가용 영역을
+  선택하거나 Azure 지원에 SKU 사용을 요청하라.
+- **`OperationNotAllowed` / `ResourceQuotaExceeded`(vCPU 할당량 초과)**: 리전 전체 또는 VM
+  계열별 vCPU 수 자체가 부족하다는 뜻 — 할당량 증설 요청이 유효한 해결책일 수 있다. 다만 **무료
+  체험(free trial) 구독은 보통 할당량 증설 신청 대상이 아니다** — 계속 쓰려면 종량제(pay-as-you-go)
+  전환이 필요할 수 있다는 점을 같이 안내한다.
+
+두 원인은 서로 다른 한글 문구로 번역되며(첫 매칭 우선순위 상 두 패턴 모두 기존 범용 quota/capacity
+패턴보다 앞에 둔다), 비밀번호 복잡도 오류(`master password` 패턴)나 `text file busy`류 실행 환경
+오류와도 섞이지 않도록 키워드를 좁게 잡았다. `SkuNotAvailable`의 다른 원인(예: 리전 자체 미제공)까지
+전부 "할당량 문제"로 단정하지 않는다.
+
 ## 2. DB — RDBMS (RDS / Azure SQL Database / Cloud SQL)
 
 | 필드 | AWS | Azure | GCP | 분류 |

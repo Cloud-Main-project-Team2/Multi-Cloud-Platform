@@ -44,6 +44,41 @@ def test_common_patterns_translated(raw, expect):
     assert expect in msg
 
 
+def test_sku_not_available_and_quota_exceeded_get_different_messages():
+    """2026-09-18 회귀: Azure VM 생성 실패의 두 원인(SkuNotAvailable/Capacity Restrictions vs
+    vCPU 할당량 초과)은 해결책이 다르므로 서로 다른 한글 문구로 번역돼야 한다 — 하나로
+    뭉뚱그리면 "할당량을 늘리면 된다"는 잘못된 조치를 안내하게 된다(실측: koreacentral/eastus의
+    B1s/B2s/D2s_v3에서 SkuNotAvailable을 실제로 겪었으나 이건 할당량 문제가 아니었다)."""
+    sku_msg = translate_reason(
+        "Error: creating Linux Virtual Machine: SkuNotAvailable: The requested VM size for "
+        "resource 'Following SKUs have failed for Capacity Restrictions: Standard_B1s' is "
+        "currently not available in location 'koreacentral'."
+    )
+    quota_msg = translate_reason(
+        "Error: creating Linux Virtual Machine: OperationNotAllowed: Operation could not be "
+        "completed as it results in exceeding approved standardBSFamily Cores quota."
+    )
+
+    assert sku_msg is not None and quota_msg is not None
+    assert sku_msg != quota_msg
+    assert "SKU" in sku_msg and "할당량" not in sku_msg
+    assert "할당량" in quota_msg
+    # 무료 체험 구독이 할당량 증설 대상이 아닐 수 있다는 안내는 quota 쪽에만 있어야 한다
+    # (SkuNotAvailable의 원인 전부가 할당량 문제라고 암시하지 않기 위함).
+    assert "무료 체험" in quota_msg
+    assert "무료 체험" not in sku_msg
+
+
+def test_sku_not_available_pattern_does_not_shadow_password_or_busy_errors():
+    """SkuNotAvailable/quota 패턴이 너무 넓게 잡히면 비밀번호 복잡도 오류나 실행 환경 오류
+    (`text file busy`)까지 잘못 흡수할 수 있다 — 그러면 안 된다."""
+    pw_msg = translate_reason("Error: master password does not conform to policy requirements")
+    assert pw_msg is not None and "SKU" not in pw_msg and "할당량" not in pw_msg
+
+    busy_msg = translate_reason("fork/exec /usr/local/bin/terraform: text file busy")
+    assert busy_msg is None or ("SKU" not in busy_msg and "할당량" not in busy_msg)
+
+
 def test_matching_is_case_insensitive():
     assert translate_reason("ACCESSDENIED: not authorized") is not None
 

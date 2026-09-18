@@ -25,12 +25,59 @@
     "미국": { aws: "us-east-1", azure: "eastus", gcp: "us-central1" },
   };
 
-  // 추상 사양 등급 → 플랫폼별 실제 SKU 매핑(코드 상수). 표준 등급은 가격 비교 모달과 일치.
+  // 추상 사양 등급 → 플랫폼별 실제 SKU 매핑(코드 상수).
+  //
+  // 2026-09-18 정정: 예전엔 등급 라벨 자체에 "1 vCPU · 2GB"처럼 3사 공통 사양을 박아 넣었는데,
+  // 실제로는 3사가 전혀 다른 사양이었다(예: Azure B1s는 1 vCPU/1GiB인데 AWS t3.micro는 2 vCPU/
+  // 1GiB) — 하나의 라벨에 틀린 사양을 표시해 사용자에게 잘못된 정보를 주고 있었다. 그래서 등급
+  // 이름(경량/표준/고성능)만 공통이고, 실제 vCPU·메모리는 플랫폼별 메타데이터로 따로 둔다.
+  // 화면에는 등급 선택 후 `specDetailHtml()`이 플랫폼별 실제 사양을 별도 영역에 표시한다.
+  //
+  // 실제 사양(공식 스펙 기준 재검증):
+  //   AWS t3.micro=2vCPU/1GiB, t3.medium=2vCPU/4GiB, t3.large=2vCPU/8GiB
+  //   Azure B1s=1vCPU/1GiB, B2s=2vCPU/4GiB, B4ms=4vCPU/16GiB
+  //   GCP e2-micro=2vCPU/1GiB, e2-medium=2vCPU/4GiB, e2-standard-4=4vCPU/16GiB
   var SPEC_TIERS = [
-    { key: "light", label: "경량 (1 vCPU · 2GB)", sku: { aws: "t3.micro", azure: "B1s", gcp: "e2-micro" } },
-    { key: "standard", label: "표준 (2 vCPU · 4GB)", sku: { aws: "t3.medium", azure: "B2s", gcp: "e2-medium" } },
-    { key: "high", label: "고성능 (4 vCPU · 8GB)", sku: { aws: "t3.large", azure: "B4ms", gcp: "e2-standard-4" } },
+    {
+      key: "light", label: "경량",
+      sku: {
+        aws: { name: "t3.micro", vcpu: 2, memGiB: 1 },
+        azure: { name: "B1s", vcpu: 1, memGiB: 1, free: true },
+        gcp: { name: "e2-micro", vcpu: 2, memGiB: 1 },
+      },
+    },
+    {
+      key: "standard", label: "표준",
+      sku: {
+        aws: { name: "t3.medium", vcpu: 2, memGiB: 4 },
+        azure: { name: "B2s", vcpu: 2, memGiB: 4 },
+        gcp: { name: "e2-medium", vcpu: 2, memGiB: 4 },
+      },
+    },
+    {
+      key: "high", label: "고성능",
+      sku: {
+        aws: { name: "t3.large", vcpu: 2, memGiB: 8 },
+        azure: { name: "B4ms", vcpu: 4, memGiB: 16 },
+        gcp: { name: "e2-standard-4", vcpu: 4, memGiB: 16 },
+      },
+    },
   ];
+
+  // Azure 무료 체험 계정 공식 안내 기준 무료 후보(2026-09-18) — "경량" 등급 기본값(B1s)의 x86-64
+  // 대안. B2pts_v2(ARM64)도 무료 후보로 안내되지만, ARM64 이미지 호환성을 이번 작업에서 구현하지
+  // 않았으므로(기존 Ubuntu/Windows 이미지는 x86-64 전용) 선택지에서 제외한다 — 자동으로 골라주지
+  // 않고, 이미지 호환 작업이 끝난 뒤에야 추가할 수 있다.
+  var AZURE_LIGHT_FREE_ALT = { name: "B2ats_v2", vcpu: 2, memGiB: 1, free: true };
+
+  // 무료/유료 안내 문구 — "무료 혜택 대상"과 "실제 그 구독·리전에서 생성 가능"은 별개라는 점을
+  // 항상 같이 적는다(무료 혜택은 신규 계정의 12개월/월별 한도 조건부일 뿐, SKU 가용성을 보장하지
+  // 않는다).
+  var AZURE_FREE_TIER_NOTE = "Azure 무료 체험 계정의 12개월 무료 한도 대상 SKU입니다(월 사용 시간 " +
+    "한도 있음). 무료 혜택 대상이라는 것과 실제 이 구독·리전에서 생성 가능한지는 별개입니다 — " +
+    "생성 시 거부될 수 있습니다.";
+  var AZURE_PAID_NOTE = "무료 혜택 대상이 아닙니다 — 비용이 청구되며, 구독의 vCPU 할당량이 " +
+    "필요할 수 있습니다.";
 
   // 인바운드 규칙 프리셋(체크박스). 기본 CIDR은 전체 허용.
   // SSH(22)는 2026-09-15부로 뺐다 — 키 페어를 새로 발급하지 않고 SSM Session Manager(인스턴스에
@@ -148,6 +195,39 @@
   function labelHtml(text, required) {
     return '<label class="mb-1 block text-sm font-medium">' + text +
       (required ? ' <span class="text-primary">*</span>' : "") + "</label>";
+  }
+
+  // 선택된 등급의 플랫폼별 실제 사양(SKU·vCPU·메모리)을 나열한다 — 공통 라벨에 사양을 안 넣는
+  // 대신(SPEC_TIERS 주석 참고) 여기서 플랫폼마다 다른 실제 값을 각각 보여준다. 여러 플랫폼을
+  // 동시에 선택했으면 전부 나열한다. Azure는 등급별 무료/유료 안내 문구도 같이 붙인다(실제
+  // 전송될 SKU는 useFreeAltSku 체크 여부에 따라 달라질 수 있음 — computeAuthEl 참고).
+  function specDetailHtml(tierKey, platforms) {
+    var tier = SPEC_TIERS.filter(function (t) { return t.key === tierKey; })[0];
+    if (!tier || !platforms || !platforms.length) return "";
+    var rows = platforms.map(function (p) {
+      var sku = tier.sku[p];
+      if (!sku) return "";
+      var freeBadge = sku.free
+        ? ' <span class="rounded border border-primary px-1 text-[11px] text-primary">무료 대상</span>' : "";
+      return '<div class="flex items-center justify-between gap-2 rounded-lg border border-border bg-background px-3 py-1.5 text-sm">' +
+        "<span>" + escHtml(PLATFORM_LABEL[p]) + "</span>" +
+        '<span class="text-muted-foreground">' + escHtml(sku.name) + " · " + sku.vcpu + " vCPU · " +
+        sku.memGiB + " GiB" + freeBadge + "</span></div>";
+    }).join("");
+    var azureNote = "";
+    if (platforms.indexOf("azure") >= 0) {
+      azureNote = '<p class="mt-1.5 text-xs" ' + WARN_STYLE + ">" +
+        (tierKey === "light" ? AZURE_FREE_TIER_NOTE : AZURE_PAID_NOTE) + "</p>";
+    }
+    return '<div class="space-y-1.5">' + rows + "</div>" + azureNote;
+  }
+
+  // #prov-common-fields의 [data-spec-detail]을 현재 state 기준으로 다시 그린다. collect()가
+  // state.commonSpec.specTier/state.platforms를 갱신할 때마다 호출해 계속 최신으로 맞춘다.
+  function refreshSpecDetail() {
+    var box = document.querySelector("#prov-common-fields [data-spec-detail]");
+    if (!box) return;
+    box.innerHTML = specDetailHtml((state.commonSpec || {}).specTier, state.platforms);
   }
   // 이름 필드 정책(리소스 종류 × 플랫폼). 2026-09-15 백엔드 조사 결과, compute(aws/gcp)·db(aws/
   // azure/gcp)·storage_object(aws)는 전부 같은 정규식 `^[a-z][a-z0-9-]{0,38}[a-z0-9]$`를 쓴다
@@ -378,13 +458,16 @@
       namePolicyHintHtml("compute");
     container.appendChild(nameField);
 
-    // 3) 사양(추상 등급) — providerSpec의 실제 SKU는 collect 시 매핑
-    var specField = el("div");
+    // 3) 사양(추상 등급) — providerSpec의 실제 SKU는 collect 시 매핑. 등급 이름만 공통이고
+    // 실제 vCPU·메모리는 3사가 다르므로(SPEC_TIERS 주석 참고) 바로 아래 data-spec-detail에
+    // 플랫폼별 실제 사양을 별도로 표시한다(공통 라벨에 사양 수치를 넣지 않음).
+    var specField = el("div", { class: "sm:col-span-2" });
     var specOpts = '<option value="">선택하세요</option>' + SPEC_TIERS.map(function (t) {
       return '<option value="' + t.key + '">' + t.label + "</option>";
     }).join("");
     specField.innerHTML = labelHtml("사양", true) +
-      '<select data-cs="specTier" class="' + FIELD_INPUT + '">' + specOpts + "</select>";
+      '<select data-cs="specTier" class="' + FIELD_INPUT + '">' + specOpts + "</select>" +
+      '<div data-spec-detail class="mt-2"></div>';
     container.appendChild(specField);
 
     // 2) 리전 — 국가 단일 선택(플랫폼 무관, collect에서 각 플랫폼 리전으로 매핑)
@@ -761,6 +844,18 @@
         '<input type="text" data-ps-platform="azure" data-ps="adminUsername" class="' + FIELD_INPUT + '" /></div>' +
         "<div>" + labelHtml("비밀번호", true) +
         '<input type="password" data-ps-platform="azure" data-ps="adminPassword" class="' + FIELD_INPUT + '" /></div></div>';
+      // "경량" 등급 기본 SKU(B1s)가 실제 구독·리전에서 SkuNotAvailable로 거부되는 사례가 있어,
+      // 무료 대상 x86-64 대안(B2ats_v2)을 사용자가 "명시적으로" 선택할 수 있게 한다 — 자동으로
+      // 바꿔치기하지 않는다(collect()의 useFreeAltSku 게이트, "경량" 등급일 때만 적용됨). ARM64
+      // 대안(B2pts_v2)은 이번 작업에서 이미지 호환을 구현하지 않아 선택지에서 아예 제외한다.
+      var lightSku = SPEC_TIERS.filter(function (t) { return t.key === "light"; })[0].sku.azure;
+      inner += '<label class="mt-2 flex items-start gap-2 text-xs">' +
+        '<input type="checkbox" data-ps-platform="azure" data-ps="useFreeAltSku" class="mt-0.5" />' +
+        '<span>"경량" 등급에서 기본 SKU(' + escHtml(lightSku.name) + ", " + lightSku.vcpu + " vCPU · " + lightSku.memGiB +
+        ' GiB) 대신 무료 대상 x86-64 대안인 <b>' + escHtml(AZURE_LIGHT_FREE_ALT.name) + "</b>(" +
+        AZURE_LIGHT_FREE_ALT.vcpu + " vCPU · " + AZURE_LIGHT_FREE_ALT.memGiB + " GiB)을 사용합니다. " +
+        "다른 등급에서는 이 체크와 무관하게 적용되지 않습니다. ARM64 대안(B2pts_v2)은 이미지 " +
+        "호환이 구현되지 않아 제공하지 않습니다.</span></label>";
     } else if (p === "gcp") {
       // 2026-09-16: SSH 공개키 입력을 없앴다 — 이전엔 필수 입력칸이었지만 백엔드/Terraform
       // 어디에도 전달되지 않는 죽은 필드였다(실사용 테스트로 발견). AWS의 SSM 전환(2026-09-15)과
@@ -960,13 +1055,21 @@
           ps[input.getAttribute("data-ps")] = input.type === "checkbox" ? input.checked : input.value;
         });
       });
-      if (tier) ps.instanceType = tier.sku[p];
+      if (tier && tier.sku[p]) {
+        // Azure "경량" 등급 + 무료 대안(B2ats_v2) 체크박스가 켜져 있으면 기본 B1s 대신 그
+        // SKU를 보낸다 — 자동으로 바꿔치기하지 않고 사용자가 명시적으로 체크해야만 적용된다
+        // (computeAuthEl의 azure 분기 체크박스, data-ps="useFreeAltSku"). 실제 전송되는 SKU는
+        // renderReview()에도 그대로 노출한다.
+        var useFreeAlt = p === "azure" && cs.specTier === "light" && ps.useFreeAltSku;
+        ps.instanceType = useFreeAlt ? AZURE_LIGHT_FREE_ALT.name : tier.sku[p].name;
+      }
       // 국가 → 플랫폼 리전 매핑(공통 설정의 국가 하나로 각 플랫폼 리전 결정)
       if (cs.country && COUNTRY_REGION[cs.country]) ps.region = COUNTRY_REGION[cs.country][p];
       // 제외 필드의 서버 기본값 병합(사용자 입력 없음)
       var defs = SERVER_DEFAULTS[kind];
       if (defs) Object.keys(defs).forEach(function (k) { if (ps[k] === undefined) ps[k] = defs[k]; });
     });
+    if (kind === "compute") refreshSpecDetail();
   }
 
   // ── CDN 입력 폼 빌더 ──────────────────────────────────────────────────────
@@ -1354,11 +1457,24 @@
     var accounts = Object.keys(state.selectedAccounts)
       .map(function (k) { return state.selectedAccounts[k]; }).join(", ") || "-";
     var cs = state.commonSpec || {};
+    // Compute는 실제로 API에 전송되는 SKU를 그대로 보여준다(무료 대안 체크 여부에 따라 등급
+    // 표시상의 기본 SKU와 달라질 수 있으므로 — collect()가 채운 state.providerSpec[p].instanceType이
+    // "실제 전송값"의 단일 소스다. 화면 표시와 전송값이 어긋나지 않도록 여기서 다시 계산하지
+    // 않고 그대로 읽는다).
+    var skuLines = "";
+    if (state.resourceKind === "compute") {
+      skuLines = state.platforms.map(function (p) {
+        var ps = (state.providerSpec || {})[p] || {};
+        if (!ps.instanceType) return "";
+        return "<div>" + escHtml(PLATFORM_LABEL[p]) + " SKU: <b>" + escHtml(ps.instanceType) + "</b></div>";
+      }).join("");
+    }
     box.innerHTML =
       "<div>플랫폼: <b>" + (state.platforms.join(", ") || "-") + "</b></div>" +
       "<div>계정: <b>" + accounts + "</b></div>" +
       "<div>종류: <b>" + (KIND_LABEL[state.resourceKind] || "-") + "</b></div>" +
-      (cs.country ? "<div>리전(국가): <b>" + cs.country + "</b></div>" : "");
+      (cs.country ? "<div>리전(국가): <b>" + cs.country + "</b></div>" : "") +
+      skuLines;
   }
 
   // 점진적 노출: 한 단계를 만족하면 바로 아래에 다음 단계가 자동으로 나타난다.
@@ -1823,7 +1939,13 @@
   }
 
   // 후속 단위에서 재사용할 수 있도록 최소 API 노출
-  window.PROV = { state: state, collect: collect, render: renderSteps, validate: validate, SPEC_TIERS: SPEC_TIERS, REGIONS: REGIONS };
+  // AZURE_LIGHT_FREE_ALT도 함께 노출한다 — Azure 무료 SKU 매핑 회귀 테스트(frontend/assets/js/tests/
+  // spec_tiers.test.js)가 B2pts_v2(ARM64, 이미지 호환 미구현)가 아니라 B2ats_v2(x86-64)만
+  // 무료 대안으로 노출되는지 런타임에서 직접 검증할 수 있게 하기 위함이다.
+  window.PROV = {
+    state: state, collect: collect, render: renderSteps, validate: validate,
+    SPEC_TIERS: SPEC_TIERS, REGIONS: REGIONS, AZURE_LIGHT_FREE_ALT: AZURE_LIGHT_FREE_ALT,
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

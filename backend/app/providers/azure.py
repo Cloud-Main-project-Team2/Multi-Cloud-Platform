@@ -226,6 +226,57 @@ def list_network_resources(secret_payload: dict, subscription_id: str) -> dict:
     }
 
 
+def list_vm_sku_availability(
+    secret_payload: dict, subscription_id: str, region: str, sku_names: list[str]
+) -> dict[str, dict]:
+    """읽기 전용 VM SKU 가용성 사전 확인(2026-09-18) — 실제 생성 전에 "이 구독·리전에서 이
+    SKU를 애초에 쓸 수 있는지"를 미리 걸러내기 위한 조회다. Azure 무료 체험 계정 안내가 말하는
+    무료 대상 SKU(B1s/B2ats_v2/B2pts_v2)라도 실제 구독·리전에서 `SkuNotAvailable`
+    (`Capacity Restrictions`)로 거부되는 사례가 있었다(2026-09-18 실측) — "무료 혜택 대상"과
+    "지금 이 구독·리전에서 만들 수 있음"은 별개 질문이라 이 함수를 따로 둔다.
+
+    `ComputeManagementClient.resource_skus.list(filter="location eq '<region>'")`는 (1) 그
+    SKU가 이 리전에 아예 없는 경우와 (2) 리전엔 있지만 이 구독에 restriction이 걸린 경우를
+    구분해서 알려준다 — 결과에 SKU 자체가 없으면 (1), 있는데 `restrictions`가 비어 있지 않으면
+    (2, `NotAvailableForSubscription` 등)이다. `restrictions`가 빈 리스트면 이 구독·리전에서
+    지금 만들 수 있다는 뜻이다.
+
+    반환값은 `sku_names`의 각 이름을 키로 하는 dict이고, 값은
+    `{"status": "available" | "restricted" | "not_offered_in_region", "reason": str | None}`.
+
+    **조회 실패(SDK 예외)와 "restricted"는 절대 같은 의미가 아니다** — 호출부(라우터·프론트)는
+    조회 자체가 실패하면 "확인 불가"로만 표시해야 하고 이를 "사용 가능"으로 간주해서는 안 된다.
+    이 사전 확인은 조회 시점의 스냅샷일 뿐 실시간 용량(capacity)까지 보장하지 않는다 — 실제
+    생성 시 Azure가 다시 검증하며, 이 조회가 "available"이었어도 생성이 거부될 수 있다."""
+    from app.resource_actions import ResourceActionError
+
+    try:
+        credential = ClientSecretCredential(
+            tenant_id=secret_payload["tenant_id"],
+            client_id=secret_payload["client_id"],
+            client_secret=secret_payload["client_secret"],
+        )
+        compute_client = ComputeManagementClient(credential, subscription_id)
+        wanted = set(sku_names)
+        found: dict[str, dict] = {}
+        for sku in compute_client.resource_skus.list(filter=f"location eq '{region}'"):
+            if sku.resource_type != "virtualMachines" or sku.name not in wanted:
+                continue
+            restrictions = sku.restrictions or []
+            if restrictions:
+                reason_codes = [r.reason_code for r in restrictions if getattr(r, "reason_code", None)]
+                found[sku.name] = {
+                    "status": "restricted",
+                    "reason": ", ".join(str(r) for r in reason_codes) or "NotAvailableForSubscription",
+                }
+            else:
+                found[sku.name] = {"status": "available", "reason": None}
+    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+    return {name: found.get(name, {"status": "not_offered_in_region", "reason": None}) for name in sku_names}
+
+
 def _network_client(secret_payload: dict, subscription_id: str) -> NetworkManagementClient:
     credential = ClientSecretCredential(
         tenant_id=secret_payload["tenant_id"],

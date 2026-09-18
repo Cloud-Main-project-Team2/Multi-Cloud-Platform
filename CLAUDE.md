@@ -576,15 +576,22 @@ PROV-01 마법사 ④공통·⑤추가 설정 스텝을 리소스 종류/플랫�
 필드명은 이후 BE 연동을 위해 `01_API_Specification_v1.1.md` §10.3의 `common_spec`/`provider_spec`
 구조에 맞춰 잡음(`assets/js/provisioning.js`).
 
-- **사양 등급 → 실제 SKU 매핑**(추상 3등급, `provisioning.js`의 `SPEC_TIERS` 상수):
+- **사양 등급 → 실제 SKU 매핑**(추상 3등급, `provisioning.js`의 `SPEC_TIERS` 상수. **2026-09-18
+  정정**: 예전엔 등급 라벨에 3사 공통 CPU/메모리 수치를 박아 넣었는데 실측 결과 실제로는 3사가
+  달랐다 — 예: Azure B1s는 1 vCPU/1GiB인데 AWS t3.micro는 2 vCPU/1GiB. 등급 이름만 공통이고
+  실제 값은 플랫폼별 메타데이터로 따로 두며, 화면에는 `specDetailHtml()`이 플랫폼별 실제 사양을
+  별도 영역에 표시한다. 상세 근거·Azure 무료 SKU 후보(B1s/B2ats_v2/B2pts_v2)·`SkuNotAvailable`
+  vs 할당량(quota) 오류 구분은
+  `docs/Multicloud_Provider_Feature_Mapping_2026-09-10.md` §1-1 참고):
 
   | 등급 | AWS | Azure | GCP |
   |---|---|---|---|
-  | 경량 (1 vCPU · 2GB) | `t3.micro` | `B1s` | `e2-micro` |
-  | 표준 (2 vCPU · 4GB) | `t3.medium` | `B2s` | `e2-medium` |
-  | 고성능 (4 vCPU · 8GB) | `t3.large` | `B4ms` | `e2-standard-4` |
+  | 경량 | `t3.micro` (2 vCPU/1GiB) | `B1s` (1 vCPU/1GiB, 무료 대상) | `e2-micro` (2 vCPU/1GiB) |
+  | 표준 | `t3.medium` (2 vCPU/4GiB) | `B2s` (2 vCPU/4GiB) | `e2-medium` (2 vCPU/4GiB) |
+  | 고성능 | `t3.large` (2 vCPU/8GiB) | `B4ms` (4 vCPU/16GiB) | `e2-standard-4` (4 vCPU/16GiB) |
 
-  표준 등급은 가격 비교 모달 예시값과 일치. 사용자는 등급만 고르고 실제 SKU는 코드에서 변환한다.
+  표준 등급은 3사 모두 2 vCPU/4GiB로 실제로 같아 가격 비교 모달 예시값과 일치한다. 사용자는
+  등급만 고르고 실제 SKU는 코드에서 변환하되, 리뷰 화면에 실제로 전송되는 SKU를 그대로 노출한다.
 - **리전 제한**(서비스 컨텍스트 9절): AWS `ap-northeast-2`/`us-east-1`, Azure
   `koreacentral`/`eastus`/`koreasouth`/`canadacentral`, GCP `asia-northeast3`/`us-central1`.
   선택한 플랫폼마다 별도 리전 select.
