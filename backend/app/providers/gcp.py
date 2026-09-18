@@ -446,3 +446,68 @@ def delete_firewall_rule(secret_payload: dict, project_id: str, name: str) -> No
         client.delete(project=project_id, firewall=name).result()
     except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError) as exc:
         raise ResourceActionError("PROVIDER_API_ERROR") from exc
+
+
+def get_cpu_utilization(secret_payload: dict, project_id: str, instance_names: list[str]) -> dict[str, float | None]:
+    """최근 CPU 사용률(%)을 Compute Engine 인스턴스 이름별로 조회한다 — 보고서 "리소스 사용률
+    상위" 섹션(2026-09-17)의 실데이터 소스.
+
+    **2026-09-18 복원**: PR #87(보안그룹 관리 기능)이 이 함수를 실수로 지웠는데(`app/metrics.py`는
+    계속 이 함수를 호출해 GCP 리소스가 있으면 `GET /resources/utilization/top`이 500으로
+    터지고 있었다 — 통합테스트 중 발견), 방화벽 규칙 함수들과 겹치는 부분 없이 그대로 복원한다.
+
+    **GCP만 이름이 아니라 숫자 instance_id로 조회해야 한다**: Cloud Monitoring의
+    `compute.googleapis.com/instance/cpu/utilization` 시계열은 `resource.labels.instance_id`
+    (숫자)로만 필터링할 수 있고 인스턴스 이름 라벨이 없다. 그런데 `discover_resources()`는
+    이름(`instance.name`)을 `external_resource_id`로 저장한다 — 그래서 여기서 먼저
+    `compute_v1.aggregated_list`로 이름→숫자 ID 매핑을 만든 다음, 그 ID로 시계열을 찾아 다시
+    이름으로 돌려준다.
+
+    메모리는 다루지 않는다(Ops Agent 설치 전제) — AWS/Azure와 같은 이유(각 provider 모듈 참고)."""
+    if not instance_names:
+        return {}
+
+    try:
+        credentials = service_account.Credentials.from_service_account_info(secret_payload)
+    except (ValueError, KeyError):
+        return {name: None for name in instance_names}
+
+    out: dict[str, float | None] = {name: None for name in instance_names}
+    wanted = set(instance_names)
+    id_to_name: dict[str, str] = {}
+    try:
+        client = compute_v1.InstancesClient(credentials=credentials)
+        for _zone, scoped_list in client.aggregated_list(project=project_id):
+            for instance in scoped_list.instances or []:
+                if instance.name in wanted:
+                    id_to_name[str(instance.id)] = instance.name
+    except (GoogleAuthError, GoogleAPICallError):
+        return out
+    if not id_to_name:
+        return out
+
+    session = AuthorizedSession(credentials.with_scopes(_CLOUD_PLATFORM_SCOPE))
+    now = dt.datetime.now(dt.timezone.utc)
+    params = {
+        "filter": 'metric.type="compute.googleapis.com/instance/cpu/utilization"',
+        "interval.startTime": (now - dt.timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "interval.endTime": now.strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+    try:
+        resp = session.get(f"https://monitoring.googleapis.com/v3/projects/{project_id}/timeSeries", params=params)
+        if resp.status_code == 200:
+            # Cloud Monitoring도 기본적으로 최신 시각 순(내림차순)으로 points를 돌려준다.
+            for series in resp.json().get("timeSeries", []):
+                instance_id = ((series.get("resource") or {}).get("labels") or {}).get("instance_id")
+                name = id_to_name.get(instance_id)
+                if not name:
+                    continue
+                points = series.get("points") or []
+                if not points:
+                    continue
+                value = (points[0].get("value") or {}).get("doubleValue")
+                if value is not None:
+                    out[name] = round(value * 100, 1)  # GCP는 0~1 비율로 반환 → %로 환산
+    except requests.RequestException:
+        pass
+    return out
