@@ -278,7 +278,7 @@
           return (
             '<details class="mt-2 rounded-lg border border-border bg-background">' +
               '<summary class="flex cursor-pointer select-none items-center justify-between gap-2 px-3 py-2 text-sm font-medium">' +
-                '<span>' + escapeHtml(summary) + ' <span class="font-normal text-yellow">(관리자 전용)</span></span>' +
+                '<span>' + escapeHtml(summary) + ' <span class="font-normal text-yellow">(AWS IAM 관리자 전용)</span></span>' +
               '</summary>' +
               '<div class="border-t border-border px-3 py-2">' +
                 (note ? '<p class="mb-2 text-xs text-muted-foreground">' + note + '</p>' : '') +
