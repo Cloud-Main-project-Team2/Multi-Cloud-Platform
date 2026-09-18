@@ -11,7 +11,6 @@
   // 인벤토리(inventory.js)와 같은 CSP 로고를 쓴다 — 색 동그라미 대신 실제 로고로 통일
   // (2026-09-18 실사용자 요청).
   var PROVIDER_ICON = { aws: "assets/imgs/aws.png", azure: "assets/imgs/azure.png", gcp: "assets/imgs/gcp.png" };
-  var SETTINGS_KEY = "mcp_report_settings"; // per-viewer 편의값 — 실 저장은 PUT /reports/settings(§5.5)가 대신한다.
 
   function fmtMoney(n) { return "$" + Math.round(n).toLocaleString(); }
   function fmtPct(n) {
@@ -62,7 +61,9 @@
     renderHotFrom(r.utilization);
     if (window.MCPApi) {
       MCPApi.request("/resources/utilization/top?limit=10").then(function (res) {
-        var items = (res.data && res.data.items) || [];
+        // MCPApi.request()는 응답 envelope의 data를 이미 벗겨서 돌려준다(api.js) — res.data를
+        // 또 한 번 벗기면 항상 undefined가 되어 조용히 목업에서 갱신되지 않는다(실제로 겪은 버그).
+        var items = (res && res.items) || [];
         renderHotFrom(items.map(function (it) { return { cpu: it.cpu_percent, mem: it.mem_percent, name: it.name }; }));
       }).catch(function () {});
     }
@@ -179,20 +180,29 @@
     activate("history");
   }
 
-  // ── 정기 발송 설정 (§4.3) — localStorage에만 저장하는 데모(실 저장은 PUT /reports/settings) ──
+  // ── 다운로드 방식 설정 (§4.3) ────────────────────────────────────────────
+  // 웹 다운로드는 "정기 발송" 개념이 아니다 — 주기 없이 그 자리에서 즉시 최신 보고서를 받는다.
+  // 메일 전송은 GET/PUT/DELETE /reports/settings로 실제 서버에 저장된다(2026-09-19) —
+  // app/report_scheduler.py가 이 값을 읽어 정말로 메일을 보낸다(더는 localStorage 데모가 아님).
   function wireSettings() {
     var deliveryRadios = document.querySelectorAll('input[name="report-delivery"]');
-    var emailField = document.getElementById("report-email-field");
+    var webDownloadField = document.getElementById("report-web-download-field");
+    var webDownloadBtn = document.getElementById("report-web-download-btn");
+    var emailScheduleFields = document.getElementById("report-email-schedule-fields");
     var emailInput = document.getElementById("report-email-input");
     var periodSelect = document.getElementById("report-schedule-period");
     var saveBtn = document.getElementById("report-settings-save");
+    var disableBtn = document.getElementById("report-settings-disable");
     var savedNote = document.getElementById("report-settings-saved");
-    if (!saveBtn) return;
+    var statusBox = document.getElementById("report-email-status");
+    var timingNote = document.getElementById("report-send-timing");
+    if (!webDownloadBtn) return;
 
-    function syncEmailVisibility() {
+    function syncFieldVisibility() {
       var method = document.querySelector('input[name="report-delivery"]:checked');
       var isEmail = method && method.value === "EMAIL";
-      if (emailField) emailField.classList.toggle("hidden", !isEmail);
+      if (webDownloadField) webDownloadField.classList.toggle("hidden", isEmail);
+      if (emailScheduleFields) emailScheduleFields.classList.toggle("hidden", !isEmail);
       deliveryRadios.forEach(function (r) {
         var label = r.closest("[data-select-card]");
         if (!label) return;
@@ -202,31 +212,78 @@
       });
     }
 
-    var saved = null;
-    try { saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) || "null"); } catch (e) { saved = null; }
-    if (saved) {
-      deliveryRadios.forEach(function (r) { r.checked = r.value === saved.deliveryMethod; });
-      if (emailInput && saved.email) emailInput.value = saved.email;
-      if (periodSelect && saved.periodType) periodSelect.value = saved.periodType;
-    }
-    syncEmailVisibility();
-
-    deliveryRadios.forEach(function (r) { r.addEventListener("change", syncEmailVisibility); });
-
-    saveBtn.addEventListener("click", function () {
-      var method = document.querySelector('input[name="report-delivery"]:checked');
-      var settings = {
-        deliveryMethod: method ? method.value : "WEB",
-        email: emailInput ? emailInput.value.trim() : "",
-        periodType: periodSelect ? periodSelect.value : "WEEKLY",
-      };
-      if (settings.deliveryMethod === "EMAIL" && !settings.email) {
-        if (savedNote) { savedNote.textContent = "메일 전송을 선택하면 수신 주소가 필요합니다."; savedNote.className = "text-xs text-red-600"; }
-        return;
+    // 지금 실제로 서버에 저장돼 있는 상태(폼에서 만지고 있는 값이 아니라)를 항상 보여준다 —
+    // "설정했는지 안 했는지 알 수가 없다"는 문제를 고치기 위함(2026-09-19).
+    function applySettings(s) {
+      var active = s && s.delivery_method === "EMAIL" && s.email;
+      deliveryRadios.forEach(function (r) { r.checked = r.value === (active ? "EMAIL" : "WEB"); });
+      if (emailInput && s && s.email) emailInput.value = s.email;
+      if (periodSelect && s && s.period_type) periodSelect.value = s.period_type;
+      syncFieldVisibility();
+      if (statusBox) {
+        statusBox.classList.toggle("hidden", !active);
+        if (active) {
+          var label = (window.MCReports && MCReports.PERIOD_LABEL[s.period_type]) || s.period_type;
+          statusBox.textContent = "📧 현재 " + s.email + "로 " + label + " 메일 발송이 설정되어 있습니다.";
+        }
       }
-      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch (e) {}
-      if (savedNote) { savedNote.textContent = "저장되었습니다."; savedNote.className = "text-xs text-muted-foreground"; }
+      if (disableBtn) disableBtn.classList.toggle("hidden", !active);
+      // 저장한다고 바로 오는 게 아니라 매일 이 시각에만 발송 대상을 확인한다 — 오해하기 쉬워서
+      // 항상 보여준다(2026-09-19 확인).
+      if (timingNote && s && typeof s.send_hour_kst === "number") {
+        var h = s.send_hour_kst;
+        var ampm = h < 12 ? "오전" : "오후";
+        var h12 = h % 12 === 0 ? 12 : h % 12;
+        timingNote.textContent = "매일 한국 시간 " + ampm + " " + h12 + "시경에 발송 대상을 확인합니다 — 저장 즉시 보내지지 않습니다.";
+      }
+    }
+
+    if (window.MCPApi) {
+      MCPApi.request("/reports/settings").then(applySettings).catch(function () {});
+    }
+    syncFieldVisibility();
+
+    deliveryRadios.forEach(function (r) { r.addEventListener("change", syncFieldVisibility); });
+
+    // 웹 다운로드 — 저장할 설정이 없으니 클릭하면 즉시 최신 보고서를 새 탭에서 인쇄/PDF 저장
+    // 화면으로 연다(생성 이력 탭의 "인쇄" 링크와 동일한 방식, report-view.html?print=1).
+    webDownloadBtn.addEventListener("click", function () {
+      var r = MCReports.latest();
+      window.open("report-view.html?id=" + encodeURIComponent(r.id) + "&print=1", "_blank", "noopener");
     });
+
+    if (saveBtn) {
+      saveBtn.addEventListener("click", function () {
+        var email = emailInput ? emailInput.value.trim() : "";
+        if (!email) {
+          if (savedNote) { savedNote.textContent = "메일 전송을 선택하면 수신 주소가 필요합니다."; savedNote.className = "text-xs text-red-600"; }
+          return;
+        }
+        if (!window.MCPApi) return;
+        MCPApi.request("/reports/settings", {
+          method: "PUT",
+          body: { delivery_method: "EMAIL", email: email, period_type: periodSelect ? periodSelect.value : "WEEKLY" },
+        }).then(function (s) {
+          applySettings(s);
+          if (savedNote) { savedNote.textContent = "저장되었습니다."; savedNote.className = "text-xs text-muted-foreground"; }
+        }).catch(function (err) {
+          if (savedNote) { savedNote.textContent = "저장하지 못했습니다: " + (err.message || "알 수 없는 오류"); savedNote.className = "text-xs text-red-600"; }
+        });
+      });
+    }
+
+    // 발송 해제 — 서버에 저장된 설정 자체를 지운다("웹 다운로드"로 되돌아간다).
+    if (disableBtn) {
+      disableBtn.addEventListener("click", function () {
+        if (!window.MCPApi) return;
+        MCPApi.request("/reports/settings", { method: "DELETE" }).then(function (s) {
+          applySettings(s);
+          if (savedNote) { savedNote.textContent = "발송이 해제되었습니다."; savedNote.className = "text-xs text-muted-foreground"; }
+        }).catch(function (err) {
+          if (savedNote) { savedNote.textContent = "해제하지 못했습니다: " + (err.message || "알 수 없는 오류"); savedNote.className = "text-xs text-red-600"; }
+        });
+      });
+    }
   }
 
   function init() {
