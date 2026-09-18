@@ -277,6 +277,9 @@ class Resource(CreatedAtMixin, Base):
     name: Mapped[str | None] = mapped_column(String(512), nullable=True)
     region: Mapped[str | None] = mapped_column(String(255), nullable=True)
     status: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # 상태가 실제로 바뀐 시각(같은 값으로 덮어쓴 동기화는 갱신하지 않는다). 소급 계산이 불가능해
+    # 지금부터 기록을 시작한다 — 기존 행은 전부 NULL("판정 불가", 0일로 취급하지 않는다).
+    status_changed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     estimated_monthly_cost: Mapped[Decimal | None] = mapped_column(Numeric(19, 6), nullable=True)
     collected_cost_amount: Mapped[Decimal | None] = mapped_column(Numeric(19, 6), nullable=True)
     cost_currency: Mapped[str | None] = mapped_column(sa.CHAR(3), nullable=True)
@@ -311,6 +314,7 @@ class Resource(CreatedAtMixin, Base):
         sa.Index("ix_resources_cloud_account_status", "cloud_account_id", "status"),
         sa.Index("ix_resources_region", "region"),
         sa.Index("ix_resources_last_synced_at", "last_synced_at"),
+        sa.Index("ix_resources_status_changed_at", "status_changed_at"),
         sa.Index("ix_resources_tags_gin", "tags", postgresql_using="gin"),
     )
 

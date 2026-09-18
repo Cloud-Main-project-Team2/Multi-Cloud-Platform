@@ -18,6 +18,7 @@ import datetime as dt
 from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
 
+from app.cost.pricing_sync import apply_list_price_estimate
 from app.db import SessionLocal, get_db
 from app.deps import get_current_user
 from app.errors import ApiError, validation_error
@@ -178,26 +179,30 @@ def _upsert_discovered_resources(
             .one_or_none()
         )
         if existing is None:
-            db.add(
-                Resource(
-                    cloud_account_id=account.id,
-                    service_catalog_id=service.id,
-                    first_collected_by_credential_id=credential.id,
-                    last_collected_by_credential_id=credential.id,
-                    provider_resource_key=provider_resource_key,
-                    external_resource_id=disc.external_resource_id,
-                    original_resource_type=disc.original_resource_type,
-                    name=disc.name,
-                    region=disc.region,
-                    status=disc.status,
-                    tags=disc.tags,
-                    first_seen_at=now,
-                    last_seen_at=now,
-                    last_synced_at=now,
-                )
+            resource = Resource(
+                cloud_account_id=account.id,
+                service_catalog_id=service.id,
+                first_collected_by_credential_id=credential.id,
+                last_collected_by_credential_id=credential.id,
+                provider_resource_key=provider_resource_key,
+                external_resource_id=disc.external_resource_id,
+                original_resource_type=disc.original_resource_type,
+                name=disc.name,
+                region=disc.region,
+                status=disc.status,
+                tags=disc.tags,
+                first_seen_at=now,
+                last_seen_at=now,
+                last_synced_at=now,
             )
+            db.add(resource)
+            apply_list_price_estimate(resource, account.provider, disc, now)
             created += 1
         else:
+            # 값이 실제로 바뀔 때만 기록한다 — 아래 existing.status 대입보다 반드시 위에 있어야
+            # 한다(그 뒤에 두면 비교가 항상 같아져서 영원히 기록되지 않는다).
+            if existing.status != disc.status:
+                existing.status_changed_at = now
             existing.last_collected_by_credential_id = credential.id
             existing.name = disc.name
             existing.region = disc.region
@@ -206,6 +211,7 @@ def _upsert_discovered_resources(
             existing.last_seen_at = now
             existing.last_synced_at = now
             existing.is_stale = False
+            apply_list_price_estimate(existing, account.provider, disc, now)
             updated += 1
 
     db.flush()

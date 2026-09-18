@@ -483,6 +483,7 @@ def discover_resources(secret_payload: dict) -> list:
                                 region=region,
                                 status=state.upper() or None,
                                 tags=tags,
+                                spec={"instance_type": instance.get("InstanceType"), "region": region},
                             )
                         )
             for page in ec2.get_paginator("describe_volumes").paginate():
@@ -515,6 +516,7 @@ def discover_resources(secret_payload: dict) -> list:
                             region=region,
                             status=(db_instance.get("DBInstanceStatus") or "").upper() or None,
                             tags={},
+                            spec={"instance_class": db_instance.get("DBInstanceClass"), "region": region},
                         )
                     )
         except (BotoCoreError, ClientError):

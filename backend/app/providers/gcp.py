@@ -15,6 +15,39 @@ from app.providers import VerificationResult
 
 _CLOUD_PLATFORM_SCOPE = ["https://www.googleapis.com/auth/cloud-platform"]
 
+# databaseVersion 접두사 -> pricing.py/gcp_cloudsql_provisioning.py가 쓰는 engine 이름.
+# 순서가 중요하다 — "SQLSERVER"를 "POSTGRES"보다 먼저 검사할 필요는 없지만 접두사가 겹치지
+# 않으므로 순서 무관하다. 매칭 안 되는 값은 spec 없이(가격 추정 건너뜀) 둔다.
+_CLOUD_SQL_ENGINE_PREFIXES = {
+    "MYSQL": "MySQL",
+    "POSTGRES": "PostgreSQL",
+    "SQLSERVER": "SQL Server",
+}
+
+
+def _cloud_sql_engine_from_database_version(database_version: str | None) -> str | None:
+    if not database_version:
+        return None
+    for prefix, engine in _CLOUD_SQL_ENGINE_PREFIXES.items():
+        if database_version.startswith(prefix):
+            return engine
+    return None
+
+
+def _compute_zone_to_region(zone_name: str) -> str | None:
+    """"asia-northeast3-a" -> "asia-northeast3" (pricing.py의 region 키와 맞춘다).
+    인벤토리 화면에 보이는 resources.region(zone 그대로)은 건드리지 않는다 — 이 변환은
+    spec 안에서만 쓴다."""
+    if not zone_name or "-" not in zone_name:
+        return None
+    return zone_name.rsplit("-", 1)[0]
+
+
+def _compute_machine_type_from_url(machine_type_url: str | None) -> str | None:
+    if not machine_type_url:
+        return None
+    return machine_type_url.rstrip("/").rsplit("/", 1)[-1] or None
+
 
 def verify(external_account_id: str, secret_payload: dict) -> VerificationResult:
     try:
@@ -270,6 +303,11 @@ def discover_resources(secret_payload: dict, project_id: str) -> list:
                 continue
             zone_name = zone.split("/")[-1]
             for instance in scoped_list.instances:
+                spec = {}
+                machine_type = _compute_machine_type_from_url(instance.machine_type)
+                region = _compute_zone_to_region(zone_name)
+                if machine_type and region:
+                    spec = {"instance_type": machine_type, "region": region}
                 results.append(
                     DiscoveredResource(
                         service_code="compute_engine",
@@ -279,6 +317,7 @@ def discover_resources(secret_payload: dict, project_id: str) -> list:
                         region=zone_name,
                         status=(instance.status or "").upper() or None,
                         tags=dict(instance.labels) if instance.labels else {},
+                        spec=spec,
                     )
                 )
     except (GoogleAuthError, GoogleAPICallError):
@@ -294,15 +333,21 @@ def discover_resources(secret_payload: dict, project_id: str) -> list:
         resp = session.get(f"https://sqladmin.googleapis.com/sql/v1beta4/projects/{project_id}/instances")
         if resp.status_code == 200:
             for instance in resp.json().get("items", []):
+                spec = {}
+                engine = _cloud_sql_engine_from_database_version(instance.get("databaseVersion"))
+                region = instance.get("region")
+                if engine and region:
+                    spec = {"engine": engine, "region": region}
                 results.append(
                     DiscoveredResource(
                         service_code="cloud_sql",
                         external_resource_id=instance["name"],
                         original_resource_type="Cloud SQL Instance",
                         name=instance["name"],
-                        region=instance.get("region"),
+                        region=region,
                         status=(instance.get("state") or "").upper() or None,
                         tags=dict((instance.get("settings") or {}).get("userLabels") or {}),
+                        spec=spec,
                     )
                 )
     except (requests.RequestException, ValueError, KeyError):

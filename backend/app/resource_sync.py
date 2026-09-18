@@ -21,6 +21,11 @@ class DiscoveredResource:
     region: str | None
     status: str | None
     tags: dict = field(default_factory=dict)
+    # 정가 기반 월 예상 비용 추정에 쓰는 provider_spec 조각(app/pricing.py의 estimate_monthly_cost_usd
+    # 호출용 — instance_type/instance_class/engine + region). 어댑터가 지원하지 않는 서비스
+    # 종류(EBS 볼륨, S3, Storage, CDN 등)는 빈 dict로 두면 정가 추정이 자동으로 건너뛰어진다
+    # (app/cost/pricing_sync.py 참고).
+    spec: dict = field(default_factory=dict)
 
 
 class SyncError(Exception):
