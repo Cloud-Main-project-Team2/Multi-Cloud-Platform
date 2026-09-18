@@ -103,7 +103,6 @@
     :root[data-theme="dark"] .ws-explore .notice{ color:#e6c463; background:rgba(236,200,21,.12); }
 
     .ws-explore .tour-controls{ display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); padding:13px 22px; color:var(--muted-foreground); font-size:11px; }
-    .ws-explore .tour-controls button{ border:0; background:transparent; color:var(--primary); font-size:12px; padding:5px 10px; cursor:pointer; }
 
     .ws-explore .fade{ animation:ws-enter .45s ease both; }
     .ws-explore .scene .metric{ animation:ws-enter .6s both; }
@@ -307,7 +306,6 @@
         </div>
         <div class="tour-controls">
           <span id="position">01 — 04 &nbsp; · &nbsp; 메뉴별 사용 안내</span>
-          <button id="play" type="button" aria-pressed="false">▶ 자동 재생</button>
         </div>
       </div>
     </div>
@@ -417,16 +415,15 @@
       var reduced = matchMedia('(prefers-reduced-motion: reduce)');
       var tabs = [].slice.call(document.querySelectorAll('.ws-explore .tab'));
       var panel = document.getElementById('tour-panel');
-      var play = document.getElementById('play');
       var tourEl = document.getElementById('tour');
-      if (!tabs.length || !panel || !play || !tourEl) return;
+      if (!tabs.length || !panel || !tourEl) return;
       var entries = [
         {name:'DASHBOARD',title:'오늘의 클라우드 현황을<br>한눈에 파악하세요.',text:'리소스 수, 리전 분포, 최근 작업 결과를 모아 보여줍니다. 전체 상태를 확인하고 필요한 작업으로 이동하세요.',hint:'전체 규모 확인 → 최근 활동 점검',scene:panel.querySelector('.scene').innerHTML},
         {name:'INVENTORY',title:'필요한 자원을<br>빠르게 찾아보세요.',text:'클라우드마다 흩어진 자원을 한 목록에서 조회합니다. 클라우드, 상태, 리전으로 필터링해 원하는 자원부터 살펴보세요.',hint:'필터 선택 → 자원 조회 → 상태 확인',scene:'<div class="scene-head">리소스 인벤토리 <small>예시 화면</small></div><div class="chips"><span class="chip active">전체 클라우드</span><span class="chip">상태 ▾</span><span class="chip">리전 ▾</span></div><div class="scene-row"><b>web-server</b><span>AWS · 서울</span><span class="pill">실행 중</span></div><div class="scene-row"><b>api-instance</b><span>GCP · 서울</span><span class="pill">실행 중</span></div><div class="scene-row"><b>test-server</b><span>AWS · 미국</span><span class="pill gray">중지</span></div>'},
         {name:'PROVISIONING',title:'새 자원 생성도<br>단계별로 간편하게.',text:'클라우드와 자원 유형을 선택하고 필요한 설정을 입력합니다. 생성 전 내용을 검토하고, 요청 후 작업 결과를 확인하세요.',hint:'클라우드 선택 → 설정 입력 → 검토 및 생성',scene:'<div class="scene-head">새 리소스 만들기 <small>예시 화면</small></div><div class="steps"><div class="step done"><b>1</b>클라우드</div><div class="step done"><b>2</b>설정</div><div class="step done"><b>3</b>검토</div></div><div class="deploy"><div><span>클라우드</span><b>AWS</b></div><div><span>리전</span><b>서울</b></div><div><span>리소스 이름</span><b>web-server</b></div></div><div class="notice">설정 검토 후 생성 요청을 진행합니다.</div>'},
         {name:'COST OVERVIEW',title:'예상 비용을 확인하고,<br>자원 구성을 점검하세요.',text:'대시보드에서 정가 기준 예상 비용과 서비스별 비중을 확인할 수 있습니다. 실제 청구액과 다를 수 있으며, 추정 불가 자원은 합계에서 제외됩니다.',hint:'월별 비용 추이·예산 초과 경고는 준비 중',scene:'<div class="scene-head">예상 비용 요약 <small>예시 · 추정치</small></div><div class="bars"><div class="bar-label"><span>월 예상 비용</span><b>$6.13 / mo</b></div><div class="bar-label"><span>Compute</span><span>100%</span></div><div class="bar-track"><div class="bar" style="width:100%"></div></div><div class="bar-label"><span>추정 가능한 자원 기준</span></div></div><div class="notice">월별 비용 수집과 예산 경고는 준비 중입니다.</div>'}
       ];
-      var index = 0, timer = null, playing = false, inView = false;
+      var index = 0, timer = null, inView = false;
       function show(next) {
         index = (next + entries.length) % entries.length;
         var item = entries[index];
@@ -437,18 +434,12 @@
       }
       function schedule() {
         clearInterval(timer); timer = null;
-        if (playing && inView && !document.hidden && !tourEl.matches(':hover') && tabs.indexOf(document.activeElement) === -1 && !panel.contains(document.activeElement)) {
-          timer = setInterval(function () { show(index + 1); }, 6000);
+        if (!reduced.matches && inView && !document.hidden && !tourEl.matches(':hover') && tabs.indexOf(document.activeElement) === -1 && !panel.contains(document.activeElement)) {
+          timer = setInterval(function () { show(index + 1); }, 3000);
         }
       }
-      function setPlaying(value) {
-        playing = value;
-        play.textContent = playing ? 'Ⅱ 자동 재생 정지' : '▶ 자동 재생';
-        play.setAttribute('aria-pressed', String(playing));
-        schedule();
-      }
       tabs.forEach(function (tab, i) {
-        tab.addEventListener('click', function () { setPlaying(false); show(i); });
+        tab.addEventListener('click', function () { show(i); });
         tab.addEventListener('keydown', function (event) {
           var next = i;
           if (event.key === 'ArrowRight') next = (i + 1) % tabs.length;
@@ -456,10 +447,9 @@
           else if (event.key === 'Home') next = 0;
           else if (event.key === 'End') next = tabs.length - 1;
           else return;
-          event.preventDefault(); setPlaying(false); show(next); tabs[next].focus();
+          event.preventDefault(); show(next); tabs[next].focus();
         });
       });
-      play.addEventListener('click', function () { setPlaying(!playing); });
       tourEl.addEventListener('mouseenter', schedule);
       tourEl.addEventListener('mouseleave', schedule);
       tourEl.addEventListener('focusin', schedule);
@@ -474,8 +464,9 @@
         new IntersectionObserver(function (items) { inView = items[0].isIntersecting; schedule(); }, { threshold: .25 }).observe(tourEl);
       } else {
         inView = true;
+        schedule();
       }
-      reduced.addEventListener('change', function () { if (reduced.matches) setPlaying(false); });
+      reduced.addEventListener('change', schedule);
     })();
   </script>
 
