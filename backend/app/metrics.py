@@ -48,6 +48,9 @@ def get_top_utilization(db: "Session", user: "User", limit: int = 5) -> list[dic
             Resource.is_stale.is_(False),
             Resource.deleted_at.is_(None),
             ServiceCatalog.service_code.in_(_COMPUTE_SERVICE_CODES.keys()),
+            # AWS의 "ec2" service_code는 EC2 인스턴스와 EBS Volume이 같이 쓴다
+            # (resource_actions.py도 같은 구분을 한다) — 볼륨은 CPU가 없으니 여기서 제외한다.
+            Resource.original_resource_type != "EBS Volume",
         )
         .all()
     )

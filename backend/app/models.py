@@ -195,8 +195,10 @@ class ProvisioningJob(CreatedAtMixin, Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False, index=True
     )
-    credential_id: Mapped[int] = mapped_column(
-        BigInteger, ForeignKey("credentials.id", ondelete="RESTRICT"), nullable=False, index=True
+    # credential이 삭제되면 이 job이 참조하던 자격 증명은 사라지지만 job 자체(스펙·결과·상태)는
+    # 감사 기록으로 남아야 한다(2026-09-18) — resource_sync_job_items.credential_id와 동일 원칙.
+    credential_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("credentials.id", ondelete="SET NULL"), nullable=True, index=True
     )
     service_catalog_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey("service_catalog.id", ondelete="RESTRICT"), nullable=False, index=True

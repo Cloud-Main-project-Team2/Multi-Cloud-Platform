@@ -126,12 +126,12 @@
           </div>
           <div class="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div class="rounded-xl bg-muted p-4">
-              <p class="text-sm text-muted-foreground">전체 비용</p>
+              <p class="flex items-center gap-1.5 text-sm text-muted-foreground">전체 비용 <span class="rounded border border-yellow px-1 text-[10px] text-yellow">샘플</span></p>
               <p class="mt-1 text-2xl font-bold" id="report-sum-cost">—</p>
               <p class="mt-1 text-xs text-muted-foreground" id="report-sum-cost-delta">—</p>
             </div>
             <div class="rounded-xl bg-muted p-4">
-              <p class="text-sm text-muted-foreground">미사용 리소스</p>
+              <p class="flex items-center gap-1.5 text-sm text-muted-foreground">미사용 리소스 <span class="rounded border border-yellow px-1 text-[10px] text-yellow">샘플</span></p>
               <p class="mt-1 text-2xl font-bold" id="report-sum-unused">—</p>
               <p class="mt-1 text-xs text-muted-foreground" id="report-sum-unused-sub">—</p>
             </div>
@@ -141,7 +141,7 @@
               <p class="mt-1 text-xs text-muted-foreground" id="report-sum-hot-sub">—</p>
             </div>
             <div class="rounded-xl bg-muted p-4">
-              <p class="text-sm text-muted-foreground">인수인계 항목</p>
+              <p class="flex items-center gap-1.5 text-sm text-muted-foreground">인수인계 항목 <span class="rounded border border-yellow px-1 text-[10px] text-yellow">예시</span></p>
               <p class="mt-1 text-2xl font-bold" id="report-sum-handover">—</p>
               <p class="mt-1 text-xs text-muted-foreground" id="report-sum-handover-sub">—</p>
             </div>
@@ -214,5 +214,6 @@
 
   <script src="assets/js/ui.js"></script>
   <script src="assets/js/prov-tracker.js"></script>
+  <script src="assets/js/reports.js"></script>
 </body>
 </html>
