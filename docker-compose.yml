@@ -44,6 +44,11 @@ services:
       PLATFORM_AWS_SECRET_ACCESS_KEY: ${PLATFORM_AWS_SECRET_ACCESS_KEY:-}
       PLATFORM_AWS_ASSUMABLE_ROLE_PATTERN: ${PLATFORM_AWS_ASSUMABLE_ROLE_PATTERN:-arn:aws:iam::*:role/MultiCloudOps*}
       PLATFORM_AWS_SESSION_DURATION_SECONDS: ${PLATFORM_AWS_SESSION_DURATION_SECONDS:-3600}
+      # 하루 1회 자동 비용 수집(app/cost/scheduler.py). 기본 켜짐 — pytest는 이 env를 세팅하지
+      # 않으므로 코드 쪽 기본값(false)이 적용돼 테스트 중에는 돌지 않는다.
+      COST_SCHEDULER_ENABLED: ${COST_SCHEDULER_ENABLED:-true}
+      COST_INGEST_HOUR_UTC: ${COST_INGEST_HOUR_UTC:-6}
+      COST_STALE_AFTER_HOURS: ${COST_STALE_AFTER_HOURS:-36}
       TERRAFORM_WORKSPACES_DIR: /app/terraform_workspaces
       TERRAFORM_PLUGIN_CACHE_DIR: /app/terraform_plugin_cache
       LOG_DIR: ${LOG_DIR:-/app/logs}

@@ -20,3 +20,10 @@ azure-monitor-query==1.4.0
 google-auth==2.32.0
 google-cloud-resource-manager==1.12.5
 google-cloud-compute==1.19.2
+
+# 비용 확장(PR 4) — APScheduler는 하루 1회 자동 수집에 쓴다. azure-mgmt-costmanagement·
+# google-cloud-bigquery는 Azure/GCP 실측 수집 어댑터(후속)에서 쓴다 — 이번 PR에서는
+# AWS(boto3, 이미 위에 있음)만 구현하지만, 이미지를 두 번 다시 빌드하지 않으려고 미리 넣는다.
+APScheduler==3.10.4
+azure-mgmt-costmanagement==4.0.1
+google-cloud-bigquery==3.25.0
