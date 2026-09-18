@@ -143,6 +143,23 @@ def test_validate_spec_rejects_short_admin_password():
     assert exc.value.code == "VALIDATION_ERROR"
 
 
+def test_validate_spec_rejects_low_complexity_admin_password():
+    """2026-09-18 실측: 실제 자격증명으로 프로비저닝했을 때 길이는 충분한데 복잡도(대/소문자/
+    숫자/특수문자 중 3종 이상)가 2종뿐인 비밀번호가 요청 단계(422)가 아니라 몇 분 뒤 terraform
+    apply 실패로 처음 드러났다 — 소문자+숫자 2종만 있는 비밀번호를 미리 걸러내는지 검증."""
+    with pytest.raises(ApiError) as exc:
+        azure.validate_spec(COMMON_SPEC, {**PROVIDER_SPEC, "admin_password": "onlylowerand12345"})
+    assert exc.value.code == "VALIDATION_ERROR"
+
+
+def test_validate_spec_accepts_password_with_underscore_as_third_class():
+    """밑줄(_)은 Azure 실제 정책상 "특수문자"로 안 쳐준다 — 소문자+숫자+밑줄만 있는 비밀번호는
+    여전히 2종 취급으로 거부돼야 한다(3종 채우려면 대문자나 _ 아닌 특수문자가 필요)."""
+    with pytest.raises(ApiError) as exc:
+        azure.validate_spec(COMMON_SPEC, {**PROVIDER_SPEC, "admin_password": "lower_and_1234567"})
+    assert exc.value.code == "VALIDATION_ERROR"
+
+
 def test_validate_spec_rejects_missing_common_name():
     with pytest.raises(ApiError) as exc:
         azure.validate_spec({}, PROVIDER_SPEC)
