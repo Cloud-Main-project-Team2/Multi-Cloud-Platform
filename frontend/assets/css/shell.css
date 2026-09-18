@@ -116,3 +116,23 @@
 
 /* 콘텐츠: 최대 1180px, 본문 영역(사이드바 제외) 가운데 정렬 */
 .content{ width:100%; max-width:1180px; margin-left:auto; margin-right:auto; padding:1.5rem; }
+
+/* 프로비저닝 진행바 "지렁이 효과" — 채워진 바 위로 밝은 반투명 띠가 좌→우로 계속 흐른다.
+   진행률(width) 값이 90%에서 멈춰 있어도 바가 살아있다는 인상을 준다. 진행 중(running)일 때만
+   이 클래스를 붙이고, 완료/실패 시 provisioning.js가 className을 재설정하며 자동으로 사라진다.
+   진행률 값·색 팔레트는 건드리지 않는 순수 시각 효과다. */
+@keyframes mcp-prov-shimmer {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.prov-bar--active{ position:relative; overflow:hidden; }
+.prov-bar--active::after{
+  content:""; position:absolute; inset:0;
+  background:linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.55) 50%, rgba(255,255,255,0) 100%);
+  transform:translateX(-100%);
+  animation:mcp-prov-shimmer 1.2s linear infinite;
+}
+/* 동작 줄이기 설정을 존중 — 움직임 없이 정적으로 둔다. */
+@media (prefers-reduced-motion: reduce){
+  .prov-bar--active::after{ animation:none; }
+}

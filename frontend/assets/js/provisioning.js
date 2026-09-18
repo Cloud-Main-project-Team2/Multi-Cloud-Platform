@@ -1809,6 +1809,10 @@
         } else if (status === "done") {
           bar.className = "h-2 rounded-full bg-primary"; st.textContent = "완료 100%"; st.className = "text-sm text-primary";
         } else {
+          // 진행 중: 채워진 바에 "지렁이 효과"(흐르는 하이라이트 띠)를 붙인다. 90%에서 멈춰도
+          // 애니메이션이 계속 돌아 작업이 살아있음을 보여준다(완료·실패 분기에서 className이
+          // 재설정되며 자동으로 제거됨). 진행률 값·폴링 로직은 그대로다.
+          bar.className = "h-2 rounded-full bg-sky prov-bar--active";
           st.textContent = "진행중 " + progress + "%";
         }
       }
