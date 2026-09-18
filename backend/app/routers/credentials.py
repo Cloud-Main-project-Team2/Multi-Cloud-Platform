@@ -437,6 +437,52 @@ def aws_delegation_setup(
                     ],
                     "Resource": "*",
                 },
+                {
+                    # 프로비저닝 기능(EC2/RDS/S3/CloudFront, `app/aws_provisioning.py` 외 3개
+                    # 러너 → `terraform/aws/{ec2,rds,s3,cloudfront}`)이 실제로 리소스를 생성·삭제
+                    # 할 때 쓰는 액션(2026-09-18 추가). 오늘은 `managed_policy_arns`의 4개
+                    # FullAccess 정책(①)이 이 권한을 이미 포함하고 있어 기능상 필수는 아니다 —
+                    # 다만 화면에서 "관리형 정책 4개를 붙이세요"라고만 안내하면 실제로 무슨 권한이
+                    # 쓰이는지 확인할 방법이 없어서(FullAccess는 서비스 전체 권한이라 이 기능이
+                    # 정확히 어디까지 쓰는지 알 수 없음), 최소 권한을 원하는 회사가 ①의 4개
+                    # FullAccess 정책 대신 이 statement만으로도 프로비저닝을 시도해 볼 수 있도록
+                    # `docs/AWS_Azure_GCP_Permission_Reference_2026-09-17.md`의 "관리형 정책에서
+                    # 커버되는 프로비저닝 액션" 표를 그대로 옮겨 명시했다. ⚠️ 이 목록은 실제 코드가
+                    # 호출하는 terraform 리소스 블록 기준으로 뽑은 것이라 Terraform AWS provider가
+                    # 내부적으로 거치는 모든 조회(예: EC2에서 실제로 겪었던 `DescribeVpcAttribute`
+                    # 같은 숨은 호출)까지 전부 검증된 것은 아니다 — 최소 권한으로 좁혀 쓰려는
+                    # 경우 ①의 관리형 정책을 당장 떼지 말고 먼저 이 statement와 함께 테스트해 보길
+                    # 권장한다. `ec2:Describe{Vpcs,VpcAttribute,Subnets,SecurityGroups,
+                    # SecurityGroupRules,AvailabilityZones}`/`ec2:{Create,Authorize,Revoke}
+                    # SecurityGroup*`/`ec2:CreateTags`는 위 ①/③에 이미 있어 중복 나열하지 않는다.
+                    "Effect": "Allow",
+                    "Action": [
+                        "ec2:RunInstances",
+                        "ec2:TerminateInstances",
+                        "ec2:DescribeInstances",
+                        "ec2:DescribeImages",
+                        "ec2:CreateSubnet",
+                        "rds:CreateDBInstance",
+                        "rds:CreateDBSubnetGroup",
+                        "rds:AddTagsToResource",
+                        "rds:DeleteDBInstance",
+                        "rds:DescribeDBInstances",
+                        "rds:DescribeDBSubnetGroups",
+                        "s3:CreateBucket",
+                        "s3:DeleteBucket",
+                        "s3:PutBucketPublicAccessBlock",
+                        "s3:GetBucketPublicAccessBlock",
+                        "s3:PutBucketVersioning",
+                        "s3:GetBucketVersioning",
+                        "s3:GetBucketLocation",
+                        "cloudfront:CreateDistribution",
+                        "cloudfront:GetDistribution",
+                        "cloudfront:UpdateDistribution",
+                        "cloudfront:DeleteDistribution",
+                        "cloudfront:TagResource",
+                    ],
+                    "Resource": "*",
+                },
             ],
             iam_console_url="https://console.aws.amazon.com/iam/home#/roles/create",
             troubleshooting=DELEGATION_TROUBLESHOOTING,

@@ -61,7 +61,7 @@ def test_inline_statements_scope_iam_management_to_ssm_role(client, make_user, a
     data = _setup(client, auth_header(make_user()))
 
     statements = data["inline_statements"]
-    assert len(statements) == 4
+    assert len(statements) == 5
 
     readonly = statements[0]
     assert readonly["Resource"] == "*"
@@ -100,6 +100,16 @@ def test_inline_statements_scope_iam_management_to_ssm_role(client, make_user, a
     assert "ssm:StartSession" in ssm_session["Action"]
     assert "ssm:TerminateSession" in ssm_session["Action"]
     assert ssm_session["Resource"] == "*"
+
+    # 프로비저닝(EC2/RDS/S3/CloudFront) 자체가 리소스를 생성·삭제하는 데 쓰는 액션 —
+    # 관리형 정책 4개(①)가 이미 포함하지만, 최소 권한으로 좁혀 쓰려는 회사가 정확히 무슨
+    # 권한이 쓰이는지 확인·복사할 수 있도록 인라인으로도 명시한다(2026-09-18 추가).
+    provisioning = statements[4]
+    assert "ec2:RunInstances" in provisioning["Action"]
+    assert "rds:CreateDBInstance" in provisioning["Action"]
+    assert "s3:CreateBucket" in provisioning["Action"]
+    assert "cloudfront:CreateDistribution" in provisioning["Action"]
+    assert provisioning["Resource"] == "*"
 
 
 def test_troubleshooting_covers_all_access_denied_causes(client, make_user, auth_header, platform_configured):
