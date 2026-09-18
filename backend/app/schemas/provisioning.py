@@ -33,7 +33,7 @@ class ProvisioningJobError(BaseModel):
 
 class ProvisioningJobOut(BaseModel):
     id: str
-    credential_id: str
+    credential_id: str | None  # credential이 삭제되면 null(2026-09-18, job 기록은 그대로 남음)
     service_catalog_id: str
     workspace_name: str
     common_spec: dict[str, Any]
