@@ -118,9 +118,11 @@
     var actual = cost.collected_cost_amount;
     var amount = actual != null ? actual : cost.estimated_monthly_cost;
     if (amount == null) return "—";
-    var prefix = actual != null ? "" : "추정 ";
     var symbol = cost.currency === "USD" ? "$" : (cost.currency ? cost.currency + " " : "");
-    return prefix + symbol + parseFloat(amount).toFixed(2);
+    // 금액 종류 배지를 금액 옆에 항상 붙인다(비용 파트 PR 6) — 실측(cost_source가 있는 값)과
+    // 정가 추정을 같은 모양으로 보여주면 사용자가 청구서와 대조할 때 헷갈린다.
+    var badge = actual != null ? (cost.source || "실측") : "Estimated · 정가 730h";
+    return symbol + parseFloat(amount).toFixed(2) + " · " + badge;
   }
   function costValue(r) {
     if (!r.cost_summary) return 0;
@@ -696,4 +698,13 @@
   loadResources();
   loadSummary();
   loadLatestSyncStatus();
+
+  // 비용 화면(CF-034·CF-022)에서 넘어온 경우 상세를 바로 연다(비용 파트 PR 6).
+  // 파라미터가 없으면 아무 일도 하지 않으므로 기존 동작에 영향이 없다. 넘기는 값은
+  // resources.id(내부 id)다 — openDetail이 GET /resources/{id}를 부르기 때문이다.
+  var wantedResourceId = new RegExp("[?&]resource_id=([^&]*)").exec(window.location.search);
+  if (wantedResourceId) {
+    MCPModal.open("#inv-modal");
+    openDetail(decodeURIComponent(wantedResourceId[1]));
+  }
 })();
