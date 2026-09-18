@@ -1,7 +1,9 @@
 /* report-view.html 전용 렌더링 스크립트 — 순수 프론트엔드 프로토타입.
    ?id= 쿼리로 assets/js/reports-data.js(MCReports)의 보고서를 찾아 문서 섹션을 채운다.
-   실 API 연동 시에는 MCReports.getById(id) 자리를 GET /api/v1/reports/{id}(§5.2) 호출로
-   바꾸면 되고, 아래 렌더링 함수들은 그대로 재사용 가능하도록 payload 모양에만 의존한다.
+   비용/미사용/인수인계는 아직 목업이지만(비용 API 미구현), **리소스 사용률만은 2026-09-18부터
+   실 API(`GET /resources/utilization/top`, app/metrics.py)로 교체했다** — 나머지 섹션도 실
+   API가 준비되면 MCReports.getById(id) 자리를 GET /api/v1/reports/{id}(§5.2) 호출로 바꾸면
+   되고, 아래 렌더링 함수들은 그대로 재사용 가능하도록 payload 모양에만 의존한다.
 
    차트 좌표 계산은 보고서_구현명세_v5.md §3.2 공식을 그대로 따른다. */
 (function () {
@@ -99,7 +101,29 @@
 
   function utilBarClass(pct) { return pct >= 90 ? "hot" : pct >= 70 ? "warm" : ""; }
 
-  function render(report) {
+  // ── 리소스 사용률 실 API 연동(2026-09-18) ────────────────────────────
+  // GET /resources/utilization/top 응답 {resource_id,provider,name,original_resource_type,
+  // cpu_percent,mem_percent}을 이 화면이 쓰는 모양 {csp,name,type,cpu,mem}으로 바꾼다.
+  // app/metrics.py 문서화대로 이 값은 "보고서 기간"이 아니라 "지금 이 순간"의 값이라, 실 데이터로
+  // 교체됐을 땐 캡션에 그 사실을 반드시 밝힌다(호출 실패/무자격증명이면 목업으로 그대로 둔다).
+  function fetchRealUtilization(clouds) {
+    if (!window.MCPApi) return Promise.resolve(null);
+    return MCPApi.request("/resources/utilization/top?limit=10")
+      .then(function (res) {
+        var items = (res.data && res.data.items) || [];
+        return {
+          asOf: res.data.as_of,
+          items: items
+            .filter(function (it) { return clouds.indexOf(it.provider) !== -1; })
+            .map(function (it) {
+              return { csp: it.provider, name: it.name, type: it.original_resource_type, cpu: it.cpu_percent, mem: it.mem_percent };
+            }),
+        };
+      })
+      .catch(function () { return null; });
+  }
+
+  function render(report, realUtil) {
     document.title = report.title + " · MultiCloud Ops";
     var cspList = report.clouds.map(function (c) { return CSP_LABEL[c]; }).join(" · ");
 
@@ -143,23 +167,29 @@
       report.compareLabel + " 대비 $" + Math.abs(report.cost.changeAmount) + (report.cost.changeAmount >= 0 ? " 증가" : " 감소") +
       ". 증감액 상위 " + report.cost.drivers.length + "개 항목이 전체 변동의 " + driversShare + "%를 차지합니다.";
 
-    // 리소스 사용률
+    // 리소스 사용률 — realUtil이 있으면(호출 성공) 실 데이터, 없으면 목업(비용 API 미구현과 동일 사정)
+    var isReal = !!(realUtil && realUtil.items.length);
+    var utilization = isReal ? realUtil.items : report.utilization;
     var utilSection = document.getElementById("rv-util-section");
-    if (!report.utilization.length) {
+    if (!utilization.length) {
       utilSection.classList.add("hidden");
     } else {
-      document.getElementById("rv-util-body").innerHTML = report.utilization
+      document.getElementById("rv-util-body").innerHTML = utilization
         .map(function (u) {
           return "<tr><td class=\"csp " + u.csp + "\">" + CSP_LABEL[u.csp] + "</td><td>" + esc(u.name) + "</td><td>" + esc(u.type) + "</td>" +
             "<td>" + barCell(u.cpu) + "</td><td>" + barCell(u.mem) + "</td></tr>";
         })
         .join("");
-      var hot = report.utilization.filter(function (u) { return u.cpu >= 90 || u.mem >= 90; });
-      document.getElementById("rv-util-caption").textContent = hot.length
-        ? "기간 내 최대값 기준. " + hot.map(function (u) { return u.name; }).join(", ") + "은 90%에 근접해 스케일업 검토가 필요합니다."
-        : "기간 내 최대값 기준. 90% 이상 사용률을 보인 리소스는 없습니다.";
+      var hot = utilization.filter(function (u) { return u.cpu >= 90 || u.mem >= 90; });
+      var basis = isReal
+        ? "실시간 조회 값(" + new Date(realUtil.asOf).toLocaleString("ko-KR") + ") — 보고서 생성 시점이 아니라 지금 이 순간의 값입니다."
+        : "기간 내 최대값 기준(샘플 데이터).";
+      document.getElementById("rv-util-caption").textContent = basis + " " + (hot.length
+        ? hot.map(function (u) { return u.name; }).join(", ") + "은 90%에 근접해 스케일업 검토가 필요합니다."
+        : "90% 이상 사용률을 보인 리소스는 없습니다.");
     }
     function barCell(pct) {
+      if (pct === null || pct === undefined) return '<div class="bar"><span class="pct">—</span></div>';
       var cls = utilBarClass(pct);
       return '<div class="bar"><div class="track"><div class="fill ' + cls + '" style="width:' + pct + '%"></div></div><span class="pct">' + pct + "%</span></div>";
     }
@@ -198,10 +228,12 @@
         '<a href="reports.html" style="display:inline-block;margin-top:16px;font-size:13px;color:#145d91">← 보고서 목록으로</a></div>';
       return;
     }
-    render(report);
-    if (qs("print") === "1") {
-      window.setTimeout(function () { window.print(); }, 300);
-    }
+    fetchRealUtilization(report.clouds).then(function (realUtil) {
+      render(report, realUtil);
+      if (qs("print") === "1") {
+        window.setTimeout(function () { window.print(); }, 300);
+      }
+    });
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);

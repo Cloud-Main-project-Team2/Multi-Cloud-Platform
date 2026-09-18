@@ -1,7 +1,8 @@
-/* 보고서 작성 페이지(reports.html) 전용 스크립트 — 순수 프론트엔드 프로토타입.
-   데이터는 assets/js/reports-data.js(MCReports)의 목업을 쓴다. 서버 통신 없음(Network 요청 0건) —
+/* 보고서 작성 페이지(reports.html) 전용 스크립트.
+   비용/미사용/인수인계는 아직 assets/js/reports-data.js(MCReports)의 목업이다(비용 API 미구현) —
    보고서_구현명세_v5.md §9 구현 순서의 "7. 프론트엔드 드롭다운 + 렌더링"을 비용 API 연동 전에
-   먼저 완성해 두는 단계. */
+   먼저 완성해 두는 단계. "사용률 90% 초과" 카드만 2026-09-18부터 실 API
+   (GET /resources/utilization/top)로 교체했다. */
 (function () {
   "use strict";
   if (!window.MCReports) return;
@@ -46,11 +47,22 @@
     if (unusedEl) unusedEl.textContent = r.unused.items.length + "건";
     if (unusedSubEl) unusedSubEl.textContent = "월 " + fmtMoney(r.unused.totalSaving) + " 절감 가능";
 
-    var hotRows = r.utilization.filter(function (u) { return u.cpu >= 90 || u.mem >= 90; });
+    // "사용률 90% 초과" 카드만 실 API(2026-09-18)로 교체 — 나머지(비용·미사용·인수인계)는
+    // 비용 API가 아직 없어 계속 목업이다. 호출 실패/무자격증명이면 목업으로 그대로 둔다.
     var hotEl = document.getElementById("report-sum-hot");
     var hotSubEl = document.getElementById("report-sum-hot-sub");
-    if (hotEl) hotEl.textContent = hotRows.length + "건";
-    if (hotSubEl) hotSubEl.textContent = hotRows.length ? hotRows.map(function (u) { return u.name; }).join(", ") : "해당 없음";
+    function renderHotFrom(rows) {
+      var hotRows = rows.filter(function (u) { return u.cpu >= 90 || u.mem >= 90; });
+      if (hotEl) hotEl.textContent = hotRows.length + "건";
+      if (hotSubEl) hotSubEl.textContent = hotRows.length ? hotRows.map(function (u) { return u.name; }).join(", ") : "해당 없음";
+    }
+    renderHotFrom(r.utilization);
+    if (window.MCPApi) {
+      MCPApi.request("/resources/utilization/top?limit=10").then(function (res) {
+        var items = (res.data && res.data.items) || [];
+        renderHotFrom(items.map(function (it) { return { cpu: it.cpu_percent, mem: it.mem_percent, name: it.name }; }));
+      }).catch(function () {});
+    }
 
     var expiring = r.handover.filter(function (h) { return h.type === "만료 예정"; }).length;
     var handoverEl = document.getElementById("report-sum-handover");
