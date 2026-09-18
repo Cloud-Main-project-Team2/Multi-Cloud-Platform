@@ -208,6 +208,39 @@ def perform_resource_action(
                 s3.delete_bucket(Bucket=external_resource_id)
             return
 
+        if service_code == "cloudfront":
+            if action != "delete":
+                raise ResourceActionError("UNSUPPORTED_OPERATION")
+            cloudfront = _client(secret_payload, "cloudfront", "us-east-1")  # CloudFront는 전역 서비스
+            current = cloudfront.get_distribution(Id=external_resource_id)
+            etag = current["ETag"]
+            config = current["Distribution"]["DistributionConfig"]
+            if config.get("Enabled"):
+                # AWS는 활성화된 배포를 바로 지울 수 없게 막는다(DistributionNotDisabled) — 먼저
+                # 비활성화를 요청하고, 그 반영(보통 수 분~수십 분)이 끝난 뒤 재시도하도록 안내한다.
+                # S3의 BucketNotEmpty→force_empty처럼 같은 요청 안에서 끝낼 수 없는 게, 여기는
+                # AWS 쪽 배포 전파를 기다려야 해서(폴링하기엔 너무 오래 걸림) 안내만 하고 끝낸다.
+                config["Enabled"] = False
+                cloudfront.update_distribution(Id=external_resource_id, IfMatch=etag, DistributionConfig=config)
+                raise ResourceActionError(
+                    "CloudFrontNotDisabled",
+                    "배포가 활성화 상태라 바로 삭제할 수 없어 먼저 비활성화를 요청했습니다. "
+                    "AWS가 완전히 반영하는 데 보통 수 분에서 수십 분이 걸리니, 잠시 후 다시 "
+                    "삭제를 시도하세요.",
+                )
+            try:
+                cloudfront.delete_distribution(Id=external_resource_id, IfMatch=etag)
+            except ClientError as exc:
+                error_code = exc.response.get("Error", {}).get("Code")
+                if error_code in ("DistributionNotDisabled", "PreconditionFailed", "IllegalDelete"):
+                    raise ResourceActionError(
+                        "CloudFrontNotDisabled",
+                        "배포 비활성화가 아직 AWS에 완전히 반영되지 않았습니다. 잠시 후 다시 "
+                        "삭제를 시도하세요.",
+                    ) from exc
+                raise
+            return
+
         raise ResourceActionError("UNSUPPORTED_OPERATION")
     except ResourceActionError:
         raise
