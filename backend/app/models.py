@@ -683,3 +683,35 @@ class CostReviewItem(CreatedAtMixin, Base):
         sa.Index("ix_cost_review_items_status", "status"),
         sa.Index("ix_cost_review_items_user_status", "user_id", "status"),
     )
+
+
+class ReportDeliverySetting(CreatedAtMixin, Base):
+    """보고서 작성(reports.html) "정기 발송" 설정(2026-09-19) — 지금까지는 이 값이 브라우저
+    localStorage에만 있어서 백엔드 스케줄러가 "누구에게 언제 보낼지" 알 방법이 없었다. 사용자당
+    1행(UNIQUE user_id) — 웹 다운로드는 즉시 실행이라 저장할 설정이 없고, 이 표는 사실상
+    "메일 정기 발송을 켠 사용자" 목록이다. `last_sent_at`으로 같은 주기 안에서 중복 발송을
+    막는다(app/report_scheduler.py 참고)."""
+
+    __tablename__ = "report_delivery_settings"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True, index=True
+    )
+    delivery_method: Mapped[str] = mapped_column(String(10), nullable=False, server_default="WEB", default="WEB")
+    email: Mapped[str | None] = mapped_column(String(320), nullable=True)
+    period_type: Mapped[str] = mapped_column(String(20), nullable=False, server_default="WEEKLY", default="WEEKLY")
+    last_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint("delivery_method IN ('WEB','EMAIL')", name="ck_report_delivery_settings_method"),
+        sa.CheckConstraint(
+            "period_type IN ('DAILY','WEEKLY','MONTHLY','HALF_YEARLY')", name="ck_report_delivery_settings_period"
+        ),
+        sa.CheckConstraint(
+            "delivery_method <> 'EMAIL' OR email IS NOT NULL", name="ck_report_delivery_settings_email_required"
+        ),
+    )

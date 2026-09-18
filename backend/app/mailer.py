@@ -17,8 +17,12 @@ from app.config import get_settings
 from app.logging_config import log_business_event
 
 
-def send_email(to: str, subject: str, body: str) -> None:
-    """평문 메일 1통 발송. 실패하면 예외를 그대로 올린다(호출부가 처리).
+def send_email(to: str, subject: str, body: str, html_body: str | None = None) -> None:
+    """메일 1통 발송. 실패하면 예외를 그대로 올린다(호출부가 처리).
+
+    `html_body`를 주면 `multipart/alternative`(평문 + HTML)로 보낸다 — HTML을 못 그리는
+    메일 클라이언트는 평문 `body`로 자동 폴백한다(표준 이메일 관례, `EmailMessage.add_alternative`).
+    보고서 정기 발송(app/report_scheduler.py)이 차트가 들어간 HTML 본문에 이 방식을 쓴다.
 
     MailHog(로컬)는 인증·TLS가 없으므로 MAIL_USERNAME이 비어 있으면 로그인 단계를 건너뛴다.
     """
@@ -29,6 +33,8 @@ def send_email(to: str, subject: str, body: str) -> None:
     message["To"] = to
     message["Subject"] = subject
     message.set_content(body)
+    if html_body:
+        message.add_alternative(html_body, subtype="html")
 
     # 이 함수는 대부분 BackgroundTasks로 호출된다 — 응답은 이미 나간 뒤라 실패해도 사용자에게
     # 보이지 않는다. 로그에 남기지 않으면 "인증 메일이 안 온다"를 서버에서 확인할 방법이 없다.
