@@ -1771,6 +1771,7 @@ pending/running    -> cancelled
 | **신규(비용)** | 예산 초과 시 생성 차단(`X-Budget-Override`, `BUDGET_EXCEEDED`) | §10, §11-11-3 | **보류(ADR-042)** — 설계만 유지, 이번 라운드 구현 안 함 |
 | **신규(비용)** | `granularity=weekly/quarterly`의 주 시작 요일 | §11-5 | 미결 — 임시 기본값: 월요일(ISO 8601) |
 | **신규(비용)** | 재수집 창(window) 길이 | §11-9 배경 DB 설계(`DB_ERD_v1.2.md` R3) | 미결 — 임시 기본값: 당월 + 최근 3일 |
+| **신규(비용)** | 리소스 단위 실측 비용 수집 여부 | §11 전체, 인벤토리(`resources.collected_cost_amount`) | 미결 — 2026-09-18 대시보드 연동 중 확인. 임시 기본값: 계정·서비스 단위까지만(현재 `app/cost/aws_cost.py`, AWS `ce:GetCostAndUsage`), 리소스 단위는 미지원. 기술적으로 막힌 건 아니고 3사가 각각 다른 확장이 필요함 — **AWS**: `ce:GetCostAndUsageWithResources`(계정에서 "Resource-level data" 사전 활성화 필요, 조회 가능 기간 최근 14일 한정, 호출당 과금이 더 큼 — 이미 §11 도입 시 "확정 10, 비용 최소화"로 의도적으로 뺀 API). **Azure**: Cost Management의 usage details export(줄 단위 `resourceId` 포함, Cost Explorer 요약 API와는 별도 연동). **GCP**: BigQuery Billing Export를 먼저 켜야 함(단순 API 호출이 아니라 사전 설정 필요). `resources.collected_cost_amount`/`cloud_resource_costs` 테이블은 스키마상 이미 있으나 실측 파이프라인이 채우지 않음(seed_mock_data.py만 채움) — 인벤토리 화면의 "실측" 배지는 이 결정이 나기 전까지 데모 계정에서만 보인다. |
 
 ## 20. 구현 완료 조건
 
