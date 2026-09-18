@@ -40,6 +40,21 @@ window.MCPCost = (function () {
     return { start: apiStart, end: addDaysISO(apiEnd, -1) };
   }
 
+  /** "기간 프리셋" 드롭다운 — 시작일/종료일 입력칸을 채우기만 한다(조회는 '적용'을 눌러야). */
+  function applyPeriodPreset(preset) {
+    if (preset === "mtd") { filters.periodStart = startOfMonthISO(); filters.periodEnd = todayISO(); }
+    else if (preset === "last-month") {
+      var d = new Date(); var lm = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      var lastDay = new Date(d.getFullYear(), d.getMonth(), 0);
+      filters.periodStart = isoOf(lm); filters.periodEnd = isoOf(lastDay);
+    } else if (preset === "7d") { filters.periodEnd = todayISO(); filters.periodStart = addDaysISO(todayISO(), -6); }
+    else return;
+    var startEl = document.getElementById("filter-period-start");
+    var endEl = document.getElementById("filter-period-end");
+    if (startEl) startEl.value = filters.periodStart;
+    if (endEl) endEl.value = filters.periodEnd;
+  }
+
   // ── 필터 상태 — URL 쿼리와 동기화한다 ─────────────────────────────────────────────
   function qs(name) {
     var m = new RegExp("[?&]" + name + "=([^&]*)").exec(window.location.search);
@@ -316,23 +331,87 @@ window.MCPCost = (function () {
     return { state: "CONNECTED_OK", html: document.querySelector('#CFL-01 .block-content').innerHTML };
   }
 
+  // dropdown.js(MCDropdown)의 단일 select 버튼과 같은 룩(inventory.html 필터와 동일 클래스,
+  // 07 §7-2 "기존 화면에서 따를 패턴")을 쓴다 — 이 클래스가 없으면 enhance()가 빈 버튼을 만든다.
+  var DD_SELECT_CLASS = "rounded-lg border border-border bg-surface px-2 py-1.5 text-xs";
+  function ddChevron() {
+    return '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="opacity:.55;flex:0 0 auto"><path d="M6 9l6 6 6-6"/></svg>';
+  }
+  /** CSP·계정 드롭다운 행 앞의 작은 체크 표시 — 실제 <input type=checkbox>가 아니라 행 클릭
+      하나로만 토글되는 순수 표시용 아이콘이다(체크박스를 진짜로 넣으면 행 클릭과 체크박스
+      클릭이 각각 토글을 쏴서 두 번 뒤집히는 문제가 생긴다). */
+  function ddCheckbox(checked) {
+    return '<svg width="14" height="14" viewBox="0 0 16 16" style="flex:0 0 auto" aria-hidden="true">' +
+      '<rect x="1" y="1" width="14" height="14" rx="3" fill="' + (checked ? "var(--primary)" : "none") + '" stroke="' + (checked ? "var(--primary)" : "var(--border)") + '" stroke-width="1.5"/>' +
+      (checked ? '<path d="M4 8.2l2.4 2.4L12 5" fill="none" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' : "") +
+      "</svg>";
+  }
+  /** CSP·계정처럼 다중 선택이 필요한 필터용 드롭다운. dropdown.js가 다루는 건 단일 <select>
+      뿐이라(multiple 미지원) 같은 .mc-dd/.mc-dd__menu/.mc-dd__item 모양을 재사용해 직접
+      그린다 — inventory.html의 단일 선택 드롭다운(상태·리전 등)과 같은 룩으로 맞추되(체크박스
+      없이 행 자체를 클릭·선택 시 배경만 강조), 여러 행을 동시에 선택 상태로 둘 수 있게 한다.
+      클래스가 같아서 바깥 클릭·Esc로 닫는 동작은 dropdown.js의 전역 리스너가 그대로 처리한다.
+      선택 상태는 각 행의 aria-selected에 있다(숨은 select 없음). */
+  function multiSelectDropdownHtml(id, options, selectedValues, allLabel) {
+    var selectedSet = {};
+    selectedValues.forEach(function (v) { selectedSet[v] = true; });
+    var label = !selectedValues.length ? allLabel
+      : (selectedValues.length === options.length ? allLabel : selectedValues.length + "개 선택");
+    var allRow = '<div class="mc-dd__item flex items-center gap-2 cursor-pointer whitespace-nowrap px-3 py-2 text-sm hover:bg-muted' +
+      (!selectedValues.length ? " bg-muted font-medium" : "") + '" data-dd-multi-all>' + esc(allLabel) + "</div>";
+    var items = options.map(function (o) {
+      var isSel = !!selectedSet[o.value];
+      return '<div class="mc-dd__item flex items-center gap-2 cursor-pointer whitespace-nowrap px-3 py-2 text-sm hover:bg-muted' +
+        (isSel ? " bg-muted font-medium" : "") + '" data-dd-multi-item data-value="' + esc(o.value) +
+        '" aria-selected="' + (isSel ? "true" : "false") + '">' + ddCheckbox(isSel) + esc(o.label) + "</div>";
+    }).join("");
+    return '<div class="mc-dd relative" id="' + id + '">' +
+      '<button type="button" class="' + DD_SELECT_CLASS + ' flex w-full items-center justify-between gap-2 text-left" data-dd-toggle>' +
+        '<span class="mc-dd__label truncate min-w-0">' + esc(label) + "</span>" + ddChevron() +
+      "</button>" +
+      '<div class="mc-dd__menu hidden absolute left-0 top-full z-50 mt-1 min-w-full max-h-64 overflow-auto rounded-xl border border-border bg-surface py-1 shadow-lg">' +
+        allRow + (items || '<div class="tiny muted px-3 py-2">선택지가 없습니다</div>') +
+      "</div></div>";
+  }
+  function selectedDropdownValues(wrapId) {
+    var wrap = document.getElementById(wrapId);
+    if (!wrap) return [];
+    return Array.prototype.map.call(wrap.querySelectorAll('[data-dd-multi-item][aria-selected="true"]'), function (el) { return el.getAttribute("data-value"); });
+  }
+  /** 행의 선택 상태(강조 배경 + 체크 아이콘)를 한 곳에서 맞춘다. 아이콘은 인라인 SVG라
+      checked를 다시 그려야 한다 — textContent로 라벨 글자만 뽑아 체크 아이콘과 다시 합친다. */
+  function setDdItemChecked(el, checked) {
+    var labelText = el.textContent;
+    el.setAttribute("aria-selected", checked ? "true" : "false");
+    el.classList.toggle("bg-muted", checked);
+    el.classList.toggle("font-medium", checked);
+    el.innerHTML = ddCheckbox(checked) + esc(labelText);
+  }
+  /** 행을 클릭할 때마다 버튼 라벨(선택 개수)·강조 표시만 즉시 갱신한다 — 전체 재조회는
+      '적용'을 눌러야 일어난다(03-2). */
+  function refreshDropdownLabel(wrapId, allLabel, totalCount) {
+    var wrap = document.getElementById(wrapId);
+    if (!wrap) return;
+    var n = selectedDropdownValues(wrapId).length;
+    var labelEl = wrap.querySelector(".mc-dd__label");
+    if (labelEl) labelEl.textContent = (!n || n === totalCount) ? allLabel : n + "개 선택";
+  }
+
   function filterGridHtml() {
     return '<div class="filter-grid">' +
-      '<label>기간 프리셋' +
+      '<div class="filter-field">기간 프리셋' +
         '<span class="button-row" style="margin-top:0">' +
           '<button type="button" class="btn" data-action="preset-period" data-preset="mtd">이번 달</button>' +
           '<button type="button" class="btn" data-action="preset-period" data-preset="last-month">지난 달</button>' +
           '<button type="button" class="btn" data-action="preset-period" data-preset="7d">최근 7일</button>' +
         "</span>" +
-      "</label>" +
-      '<label>시작일<input type="date" id="filter-period-start"></label>' +
-      '<label>종료일<input type="date" id="filter-period-end"></label>' +
-      '<label>CSP<select id="filter-provider" multiple size="3">' +
-        '<option value="aws">AWS</option><option value="azure">Azure</option><option value="gcp">GCP</option>' +
-      "</select></label>" +
-      '<label>계정<select id="filter-account" multiple size="3"></select></label>' +
-      '<label>통화<select id="filter-currency"><option value="">전체 통화</option></select></label>' +
-      '<label>요금 분류<select id="filter-charge-category">' +
+      "</div>" +
+      '<label class="filter-box">시작일<input type="date" id="filter-period-start" class="' + DD_SELECT_CLASS + '"></label>' +
+      '<label class="filter-box">종료일<input type="date" id="filter-period-end" class="' + DD_SELECT_CLASS + '"></label>' +
+      '<div class="filter-field filter-box">CSP<div id="filter-provider-field"></div></div>' +
+      '<div class="filter-field filter-box">계정<div id="filter-account-field"></div></div>' +
+      '<label class="filter-box">통화<select id="filter-currency"><option value="">전체 통화</option></select></label>' +
+      '<label class="filter-box">요금 분류<select id="filter-charge-category">' +
         '<option value="usage">사용료 (기본)</option><option value="credit">크레딧</option>' +
         '<option value="refund">환불</option><option value="tax">세금</option><option value="other">기타</option>' +
       "</select></label>" +
@@ -368,21 +447,25 @@ window.MCPCost = (function () {
     if (startEl) startEl.value = filters.periodStart;
     if (endEl) endEl.value = filters.periodEnd;
 
-    var provSel = document.getElementById("filter-provider");
-    if (provSel) {
-      Array.prototype.forEach.call(provSel.options, function (o) { o.selected = filters.providers.indexOf(o.value) >= 0; });
+    var provField = document.getElementById("filter-provider-field");
+    if (provField) {
+      provField.innerHTML = multiSelectDropdownHtml(
+        "filter-provider-dd",
+        [{ value: "aws", label: "AWS" }, { value: "azure", label: "Azure" }, { value: "gcp", label: "GCP" }],
+        filters.providers, "전체 CSP"
+      );
     }
 
-    var accSel = document.getElementById("filter-account");
-    if (accSel) {
+    var accField = document.getElementById("filter-account-field");
+    if (accField) {
       var visible = capAccounts.filter(function (a) {
         return !filters.providers.length || filters.providers.indexOf(a.provider) >= 0;
       });
-      accSel.innerHTML = visible.map(function (a) {
-        return '<option value="' + esc(a.cloud_account_id) + '">' +
-               esc((a.account_label || a.external_account_id) + " (" + a.provider.toUpperCase() + ")") + "</option>";
-      }).join("");
-      Array.prototype.forEach.call(accSel.options, function (o) { o.selected = filters.accountIds.indexOf(o.value) >= 0; });
+      accField.innerHTML = multiSelectDropdownHtml(
+        "filter-account-dd",
+        visible.map(function (a) { return { value: a.cloud_account_id, label: (a.account_label || a.external_account_id) + " (" + a.provider.toUpperCase() + ")" }; }),
+        filters.accountIds, "전체 계정"
+      );
     }
 
     var currSel = document.getElementById("filter-currency");
@@ -391,11 +474,22 @@ window.MCPCost = (function () {
       capAccounts.forEach(function (a) { if (a.currency && currencies.indexOf(a.currency) < 0) currencies.push(a.currency); });
       currSel.innerHTML = '<option value="">전체 통화</option>' +
         currencies.map(function (c) { return '<option value="' + esc(c) + '">' + esc(c) + "</option>"; }).join("");
+      // className을 매번 다시 쓰면 enhance()가 붙인 sr-only가 지워져 네이티브 select가 다시
+      // 드러난다 — 처음 한 번만 클래스를 입히고, 그 뒤로는 enhance()의 결과물(버튼+메뉴)을
+      // 건드리지 않는다.
+      if (!currSel.dataset.mcEnhanced) currSel.className = DD_SELECT_CLASS;
       currSel.value = filters.currency;
+      currSel.dispatchEvent(new Event("change"));
+      if (window.MCDropdown) window.MCDropdown.enhance(currSel);
     }
 
     var ccSel = document.getElementById("filter-charge-category");
-    if (ccSel) ccSel.value = filters.chargeCategory;
+    if (ccSel) {
+      if (!ccSel.dataset.mcEnhanced) ccSel.className = DD_SELECT_CLASS;
+      ccSel.value = filters.chargeCategory;
+      ccSel.dispatchEvent(new Event("change"));
+      if (window.MCDropdown) window.MCDropdown.enhance(ccSel);
+    }
 
     var chip = document.getElementById("filter-summary-chip");
     if (chip) {
@@ -427,10 +521,8 @@ window.MCPCost = (function () {
 
     filters.periodStart = start;
     filters.periodEnd = end;
-    var provSel = document.getElementById("filter-provider");
-    filters.providers = provSel ? Array.prototype.filter.call(provSel.options, function (o) { return o.selected; }).map(function (o) { return o.value; }) : [];
-    var accSel = document.getElementById("filter-account");
-    filters.accountIds = accSel ? Array.prototype.filter.call(accSel.options, function (o) { return o.selected; }).map(function (o) { return o.value; }) : [];
+    filters.providers = selectedDropdownValues("filter-provider-dd");
+    filters.accountIds = selectedDropdownValues("filter-account-dd");
     var currSel = document.getElementById("filter-currency");
     filters.currency = currSel ? currSel.value : "";
     var ccSel = document.getElementById("filter-charge-category");
@@ -790,17 +882,9 @@ window.MCPCost = (function () {
         case "reset-filters":
           resetFilters(); renderFilters(); load();
           break;
-        case "preset-period": {
-          var preset = btn.getAttribute("data-preset");
-          if (preset === "mtd") { filters.periodStart = startOfMonthISO(); filters.periodEnd = todayISO(); }
-          else if (preset === "last-month") {
-            var d = new Date(); var lm = new Date(d.getFullYear(), d.getMonth() - 1, 1);
-            var lastDay = new Date(d.getFullYear(), d.getMonth(), 0);
-            filters.periodStart = isoOf(lm); filters.periodEnd = isoOf(lastDay);
-          } else if (preset === "7d") { filters.periodEnd = todayISO(); filters.periodStart = addDaysISO(todayISO(), -6); }
-          renderFilters();
+        case "preset-period":
+          applyPeriodPreset(btn.getAttribute("data-preset"));
           break;
-        }
         case "nav-scroll":
           navScroll(btn.getAttribute("data-tab"), btn.getAttribute("data-target"));
           break;
@@ -854,6 +938,50 @@ window.MCPCost = (function () {
           }
           break;
         default: break;
+      }
+    });
+
+    // CSP·계정 드롭다운 — 열기/닫기는 여기서, 바깥 클릭·Esc로 닫기는 dropdown.js의 전역
+    // 리스너가 같은 .mc-dd/.mc-dd__menu 클래스를 보고 대신 처리한다(중복 구현 안 함).
+    document.addEventListener("click", function (e) {
+      var toggle = e.target.closest("[data-dd-toggle]");
+      if (toggle) {
+        e.stopPropagation();
+        var menu = toggle.parentNode.querySelector(".mc-dd__menu");
+        if (!menu) return;
+        var willOpen = menu.classList.contains("hidden");
+        if (window.MCDropdown) window.MCDropdown.closeAll();
+        if (willOpen) menu.classList.remove("hidden");
+        return;
+      }
+
+      var allRow = e.target.closest("[data-dd-multi-all]");
+      if (allRow) {
+        var allWrap = allRow.closest(".mc-dd");
+        if (!allWrap) return;
+        Array.prototype.forEach.call(allWrap.querySelectorAll("[data-dd-multi-item]"), function (el) {
+          setDdItemChecked(el, false);
+        });
+        allRow.classList.add("bg-muted", "font-medium");
+        var allLabelText = allWrap.id === "filter-provider-dd" ? "전체 CSP" : "전체 계정";
+        refreshDropdownLabel(allWrap.id, allLabelText, allWrap.querySelectorAll("[data-dd-multi-item]").length);
+        if (window.MCDropdown) window.MCDropdown.closeAll();
+        return;
+      }
+
+      var item = e.target.closest("[data-dd-multi-item]");
+      if (item) {
+        var wrap = item.closest(".mc-dd");
+        if (!wrap) return;
+        var nowSelected = item.getAttribute("aria-selected") !== "true";
+        setDdItemChecked(item, nowSelected);
+        var total = wrap.querySelectorAll("[data-dd-multi-item]").length;
+        var allLabel = wrap.id === "filter-provider-dd" ? "전체 CSP" : "전체 계정";
+        var allRowEl = wrap.querySelector("[data-dd-multi-all]");
+        var anySelected = selectedDropdownValues(wrap.id).length > 0;
+        if (allRowEl) allRowEl.classList.toggle("bg-muted", !anySelected);
+        if (allRowEl) allRowEl.classList.toggle("font-medium", !anySelected);
+        refreshDropdownLabel(wrap.id, allLabel, total);
       }
     });
   }
