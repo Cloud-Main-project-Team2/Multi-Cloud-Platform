@@ -1144,10 +1144,11 @@
   }
 
   // ── CDN 입력 폼 빌더 ──────────────────────────────────────────────────────
-  function cdnText(p, key, label, req, ph, val) {
+  function cdnText(p, key, label, req, ph, val, hint) {
     return "<div>" + labelHtml(label, req) +
       '<input type="text" data-ps-platform="' + p + '" data-ps="' + key + '" placeholder="' + (ph || "") +
-      '" value="' + (val || "") + '" class="' + FIELD_INPUT + '" /></div>';
+      '" value="' + (val || "") + '" class="' + FIELD_INPUT + '" />' +
+      (hint ? '<p class="mt-1 text-xs text-muted-foreground">' + hint + "</p>" : "") + "</div>";
   }
   function cdnNumber(p, key, label, req, val) {
     return "<div>" + labelHtml(label, req) +
@@ -1175,7 +1176,8 @@
 
       if (p === "aws") {
         html += '<div class="grid gap-3 sm:grid-cols-2">' +
-          cdnText("aws", "origin", "Origin", true, "example.s3.ap-northeast-2.amazonaws.com") +
+          cdnText("aws", "origin", "Origin", true, "example.s3.ap-northeast-2.amazonaws.com", "",
+            "https:// 등 스킴이나 경로 없이 호스트명만 입력하세요.") +
           cdnSelect("aws", "cachePolicy", "캐시 정책", CDN_OPTS.awsCachePolicy) +
           cdnSelect("aws", "pathRouting", "Path routing", CDN_OPTS.awsPathRouting) +
           cdnSelect("aws", "viewerProtocolPolicy", "Viewer Protocol Policy", CDN_OPTS.awsViewerProtocol) +
@@ -1184,7 +1186,8 @@
           cdnToggle("aws", "compression", "Compression", true);
       } else if (p === "azure") {
         html += '<div class="grid gap-3 sm:grid-cols-2">' +
-          cdnText("azure", "origin", "Origin", true) +
+          cdnText("azure", "origin", "Origin", true, "example.com", "",
+            "https:// 등 스킴이나 경로 없이 호스트명만 입력하세요.") +
           cdnText("azure", "resourceGroup", "Resource Group", true) +
           "</div>" +
           // 2026-09-17: 기존엔 이 이름으로 항상 새 리소스 그룹을 만들려고 해서 기존 이름과
