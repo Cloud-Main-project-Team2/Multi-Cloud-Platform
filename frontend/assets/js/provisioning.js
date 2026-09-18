@@ -475,6 +475,7 @@
 
     // 4) 네트워크 — "새로 생성"(기본) / "기존 리소스 사용" 토글(2026-09-17, 실제로 동작)
     container.appendChild(networkFieldEl("compute", platforms));
+    wireAzureRegionRefilter(container, "compute", platforms);
 
     // 인바운드 규칙·인증은 플랫폼별로 내용이 달라 ⑤ 추가 설정으로 이동(공통은 플랫폼 무관 유지).
 
@@ -549,6 +550,12 @@
       ],
       gcp: [["network", "VPC 네트워크 이름", "my-existing-vpc"]],
     },
+    // Storage는 Azure만 "기존 리소스 그룹" 재사용 개념이 있다(AWS/GCP 버킷은 전역 고유 이름이라
+    // 재사용할 상위 리소스가 없음). 2026-09-18까지는 수동 텍스트 입력뿐이었는데, compute/db와
+    // 다르게 취급할 이유가 없어 같은 "실제 목록 불러오기" 드롭다운으로 통일한다.
+    storage_object: {
+      azure: [["existingResourceGroupName", "리소스 그룹 이름", "my-existing-rg"]],
+    },
   };
 
   // provider별로 "불러오기"가 채울 select의 원본 데이터(마지막으로 불러온 값) — 재조회 없이
@@ -574,10 +581,10 @@
         existingResourceGroupName: { source: "resource_groups", optionOf: function (r) {
           return { value: r.name, text: r.name + " (" + r.location + ")" };
         } },
-        existingSubnetId: { source: "azure_subnets", optionOf: function (s) {
-          return { value: s.id, text: s.vnet_name + "/" + s.name + " (" + (s.address_prefix || "") + ") · rg:" + s.resource_group };
+        existingSubnetId: { source: "azure_subnets", regionFilter: true, optionOf: function (s) {
+          return { value: s.id, text: s.vnet_name + "/" + s.name + " (" + (s.address_prefix || "") + ") · rg:" + s.resource_group + (s.location ? " · " + s.location : "") };
         } },
-        existingNetworkSecurityGroupId: { source: "network_security_groups", optionOf: function (n) {
+        existingNetworkSecurityGroupId: { source: "network_security_groups", regionFilter: true, optionOf: function (n) {
           return { value: n.id, text: n.name + " (rg:" + n.resource_group + ", " + n.location + ")" };
         } },
       },
@@ -600,7 +607,7 @@
         existingResourceGroupName: { source: "resource_groups", optionOf: function (r) {
           return { value: r.name, text: r.name + " (" + r.location + ")" };
         } },
-        existingVnetId: { source: "virtual_networks", optionOf: function (v) {
+        existingVnetId: { source: "virtual_networks", regionFilter: true, optionOf: function (v) {
           return { value: v.id, text: v.name + " (rg:" + v.resource_group + ", " + v.location + ")" };
         } },
       },
@@ -610,7 +617,35 @@
         } },
       },
     },
+    storage_object: {
+      azure: {
+        // 리소스 그룹 자신의 location이 실제 적용 리전이 되므로(azureEffectiveRegion과 동일 원칙)
+        // regionFilter는 필요 없다 — 리스트 자체를 거를 대상이 없다.
+        existingResourceGroupName: { source: "resource_groups", optionOf: function (r) {
+          return { value: r.name, text: r.name + " (" + r.location + ")" };
+        } },
+      },
+    },
   };
+
+  // Azure만 겪는 문제(2026-09-18): list_network_resources는 구독 전체 리전을 한 번에 섞어
+  // 돌려준다(AWS와 달리 리전별 조회가 아니다) — 그래서 "기존 리소스 사용"에서 지금 만들려는
+  // 리전과 다른 서브넷/NSG/VNet도 그냥 골라지고, terraform apply 단계에서야
+  // `InvalidResourceReference ... same region`으로 실패한다(실사용 중 발견). 이 리전이
+  // "실제로 적용될" 리전과 같은지 걸러야 한다 — 그런데 그 리전은 두 갈래로 정해진다:
+  // 기존 리소스 그룹을 재사용하면 terraform이 **그 리소스 그룹 자신의 location**을 그대로
+  // 쓰고(`terraform/azure/{vm,database/*}/main.tf`의 `data "azurerm_resource_group"`), 새로
+  // 만들면 마법사 ④에서 고른 국가의 리전을 쓴다. 그래서 existingResourceGroupName을 먼저
+  // 골랐으면 그 리소스 그룹의 location을, 아니면 지금 선택된 국가의 리전을 기준으로 삼는다.
+  function azureEffectiveRegion(p, currentValues) {
+    var rgName = currentValues.existingResourceGroupName;
+    if (rgName) {
+      var rgs = (fetchedNetworkData[p] || {}).resource_groups || [];
+      var match = rgs.filter(function (r) { return r.name === rgName; })[0];
+      if (match) return match.location;
+    }
+    return (state.providerSpec[p] || {}).region;
+  }
 
   function existingFieldManualHtml(p, key, label, placeholder) {
     return labelHtml(label) +
@@ -683,6 +718,10 @@
       var parentVal = currentValues[def.parent];
       if (parentVal) items = items.filter(function (it) { return it[def.parentKey] === parentVal; });
     }
+    if (def.regionFilter && p === "azure") {
+      var region = azureEffectiveRegion(p, currentValues);
+      if (region) items = items.filter(function (it) { return it.location === region; });
+    }
     var options = items.map(def.optionOf);
 
     var label = wrap.querySelector("label");
@@ -704,7 +743,7 @@
     var fieldDefs = (EXISTING_FIELD_SOURCES[kind] || {})[p] || {};
     var values = currentExistingSelectValues(kind, p, wrapsByKey);
     Object.keys(fieldDefs).forEach(function (key) {
-      if (fieldDefs[key].parent) rebuildExistingFieldSelect(kind, p, wrapsByKey, key, values);
+      if (fieldDefs[key].parent || fieldDefs[key].regionFilter) rebuildExistingFieldSelect(kind, p, wrapsByKey, key, values);
     });
     collect();
     updateSubmitState();
@@ -754,7 +793,8 @@
         applyFetchedResourcesToFields(kind, p, wrapsByKey);
         if (msg) {
           msg.classList.remove("hidden");
-          msg.textContent = "불러왔습니다 — 아래에서 선택하세요.";
+          msg.textContent = "불러왔습니다 — 아래에서 선택하세요." +
+            (p === "azure" && kind !== "storage_object" ? " (지금 만들 리소스와 같은 리전의 서브넷/NSG/VNet만 표시됩니다)" : "");
         }
       })
       .catch(function (err) {
@@ -784,6 +824,26 @@
         '<p data-fetch-existing-msg="' + p + '" class="mb-2 hidden text-xs text-muted-foreground"></p>' +
         '<div class="grid gap-2 sm:grid-cols-2">' + inputs + "</div></div>";
     }).join("");
+  }
+
+  // 마법사 ④ 리전(국가) 선택이 바뀌면 이미 "실제 목록 불러오기"로 가져와 둔 Azure 기존 리소스
+  // select도 새 리전 기준으로 다시 걸러 그린다 — 안 그러면 국가를 나중에 바꿔도 예전 리전 기준
+  // 옵션이 그대로 남아 리전이 다른 서브넷/NSG/VNet을 여전히 고를 수 있게 된다.
+  function wireAzureRegionRefilter(container, kind, platforms) {
+    if (platforms.indexOf("azure") === -1) return;
+    var countrySelect = container.querySelector('select[data-cs="country"]');
+    if (!countrySelect) return;
+    countrySelect.addEventListener("change", function () {
+      collect(); // state.providerSpec.azure.region을 최신값으로 먼저 맞춘 뒤 다시 그린다.
+      if (!fetchedNetworkData.azure) return;
+      var box = container.querySelector('[data-existing-field-wrap="azure"]');
+      if (!box) return;
+      var wrapsByKey = {};
+      box.querySelectorAll('[data-field-key]').forEach(function (w) {
+        wrapsByKey[w.getAttribute("data-field-key")] = w;
+      });
+      applyFetchedResourcesToFields(kind, "azure", wrapsByKey);
+    });
   }
 
   // 네트워크 필드(공통) — "새로 생성"(기본) / "기존 리소스 사용" 토글 + 체크 시 provider별 입력
@@ -914,6 +974,7 @@
     // 네트워크 — "새로 생성"(기본) / "기존 리소스 사용" 토글(2026-09-17). DB는 서브넷/NSG
     // 재사용은 지원하지 않는다(위임·private endpoint 정책 강제 변경 위험) — 리소스 그룹/VNet만.
     container.appendChild(networkFieldEl("db", platforms));
+    wireAzureRegionRefilter(container, "db", platforms);
 
     // 백업 — 읽기 전용 안내(입력 아님)
     var backup = el("div", { class: "sm:col-span-2" });
@@ -1254,12 +1315,13 @@
       }
       if (platforms.indexOf("azure") >= 0) {
         // Storage Account엔 VNet/NSG 개념이 없어 재사용할 대상이 리소스 그룹뿐이다(2026-09-17).
+        // 2026-09-18: compute/db와 똑같이 "실제 목록 불러오기" 드롭다운으로 통일(예전엔 수동
+        // 텍스트 입력뿐이었다 — 다르게 취급할 이유가 없었는데 놓친 부분이었다).
         hasExtra = true;
-        var box3 = el("div", { class: "rounded-xl bg-muted p-3" },
-          '<p class="mb-2 text-sm font-medium">Azure 기존 리소스 그룹(선택)</p>' +
-          labelHtml("리소스 그룹 이름") +
-          '<input type="text" data-ps-platform="azure" data-ps="existingResourceGroupName" placeholder="my-existing-rg" class="' + FIELD_INPUT + '" />' +
-          '<p class="mt-1 text-xs text-muted-foreground">비워두면 새 리소스 그룹을 만듭니다.</p>');
+        var box3 = el("div");
+        box3.innerHTML =
+          '<p class="mb-1 text-xs text-muted-foreground">비워두면 새 리소스 그룹을 만듭니다.</p>' +
+          existingResourceFieldsHtml("storage_object", ["azure"]);
         container.appendChild(box3);
       }
       if (!hasExtra) {
@@ -1897,6 +1959,14 @@
         if (del) { del.parentElement.remove(); onFieldChange(); }
         var detailToggle = e.target.closest("[data-gcp-bucket-detail-toggle]");
         if (detailToggle) toggleGcpBucketDetail(detailToggle);
+        // ⑤에 있는 "실제 목록 불러오기"(현재는 Storage의 Azure 기존 리소스 그룹만 해당) —
+        // ④의 networkFieldEl과 같은 패턴이지만 컨테이너가 달라 여기서 따로 배선한다.
+        var fetchBtn = e.target.closest("[data-fetch-existing]");
+        if (fetchBtn) {
+          var p = fetchBtn.getAttribute("data-fetch-existing");
+          var box = fetchBtn.closest('[data-existing-field-wrap="' + p + '"]');
+          fetchExistingResources(state.resourceKind, p, box);
+        }
       });
     }
 

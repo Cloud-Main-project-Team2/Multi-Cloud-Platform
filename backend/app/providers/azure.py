@@ -211,6 +211,12 @@ def list_network_resources(secret_payload: dict, subscription_id: str) -> dict:
                             "vnet_name": vnet.name,
                             "resource_group": vnet_rg,
                             "address_prefix": subnet.address_prefix,
+                            # 서브넷 자체엔 location이 없다 — 소속 VNet의 리전을 그대로 물려준다.
+                            # 프론트가 "기존 리소스 사용"에서 실제로 만들 리소스와 같은 리전의
+                            # 서브넷만 선택 가능하게 거르는 데 쓴다(2026-09-18 추가 — NIC와
+                            # 서브넷의 리전이 다르면 Azure가 `InvalidResourceReference ... same
+                            # region`으로 apply 단계에서 실패하는 걸 실사용 중 발견).
+                            "location": vnet.location,
                         }
                     )
             except (ClientAuthenticationError, HttpResponseError, AzureError):
