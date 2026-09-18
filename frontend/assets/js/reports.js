@@ -8,7 +8,9 @@
   if (!window.MCReports) return;
 
   var PROVIDER_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
-  var PROVIDER_COLOR = { aws: "#FF9900", azure: "#0078D4", gcp: "#34A853" };
+  // 인벤토리(inventory.js)와 같은 CSP 로고를 쓴다 — 색 동그라미 대신 실제 로고로 통일
+  // (2026-09-18 실사용자 요청).
+  var PROVIDER_ICON = { aws: "assets/imgs/aws.png", azure: "assets/imgs/azure.png", gcp: "assets/imgs/gcp.png" };
   var SETTINGS_KEY = "mcp_report_settings"; // per-viewer 편의값 — 실 저장은 PUT /reports/settings(§5.5)가 대신한다.
 
   function fmtMoney(n) { return "$" + Math.round(n).toLocaleString(); }
@@ -23,7 +25,8 @@
   function dotsHtml(clouds) {
     return clouds
       .map(function (c) {
-        return '<span class="inline-block h-2.5 w-2.5 rounded-full" style="background:' + PROVIDER_COLOR[c] + '" title="' + PROVIDER_LABEL[c] + '"></span>';
+        return '<img src="' + PROVIDER_ICON[c] + '" alt="' + PROVIDER_LABEL[c] + '" title="' + PROVIDER_LABEL[c] +
+          '" class="inline-block h-4 w-4 object-contain align-middle" />';
       })
       .join(" ");
   }
