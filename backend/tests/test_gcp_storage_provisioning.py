@@ -35,9 +35,11 @@ def test_validate_spec_rejects_invalid_input(common, provider):
     assert exc_info.value.code == "VALIDATION_ERROR"
 
 
-def test_build_tfvars_uses_bucket_name_without_mcp_prefix():
+def test_build_tfvars_uses_mcp_prefix_and_job_id_suffix():
     tfvars = gcp_storage_provisioning.build_tfvars(42, "proj-1", "my-unique-bucket-01", "asia-northeast3", "STANDARD")
-    assert tfvars["bucket_name"] == "my-unique-bucket-01"  # mcp- 접두사 없음(Compute/Cloud SQL과 다름)
+    # AWS S3와 같은 패턴(2026-09-18 정정) — 사용자가 입력한 그대로 쓰면 흔한 이름이 GCS 전역에서
+    # 이미 선점돼 있을 확률이 높아 AWS/Azure처럼 자동으로 유일하게 만든다.
+    assert tfvars["bucket_name"] == "mcp-my-unique-bucket-01-42"
     assert tfvars["storage_class"] == "STANDARD"
     assert tfvars["labels"]["job-id"] == "42"
 
@@ -72,7 +74,7 @@ def test_run_calls_run_apply_with_credentials_file(monkeypatch, tmp_path):
     )
 
     assert result.success is True
-    assert captured["tfvars"]["bucket_name"] == "my-unique-bucket-01"
+    assert captured["tfvars"]["bucket_name"] == "mcp-my-unique-bucket-01-1"
     assert captured["credential_env"] == {}
     assert captured["credentials_file"] == {"type": "service_account"}
 
