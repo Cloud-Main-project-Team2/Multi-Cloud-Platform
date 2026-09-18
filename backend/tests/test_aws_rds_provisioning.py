@@ -41,7 +41,9 @@ def test_validate_spec_rejects_invalid_input(common, provider):
 def test_build_tfvars_derives_identifier_and_db_name():
     common, provider = aws_rds_provisioning._derive(VALID_COMMON, VALID_PROVIDER)
     tfvars = aws_rds_provisioning.build_tfvars(42, common, provider)
-    assert tfvars["instance_name"] == "mcp-orders-db"
+    # job_id를 접미사로 붙여 계정 내 유일성을 보장한다(2026-09-18) — 같은 이름으로 두 번째
+    # job을 만들어도 DBInstanceAlreadyExists가 나지 않는다.
+    assert tfvars["instance_name"] == "mcp-orders-db-42"
     assert tfvars["db_name"] == "orders_db"  # postgres db_name엔 하이픈을 못 써서 밑줄로 치환
     assert tfvars["engine"] == "postgres"
     assert tfvars["instance_class"] == "db.t3.micro"  # 기본값

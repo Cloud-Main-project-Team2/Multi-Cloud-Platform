@@ -149,7 +149,12 @@ def validate_spec(common_spec: dict, provider_spec: dict) -> None:
 def build_tfvars(job_id: int, common: _CommonSpec, provider: _ProviderSpec) -> dict:
     return {
         "region": provider.region,
-        "instance_name": f"mcp-{common.name}",
+        # job_id를 접미사로 붙여 계정 내에서 유일하게 만든다(2026-09-18 정정) — 원래
+        # job_id 없이 "mcp-{name}"만 썼는데, DB 인스턴스 식별자는 EC2 Name 태그와 달리
+        # 실제로 유일해야 하는 값이라 같은 이름으로 두 번째 job을 만들면
+        # DBInstanceAlreadyExists로 실패했다(Azure Database는 이미 job_id를 붙이고 있었음 —
+        # 3사가 서로 다르게 동작하던 비대칭을 GCP Cloud SQL과 함께 통일한다).
+        "instance_name": f"mcp-{common.name}-{job_id}",
         "engine": provider.engine,
         "instance_class": provider.instance_class,
         "db_name": common.name.replace("-", "_"),
