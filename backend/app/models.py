@@ -120,6 +120,12 @@ class CloudAccount(CreatedAtMixin, Base):
     provider: Mapped[str] = mapped_column(String(20), nullable=False)
     external_account_id: Mapped[str] = mapped_column(String(255), nullable=False)
     account_label: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # 비용 확장(PR 3) — 팀은 "한 사용자 안의 계정 묶음"이다. 팀을 지워도 계정·비용 데이터는
+    # 남아야 하므로 SET NULL. cloud_account_costs에는 team_id를 두지 않는다 — 팀 재배정이
+    # 과거 비용까지 소급해 움직이면 안 되기 때문이다(docs/DB_ERD_v1.2.md Part B R1).
+    team_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("teams.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
     )
@@ -450,4 +456,228 @@ class AuditEvent(CreatedAtMixin, Base):
         sa.Index("ix_audit_events_actor_created", "actor_user_id", "created_at"),
         sa.Index("ix_audit_events_target", "target_type", "target_id", "created_at"),
         sa.Index("ix_audit_events_action_created", "action", "created_at"),
+    )
+
+
+# ── 비용 확장(PR 3) — docs/DB_ERD_v1.2.md Part B, docs/비용_개발문서/06_DB변경.md가 정본이다.
+# 기존 cloud_resource_costs(리소스 단위·양수 전용)는 그대로 두고, 계정 단위·음수 허용 실측
+# 비용은 아래 CloudAccountCost가 대신한다. 리비전은 R1~R4 4개로 나눈다.
+
+
+class Team(CreatedAtMixin, Base):
+    """한 사용자 안의 클라우드 계정 묶음(R1). 팀원 공유(조직 RBAC)는 범위 밖이다. 예산 한도는
+    여기 두지 않는다 — TeamBudget이 이력을 보존한다(한도를 바꿀 때 기존 행을 수정하지 않고
+    새 행을 추가한다)."""
+
+    __tablename__ = "teams"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    currency: Mapped[str] = mapped_column(sa.CHAR(3), nullable=False, server_default="USD", default="USD")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (sa.UniqueConstraint("user_id", "name", name="uq_teams_user_name"),)
+
+
+class TeamBudget(CreatedAtMixin, Base):
+    """예산 이력(R2). 반복 예산의 한도를 바꿀 때 기존 행을 수정하지 않고 새 행을 추가해 과거
+    기간의 예산 대비 수치가 소급 변경되지 않게 한다. end_date가 NULL인 행이 반복 예산이고,
+    같은 팀의 다음 행 start_date가 사실상의 종료다. custom만 end_date를 가진다(제외 경계로
+    저장)."""
+
+    __tablename__ = "team_budgets"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    team_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("teams.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    period_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    start_date: Mapped[date] = mapped_column(Date, nullable=False)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    limit_amount: Mapped[Decimal] = mapped_column(Numeric(19, 6), nullable=False)
+    currency: Mapped[str] = mapped_column(sa.CHAR(3), nullable=False, server_default="USD", default="USD")
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint(
+            "period_type IN ('monthly','quarterly','annual','custom')", name="ck_team_budgets_period_type"
+        ),
+        sa.CheckConstraint("limit_amount > 0", name="ck_team_budgets_limit_positive"),
+        sa.CheckConstraint(
+            "(period_type = 'custom' AND end_date IS NOT NULL) "
+            "OR (period_type <> 'custom' AND end_date IS NULL)",
+            name="ck_team_budgets_custom_end_required",
+        ),
+        sa.CheckConstraint("end_date IS NULL OR end_date > start_date", name="ck_team_budgets_end_after_start"),
+        sa.CheckConstraint(
+            "end_date IS NULL OR end_date <= start_date + INTERVAL '1 year'",
+            name="ck_team_budgets_custom_max_one_year",
+        ),
+        sa.Index("ix_team_budgets_team_period", "team_id", "period_type", "start_date"),
+    )
+
+
+class TeamBudgetNotification(CreatedAtMixin, Base):
+    """예산 임계(80/100%) 알림의 최초 1회 발송을 보장하는 중복 방지 기록(R2). notifications
+    행과 같은 트랜잭션에 저장한다 — INSERT가 성공했을 때만 알림을 만든다(PR 7,
+    app/cost/budget_alert.py)."""
+
+    __tablename__ = "team_budget_notifications"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    team_budget_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("team_budgets.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    threshold: Mapped[int] = mapped_column(sa.SmallInteger, nullable=False)
+    notification_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("notifications.id", ondelete="SET NULL"), nullable=True
+    )
+    notified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+    __table_args__ = (
+        sa.CheckConstraint("threshold IN (80, 100)", name="ck_team_budget_notifications_threshold"),
+        sa.UniqueConstraint(
+            "team_budget_id", "period_start", "threshold", name="uq_team_budget_notifications_key"
+        ),
+    )
+
+
+class CloudAccountCost(CreatedAtMixin, Base):
+    """계정 단위 실측 비용(R3, PR 4 수집). cloud_resource_costs(기존, 리소스 단위·양수 전용)와
+    별개다 — 리소스에 귀속되지 않는 금액(데이터 전송료·지원 요금)과 크레딧·환불(음수)을 담기
+    위해 새로 만들었다. 저장 단위는 계정×서비스×charge_category×일. 재수집은 UPSERT가 아니라
+    (cloud_account_id, source, period_start 범위)로 지운 뒤 다시 넣는다(PR 4, app/cost/ingest.py).
+    team_id는 두지 않는다 — 팀 재배정이 과거 비용까지 소급해 움직이면 안 되기 때문이다."""
+
+    __tablename__ = "cloud_account_costs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    cloud_account_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("cloud_accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    resource_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey("resources.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    provider: Mapped[str] = mapped_column(String(20), nullable=False)
+    cost_kind: Mapped[str] = mapped_column(String(30), nullable=False, server_default="actual", default="actual")
+    charge_category: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="usage", default="usage"
+    )
+    service: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    amount: Mapped[Decimal] = mapped_column(Numeric(19, 6), nullable=False)  # 음수 허용(크레딧·환불) — CHECK 없음
+    currency: Mapped[str] = mapped_column(sa.CHAR(3), nullable=False)
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)  # 포함
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)  # 제외
+    is_estimated: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=sa.text("false"), default=False
+    )
+    as_of: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    source: Mapped[str] = mapped_column(String(100), nullable=False)
+    source_record_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    tags: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=sa.text("'{}'::jsonb"), default=dict)
+    metadata_json: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    __table_args__ = (
+        sa.CheckConstraint("provider IN ('aws','azure','gcp')", name="ck_cloud_account_costs_provider"),
+        sa.CheckConstraint("cost_kind IN ('actual')", name="ck_cloud_account_costs_cost_kind"),
+        sa.CheckConstraint(
+            "charge_category IN ('usage','credit','refund','tax','other')",
+            name="ck_cloud_account_costs_charge_category",
+        ),
+        sa.CheckConstraint("period_end > period_start", name="ck_cloud_account_costs_period_end_after_start"),
+        sa.UniqueConstraint(
+            "provider", "source_record_key", name="uq_cloud_account_costs_provider_source_record_key"
+        ),
+        sa.Index("ix_cloud_account_costs_account_period", "cloud_account_id", "period_start", "period_end"),
+        sa.Index("ix_cloud_account_costs_provider_period", "provider", "period_start"),
+        sa.Index("ix_cloud_account_costs_service_period", "cloud_account_id", "service", "period_start"),
+        sa.Index("ix_cloud_account_costs_as_of", "as_of"),
+        sa.Index("ix_cloud_account_costs_tags_gin", "tags", postgresql_using="gin"),
+    )
+
+
+class CostIngestionRun(CreatedAtMixin, Base):
+    """계정당 run 1행(R3) — resource_sync_jobs(부모)+resource_sync_job_items(자식) 2단 구조와
+    다르다. "계정당 1시간 1회" 제한과 capability 판정(그 계정 마지막 행의 status/error_code)을
+    인덱스 하나로 끝내기 위해서다. 동시 실행 방지는 이 테이블이 아니라 PostgreSQL advisory
+    lock으로 한다 — pg_try_advisory_lock(hashtext('cost_ingest'), cloud_account_id)."""
+
+    __tablename__ = "cost_ingestion_runs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    cloud_account_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("cloud_accounts.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    trigger_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    status: Mapped[str] = mapped_column(String(30), nullable=False, server_default="pending", default="pending")
+    period_start: Mapped[date] = mapped_column(Date, nullable=False)
+    period_end: Mapped[date] = mapped_column(Date, nullable=False)
+    requested_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    api_calls: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
+    records_replaced: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
+    error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    __table_args__ = (
+        sa.CheckConstraint("trigger_type IN ('auto','manual')", name="ck_cost_ingestion_runs_trigger_type"),
+        sa.CheckConstraint(
+            "status IN ('pending','running','success','partial_success','failed','cancelled')",
+            name="ck_cost_ingestion_runs_status",
+        ),
+        sa.CheckConstraint("api_calls >= 0", name="ck_cost_ingestion_runs_api_calls_non_negative"),
+        sa.CheckConstraint("period_end > period_start", name="ck_cost_ingestion_runs_period_end_after_start"),
+        sa.Index("ix_cost_ingestion_runs_account_requested", "cloud_account_id", "requested_at"),
+        sa.Index("ix_cost_ingestion_runs_status", "status"),
+    )
+
+
+class CostReviewItem(CreatedAtMixin, Base):
+    """급증 탐지·검토 큐 공용(R4). 전용 급증 테이블을 만들지 않는다 —
+    uq_cost_review_items_user_source가 "(계정·서비스·날짜) 최초 1회 알림"의 중복 방지를 겸한다.
+    UNIQUE에 user_id를 포함한 이유 — 전역 UNIQUE면 다른 사용자의 항목이 서로를 막아 급증
+    알림이 조용히 사라질 수 있다."""
+
+    __tablename__ = "cost_review_items"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_key: Mapped[str] = mapped_column(String(512), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="open", default="open")
+    resolution: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
+
+    __table_args__ = (
+        sa.CheckConstraint("status IN ('open','investigating','resolved')", name="ck_cost_review_items_status"),
+        sa.CheckConstraint(
+            "resolution IS NULL OR resolution IN ('too_small','expected','unexpected')",
+            name="ck_cost_review_items_resolution",
+        ),
+        sa.CheckConstraint(
+            "(status = 'resolved' AND resolution IS NOT NULL AND resolved_at IS NOT NULL) "
+            "OR (status <> 'resolved' AND resolved_at IS NULL)",
+            name="ck_cost_review_items_resolved_consistency",
+        ),
+        sa.UniqueConstraint("user_id", "source_type", "source_key", name="uq_cost_review_items_user_source"),
+        sa.Index("ix_cost_review_items_status", "status"),
+        sa.Index("ix_cost_review_items_user_status", "user_id", "status"),
     )

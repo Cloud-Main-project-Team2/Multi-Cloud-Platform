@@ -70,6 +70,12 @@ class Settings(BaseSettings):
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")
 
+    # app/cost/ — 비용 조회 API의 지연 판정 임계(시간). 정본은 이 값 하나뿐이다 — 화면·API·
+    # 보고서가 각자 숫자를 갖지 않는다(하루 1회 수집 24h + 실행 시각이 밀릴 여유 12h = 36).
+    cost_stale_after_hours: int = Field(default=36, alias="COST_STALE_AFTER_HOURS")
+    # 비용 자동 수집이 매일 도는 시각(UTC, 0-23). PR 4의 스케줄러가 읽는다.
+    cost_ingest_hour_utc: int = Field(default=6, alias="COST_INGEST_HOUR_UTC")
+
 
 @lru_cache
 def get_settings() -> Settings:
