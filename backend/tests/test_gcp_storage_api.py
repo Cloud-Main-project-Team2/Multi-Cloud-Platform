@@ -1,9 +1,10 @@
 """API 명세서 v1.1 §10 프로비저닝 API 검증 (GCP Cloud Storage, `app/gcp_storage_provisioning.py`).
 
 일반 계약(헤더/소유권/멱등성/취소)은 `test_provisioning_api.py`(gcp/compute_engine 기준)가 이미
-검증한다. 여기서는 Cloud Storage 고유의 것만 다룬다: 버킷 이름이 mcp- 접두사 없이 그대로
-쓰이는지, storage_class 허용 목록, `_execute_job()`이 Compute/Cloud SQL과 다른 리소스 유형
-("Cloud Storage Bucket")으로 리소스행을 만드는지.
+검증한다. 여기서는 Cloud Storage 고유의 것만 다룬다: storage_class 허용 목록,
+`_execute_job()`이 Compute/Cloud SQL과 다른 리소스 유형("Cloud Storage Bucket")으로 리소스행을
+만드는지. 버킷 이름에 mcp- 접두사/job_id 접미사가 붙는 것 자체는
+`test_gcp_storage_provisioning.py`의 `build_tfvars` 단위 테스트가 검증한다.
 """
 
 from __future__ import annotations
@@ -142,7 +143,7 @@ def _create_queued_job(db_session, user, credential, service):
     return job
 
 
-def test_execute_job_success_creates_storage_resource_with_distinct_type_and_no_prefix(monkeypatch, make_user, db_session):
+def test_execute_job_success_creates_storage_resource_with_distinct_type(monkeypatch, make_user, db_session):
     user = make_user()
     service, account, credential = _setup(db_session, user)
     job = _create_queued_job(db_session, user, credential, service)
@@ -170,7 +171,8 @@ def test_execute_job_success_creates_storage_resource_with_distinct_type_and_no_
     assert job.status == "success"
 
     resource = db_session.query(Resource).filter_by(cloud_account_id=account.id).one()
-    # mcp- 접두사가 붙지 않는다 — Compute/Cloud SQL과 다르게 버킷 이름은 사용자가 입력한 그대로.
+    # 이 값은 mock이 "terraform이 실제로 만든 결과 이름"이라고 알려준 그대로를 신뢰한다 —
+    # mcp- 접두사/job_id 접미사를 실제로 붙이는 규칙 자체는 build_tfvars 단위 테스트가 검증한다.
     assert resource.external_resource_id == "my-unique-bucket-01"
     assert resource.original_resource_type == "Cloud Storage Bucket"
     assert resource.provider_resource_key == "gcp:cloud_storage:my-unique-bucket-01"
