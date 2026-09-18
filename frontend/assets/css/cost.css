@@ -1,0 +1,162 @@
+/* frontend/assets/css/cost.css — cost.html 블록 레이아웃.
+   색 토큰(--cost-series-1~6, --cost-up/warn/down 9개)은 assets/css/theme.css에 있다
+   (docs/비용_개발문서/03_데이터계약_표시규칙.md §8-1, 조은솔님 협의 완료 2026-09-18).
+   여기서는 이 화면에서만 쓰는 블록 클래스만 정의한다 — theme.css·shell.css는 건드리지 않는다.
+   쓸 수 있는 class 목록은 docs/비용_개발문서/04_화면명세_cost.md §1-3이 정본이다. */
+
+h1, h2, h3, p { margin: 0; }
+h2 { font-size: 16px; letter-spacing: -.02em; }
+h3 { font-size: 15px; }
+
+button, input, select, textarea { font: inherit; }
+button, select { cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+button:focus-visible, a:focus-visible, select:focus-visible {
+  outline: 3px solid var(--sky); outline-offset: 3px;
+}
+[hidden] { display: none !important; }
+
+.muted { color: var(--muted-foreground); }
+.tiny { font-size: 11px; }
+.small { font-size: 12px; }
+
+select, input, textarea {
+  background: var(--surface); color: var(--foreground);
+  border: 1px solid var(--border); border-radius: 7px; padding: 7px 10px;
+  min-width: 0; max-width: 100%;
+}
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px;
+  padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--surface); color: var(--foreground);
+  text-decoration: none; font-weight: 600; font-size: 12px;
+}
+.btn.primary { background: var(--primary); color: var(--surface); border-color: var(--primary); }
+[data-theme="dark"] .btn.primary { color: var(--background); }
+.btn.yellow { background: var(--yellow); color: var(--cta-text); border-color: var(--yellow); }
+.btn.disabled, .btn:disabled { cursor: not-allowed; opacity: .55; }
+.button-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+
+/* 탭 */
+.tabs { display: flex; gap: 5px; border-bottom: 1px solid var(--border); margin: 20px 0 18px; }
+.tabs button {
+  background: transparent; border: 0; border-bottom: 3px solid transparent;
+  padding: 12px 18px; color: var(--muted-foreground); font-weight: 650;
+}
+.tabs [aria-selected="true"] { color: var(--primary); border-bottom-color: var(--primary); }
+
+/* 블록 그리드 — 4열, kpi=1칸, 일반=2칸, wide=전체 */
+.grid { display: grid; gap: 16px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.block {
+  background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+  padding: 18px; min-width: 0; grid-column: span 2;
+}
+.block.kpi { grid-column: span 1; }
+.block.wide { grid-column: 1 / -1; }
+.block-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 14px; }
+.block-id { display: block; font-size: 10px; color: var(--muted-foreground); margin-bottom: 3px; }
+.kpi .block-head { display: block; }
+
+.value {
+  font-size: 29px; line-height: 1.2; font-weight: 750; letter-spacing: -.04em;
+  margin: 12px 0 6px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere;
+}
+.kpi .value { font-size: 25px; }
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  border: 1px solid var(--border); background: var(--muted); color: var(--primary);
+  font-size: 11px; padding: 3px 7px; border-radius: 5px;
+}
+.dash { font-size: 27px; line-height: 1; }
+.note { font-size: 11px; color: var(--muted-foreground); margin-top: 10px; }
+.warning { border-left: 3px solid var(--cost-warn); background: var(--muted); padding: 12px; border-radius: 5px; }
+
+/* 상태 6종(금액 칸을 비우는 상태) 공통 뷰 */
+.state-view {
+  padding: 16px; background: var(--muted); border-radius: 8px; min-height: 134px;
+  display: flex; flex-direction: column; justify-content: center; gap: 9px;
+}
+.state-view strong { font-size: 16px; }
+.state-view .dash { font-size: 27px; line-height: 1; }
+.state-view p { font-size: 12px; overflow-wrap: anywhere; }
+.state-view .btn { align-self: flex-start; }
+
+.meta-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
+.meta-grid dt { font-size: 11px; color: var(--muted-foreground); margin-bottom: 4px; }
+.meta-grid dd { margin: 0; font-size: 12px; font-weight: 600; }
+.contract-row {
+  padding-top: 10px; margin-top: 10px; border-top: 1px solid var(--border);
+  font-size: 11px; color: var(--muted-foreground);
+}
+
+.filter-grid { display: flex; flex-wrap: wrap; gap: 10px; align-items: flex-end; }
+.filter-grid label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; }
+.chip { display: inline-flex; align-items: center; background: var(--muted); padding: 4px 8px; border-radius: 6px; color: var(--primary); font-size: 11px; }
+
+.cloud-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+.cloud-card { border: 1px solid var(--border); border-radius: 9px; padding: 14px; }
+.cloud-card h3 { display: flex; align-items: center; gap: 8px; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 3px; background: var(--primary); }
+.dot.gcp { background: var(--sky); }
+.dot.azure { background: var(--yellow); }
+.status-list { font-size: 11px; display: grid; gap: 6px; margin-top: 12px; }
+.status-list div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
+.support { font-size: 11px; margin: 10px 0; color: var(--muted-foreground); }
+
+.table-wrap { width: 100%; overflow: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 12px; }
+th { text-align: left; background: var(--muted); color: var(--muted-foreground); font-size: 11px; font-weight: 600; }
+th, td { padding: 11px 9px; border-bottom: 1px solid var(--border); vertical-align: top; }
+td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+.bar-track { height: 6px; background: var(--muted); border-radius: 2px; overflow: hidden; margin-top: 9px; }
+.bar-fill { height: 100%; background: var(--primary); }
+.service-row { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.service-row > div:first-child { display: flex; justify-content: space-between; gap: 10px; }
+
+.chart { display: block; width: 100%; height: auto; color: var(--muted-foreground); font-size: 11px; }
+.chart .dot { width: 10px; height: 10px; border-radius: 2px; }
+.legend { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; font-size: 11px; margin: 7px 0; }
+.legend .dot { display: inline-block; }
+
+.cta-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap; }
+.paired { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+.source-note { font-size: 10px; margin-top: 12px; color: var(--muted-foreground); }
+.money-positive { color: var(--cost-up); }
+.money-negative { color: var(--cost-down); }
+
+.sr-only {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
+}
+.print-only { display: none; }
+
+/* 모달 상단 바(#cost-dialog·#agent-chat-modal 공용 — modal.js가 열고 닫는다) */
+.dialog-top { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+
+/* 토스트 — modal.js와 별개로 cost.js가 직접 hidden을 토글한다(PR 6) */
+.toast {
+  position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+  background: var(--foreground); color: var(--background);
+  padding: 12px 20px; border-radius: 9px; z-index: 100; font-size: 13px; max-width: 85vw;
+}
+
+@media (min-width: 1120px) {
+  #CF-013 { grid-column: span 3; }
+  #CF-016 { grid-column: span 1; }
+}
+@media (max-width: 1050px) {
+  .block.kpi { grid-column: span 2; }
+  .meta-grid { grid-template-columns: repeat(3, 1fr); }
+  .cloud-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .grid { grid-template-columns: 1fr; }
+  .block, .block.kpi, #CF-013, #CF-016 { grid-column: 1; }
+  .meta-grid { grid-template-columns: 1fr 1fr; }
+  .tabs button { padding: 10px 8px; font-size: 12px; }
+  .cta-row { display: block; }
+  .paired { grid-template-columns: 1fr; }
+}
