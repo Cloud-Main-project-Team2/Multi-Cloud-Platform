@@ -113,16 +113,15 @@
     var abs = d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
     return abs + " (" + formatRelative(iso) + ")";
   }
+  // 열 헤더·모달 라벨이 "비용(정가/730h)"로 금액의 기준을 이미 밝히고 있어(inventory.html),
+  // 값 옆에 "Estimated · 정가 730h" 같은 배지를 또 붙이지 않는다 — 금액만 보여준다.
   function formatCost(cost) {
     if (!cost) return "—";
     var actual = cost.collected_cost_amount;
     var amount = actual != null ? actual : cost.estimated_monthly_cost;
     if (amount == null) return "—";
     var symbol = cost.currency === "USD" ? "$" : (cost.currency ? cost.currency + " " : "");
-    // 금액 종류 배지를 금액 옆에 항상 붙인다(비용 파트 PR 6) — 실측(cost_source가 있는 값)과
-    // 정가 추정을 같은 모양으로 보여주면 사용자가 청구서와 대조할 때 헷갈린다.
-    var badge = actual != null ? (cost.source || "실측") : "Estimated · 정가 730h";
-    return symbol + parseFloat(amount).toFixed(2) + " · " + badge;
+    return symbol + parseFloat(amount).toFixed(2);
   }
   function costValue(r) {
     if (!r.cost_summary) return 0;
@@ -294,7 +293,7 @@
     }
 
     truncCell(r.original_resource_type, 130); // "CSP 원본 리소스 유형" — 폭을 줄여 다른 칸에 여유
-    truncCell(r.name || r.external_resource_id, 200, "font-medium");
+    truncCell(r.name || r.external_resource_id, 150, "font-medium"); // "비용(정가/730h)" 헤더 자리를 위해 축소(200→150)
     truncCell(r.region || "—", 120);
     cell(r.cloud_account.account_label || r.cloud_account.external_account_id);
     cell(formatCost(r.cost_summary));
@@ -304,7 +303,7 @@
     var tagKeys = Object.keys(r.tags || {});
     if (tagKeys.length) {
       var span = document.createElement("span");
-      span.className = "inline-block max-w-[160px] truncate align-bottom rounded bg-muted px-1.5 py-0.5 text-[11px]";
+      span.className = "inline-block max-w-[120px] truncate align-bottom rounded bg-muted px-1.5 py-0.5 text-[11px]"; // "비용(정가/730h)" 헤더 자리를 위해 축소(160→120)
       span.textContent = tagKeys[0] + ":" + r.tags[tagKeys[0]] + (tagKeys.length > 1 ? " +" + (tagKeys.length - 1) : "");
       // 전체 태그를 title 툴팁으로(칸을 넘으면 첫 태그도 말줄임되므로).
       span.title = tagKeys.map(function (k) { return k + ":" + r.tags[k]; }).join(", ");
