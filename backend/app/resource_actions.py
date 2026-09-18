@@ -30,6 +30,15 @@ AWS는 RDS(start/stop/delete)·S3(delete)까지 지원하는데 GCP는 Compute E
 
 세 서비스 모두 RDS/EC2처럼 **호출이 accept되면 성공으로 본다**(작업 완료까지 폴링하지 않음) —
 "CSP 호출은 완료를 기다리지 않을 수 있다"는 기존 결정과 같은 비대칭 정책을 그대로 따른다.
+
+**Azure Storage Account/SQL Database/CDN 삭제 지원 추가(2026-09-18)**: 동기화 탐색 범위를
+프로비저닝과 맞추면서(§ `app/providers/azure.py:discover_resources()`) 이 세 타입이 인벤토리에
+보이기 시작했는데, 삭제 버튼을 누르면 여전히 `UNSUPPORTED_OPERATION`으로 막혀 "보이는데 지울 수
+없는" 상태였다(실사용 중 발견). 셋 다 delete만 지원한다(GCP Storage/CDN과 같은 이유 — 시작/중지
+개념이 없거나, SQL의 경우 엔진 3종이 한 service_code로 묶여 있어 SDK 없이 범용 시작/중지를 걸
+방법이 없다). 구현은 `app/providers/azure.py`의 `ResourceManagementClient.resources.
+begin_delete_by_id()`(ARM 리소스를 타입 불문 범용으로 지우는 API) — 전용 SDK(azure-mgmt-storage
+등)를 새로 추가하지 않는다는 기존 원칙을 그대로 따른다.
 """
 
 from __future__ import annotations
@@ -93,6 +102,8 @@ def supported_actions(provider: str, service_code: str, original_resource_type: 
         return {"delete"}
     if provider == "azure" and service_code == "vm":
         return {"start", "stop", "delete"}
+    if provider == "azure" and service_code in ("storage_account", "sql_database", "cdn"):
+        return {"delete"}
     if provider == "gcp" and service_code == "compute_engine":
         return {"start", "stop", "delete"}
     if provider == "gcp" and service_code == "cloud_sql":
@@ -129,7 +140,9 @@ def perform_action(
                 force_empty=force_empty,
             )
         elif provider == "azure":
-            azure_provider.perform_resource_action(service_code, action, secret_payload, external_resource_id)
+            azure_provider.perform_resource_action(
+                service_code, action, secret_payload, external_resource_id, external_account_id=external_account_id,
+            )
         elif provider == "gcp":
             gcp_provider.perform_resource_action(
                 service_code, action, secret_payload, external_account_id, region, external_resource_id,
