@@ -222,8 +222,12 @@ def _resource_attrs(
     if provider == "azure" and service_code == "cdn":
         # AWS CloudFront/GCP Cloud CDN과 같은 이유로 region=None — Front Door는 전역(global)
         # 리소스다(리소스 그룹 자체엔 location이 있지만 CDN 서비스 성격상 리전 개념이 아니다).
-        route_name = outputs.get("route_name")
-        return route_name, "Microsoft.Cdn/profiles/afdEndpoints", None, route_name
+        # 식별자는 Front Door **profile** 이름으로 잡는다(2026-09-18 route_name에서 변경) — 동기화
+        # (app/providers/azure.py discover_resources)가 ResourceManagementClient로 최상위 profile만
+        # 열거할 수 있고 하위 route/endpoint는 못 잡기 때문이다. route_name을 쓰면 생성 직후엔
+        # 보이다가 첫 동기화에서 stale로 찍혀 사라진다(Storage/SQL과 같은 종류의 버그).
+        profile_name = outputs.get("profile_name")
+        return profile_name, "Microsoft.Cdn/profiles", None, profile_name
     if provider == "azure":
         # resource_actions.py는 Azure external_resource_id를 ARM 리소스 ID 전체로 가정한다.
         return outputs.get("vm_id"), "Microsoft.Compute/virtualMachines", provider_spec.get("region"), common_spec.get("name")
