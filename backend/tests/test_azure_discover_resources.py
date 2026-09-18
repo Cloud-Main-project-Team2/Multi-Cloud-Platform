@@ -41,6 +41,9 @@ def test_discovers_vm_storage_and_sql(monkeypatch):
         _obj(
             id="/subscriptions/x/resourceGroups/rg/providers/Microsoft.Compute/virtualMachines/vm1",
             name="vm1", location="eastus", provisioning_state="Succeeded", tags={"env": "dev"},
+            # 비용 확장(PR #100)이 정가 추정을 위해 VM 사양을 읽는다(app/providers/azure.py) —
+            # 실제 SDK 객체는 항상 이 필드를 갖고 있다.
+            hardware_profile=_obj(vm_size="Standard_B2s"),
         )
     ]
     resources = [
@@ -63,6 +66,8 @@ def test_discovers_vm_storage_and_sql(monkeypatch):
 
     # VM은 ARM 전체 ID를 external_resource_id로 쓴다(resource_actions.py가 그 형식을 전제).
     assert ("vm", vms[0].id) in by_key
+    # 비용 추정용 spec — "Standard_" 접두사는 어댑터가 제거한다(pricing.py 정가표 키 규칙).
+    assert by_key[("vm", vms[0].id)].spec == {"instance_type": "B2s", "region": "eastus"}
     # Storage/SQL/CDN은 짧은 이름 — 프로비저닝 `_resource_attrs`와 동일.
     assert ("storage_account", "mcptestmcps322") in by_key
     assert ("sql_database", "mcp-db-8") in by_key
