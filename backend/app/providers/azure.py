@@ -125,12 +125,47 @@ def get_cpu_utilization(secret_payload: dict, resource_ids: list[str]) -> dict[s
     return out
 
 
+# Storage Account·SQL Database·CDN(Front Door)은 전용 SDK(azure-mgmt-storage/-sql/-rdbms/-cdn)를
+# 새로 추가하지 않고 이미 있는 azure-mgmt-resource의 ResourceManagementClient로 리소스 타입을 걸러
+# 조회한다(GCP가 새 의존성 없이 AuthorizedSession REST로 Cloud SQL/Storage/CDN을 조회하는 것과 같은
+# 취지, app/providers/gcp.py).
+#   ARM 리소스 타입(소문자) -> (service_code, original_resource_type, is_global, status)
+# service_code·external_resource_id(=리소스 이름)는 프로비저닝이 저장하는 값(routers/provisioning.py의
+# `_resource_attrs`)과 **정확히** 맞춰야 한다 — 안 그러면 동기화가 방금 만든 리소스를 못 알아보고
+# 매번 새 행을 만들거나 stale로 찍어 인벤토리에서 사라지게 한다. SQL은 엔진마다 ARM 타입이 다르지만
+# service_catalog상 모두 `sql_database`로 묶인다(azure_database_provisioning.py 참고).
+#   - is_global=True면 region=None으로 둔다(CDN은 전역 리소스 — S3/CloudFront와 같은 관례).
+#   - status는 시작/중지 개념이 없는 리소스라 프로비저닝(`_initial_resource_status`)과 같은 고정값을
+#     쓴다(Storage/SQL="AVAILABLE", CDN="DEPLOYED") — 실제 상태로 덮어써 어휘가 어긋나지 않게 한다.
+# CDN은 프로비저닝이 Front Door **profile**을 식별자로 저장한다(route가 아니라) — 하위 route는
+# ResourceManagementClient.resources.list()로 열거되지 않고 최상위 profile만 나오기 때문이다
+# (2026-09-18 `_resource_attrs`도 profile_name으로 통일함).
+_RESOURCE_DISCOVERY_TYPES: dict[str, tuple[str, str, bool, str]] = {
+    "microsoft.storage/storageaccounts": ("storage_account", "Microsoft.Storage/storageAccounts", False, "AVAILABLE"),
+    "microsoft.dbformysql/flexibleservers": ("sql_database", "Azure Database for MySQL", False, "AVAILABLE"),
+    "microsoft.dbforpostgresql/flexibleservers": ("sql_database", "Azure Database for PostgreSQL", False, "AVAILABLE"),
+    "microsoft.sql/servers": ("sql_database", "Azure SQL Database", False, "AVAILABLE"),
+    "microsoft.cdn/profiles": ("cdn", "Microsoft.Cdn/profiles", True, "DEPLOYED"),
+}
+
+
 def discover_resources(secret_payload: dict, subscription_id: str) -> list:
-    """VM만 동기화한다(§9 지원 범위는 resource_actions.py와 동일 — CLAUDE.md 기록).
+    """VM·Storage Account·SQL Database·CDN(Front Door)을 동기화한다.
+
+    2026-09-18 확장 — 이전엔 VM만 조회했다. 그런데 동기화는 "이번 조회에서 안 보인 리소스는
+    is_stale=true로 표시"하는 방식이라(`app/routers/sync_jobs.py`의 `_mark_stale_resources`),
+    프로비저닝으로 방금 만든 Storage Account/SQL Database/CDN이 조회 대상이 아니면 **동기화 한 번에
+    곧바로 "사라진 것"으로 표시돼 인벤토리에서 안 보이는 문제**가 있었다(실사용 테스트로 발견 —
+    GCP가 2026-09-16에 같은 이유로 Cloud SQL/Storage/CDN을 추가한 것과 동일한 상황). 프로비저닝이
+    만들 수 있는 서비스는 동기화도 조회하도록 범위를 맞춘다.
 
     실제 전원 상태(instance view)는 VM마다 별도 API 호출이 필요해 비용이 커서 이번 세션에서는
     생략하고 목록 API의 `provisioning_state`(ARM 리소스 생성 상태 — RUNNING/STOPPED 같은 실제
-    전원 상태가 아니다)를 대신 넣는다."""
+    전원 상태가 아니다)를 대신 넣는다. Storage/SQL은 시작/중지 개념이 없어 프로비저닝과 같은
+    "AVAILABLE"로 고정한다(routers/provisioning.py의 `_initial_resource_status`와 동일 어휘).
+
+    ⚠️ Storage/SQL은 아직 시작/중지/삭제 어댑터가 없다(app/resource_actions.py) — 인벤토리에
+    "보이게"만 하는 것이지 여기서 제어까지 되는 건 아니다(GCP CDN 버킷과 같은 한계)."""
     from app.resource_sync import DiscoveredResource
 
     results: list[DiscoveredResource] = []
@@ -140,6 +175,10 @@ def discover_resources(secret_payload: dict, subscription_id: str) -> list:
             client_id=secret_payload["client_id"],
             client_secret=secret_payload["client_secret"],
         )
+    except (KeyError, ValueError):
+        return results  # secret payload가 불완전하면 아무 클라이언트도 만들 수 없다.
+
+    try:
         compute_client = ComputeManagementClient(credential, subscription_id)
         for vm in compute_client.virtual_machines.list_all():
             results.append(
@@ -153,7 +192,31 @@ def discover_resources(secret_payload: dict, subscription_id: str) -> list:
                     tags=dict(vm.tags or {}),
                 )
             )
-    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError):
+    except (ClientAuthenticationError, HttpResponseError, AzureError):
+        pass  # 이 서비스 하나가 막혀도(권한 등) 나머지 서비스는 계속 조회한다(gcp.py와 같은 원칙).
+
+    try:
+        resource_client = ResourceManagementClient(credential, subscription_id)
+        for res in resource_client.resources.list():
+            mapping = _RESOURCE_DISCOVERY_TYPES.get((res.type or "").lower())
+            if mapping is None:
+                continue
+            service_code, resource_type, is_global, status = mapping
+            results.append(
+                DiscoveredResource(
+                    service_code=service_code,
+                    # 프로비저닝(`_resource_attrs`)이 Storage=계정 이름, SQL=서버 이름, CDN=Front
+                    # Door profile 이름을 external_resource_id로 저장하므로 여기서도 리소스 짧은
+                    # 이름을 그대로 쓴다(VM처럼 ARM 전체 ID가 아니다 — key가 어긋나면 매칭이 깨진다).
+                    external_resource_id=res.name,
+                    original_resource_type=resource_type,
+                    name=res.name,
+                    region=None if is_global else res.location,
+                    status=status,
+                    tags=dict(res.tags or {}),
+                )
+            )
+    except (ClientAuthenticationError, HttpResponseError, AzureError):
         pass
 
     return results

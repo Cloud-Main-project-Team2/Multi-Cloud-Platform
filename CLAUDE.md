@@ -535,6 +535,33 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
     확인. 프론트 JS 2개는 `node --check`로 문법 검증(브라우저 실동작은 화면에서 확인 필요).
   - **남은 것**: 로그 보존/아카이브 정책(현재 회전본 5개 = 약 100MB 상한), 임계치 알림(현재는
     사람이 `tail`/`jq`로 본다), `agent.py`(AI 어시스턴트) 호출 로깅.
+- **동기화 탐색 범위를 프로비저닝과 맞춤 — Azure Storage/SQL/CDN·AWS CloudFront 추가(2026-09-18,
+  `solcho/be-sync-discovery-coverage`)**: 동기화(`_mark_stale_resources`)는 "이번 조회에서 안 보인
+  리소스는 `is_stale=true`"로 찍는데, 인벤토리 목록은 기본적으로 stale을 숨긴다
+  (`routers/resources.py`의 `include_stale=False`). 그래서 **프로비저닝은 만들 수 있는데 discover는
+  못 찾는 서비스**는 생성 직후엔 인벤토리에 보이다가 "새로고침"(=`POST /sync-jobs`) 한 번에 사라졌다
+  (실사용 중 Azure Storage로 발견). GCP는 2026-09-16에 같은 이유로 Cloud SQL/Storage/CDN을 이미
+  추가했고, 이번엔 남아 있던 Azure(VM만 조회)·AWS(CloudFront 누락)를 맞췄다.
+  - **Azure(`app/providers/azure.py`)**: VM(기존)에 더해 Storage Account·SQL Database(MySQL/
+    PostgreSQL/SQL Server)·CDN(Front Door)을 조회한다. 전용 SDK(azure-mgmt-storage/-sql/-rdbms/-cdn)를
+    새로 넣지 않고 **이미 있는 `azure-mgmt-resource`의 `ResourceManagementClient.resources.list()`**로
+    ARM 리소스 타입을 걸러 담는다(새 의존성 0). SQL 3엔진은 ARM 타입이 다르지만 service_catalog상
+    모두 `sql_database`.
+  - **key 매칭이 핵심**: 동기화 key는 `{provider}:{service_code}:{external_resource_id}`이고 프로비저닝
+    (`routers/provisioning.py`의 `_resource_attrs`)도 같은 공식이라, discover가 **같은 값**을 내야 방금
+    만든 행의 stale이 풀린다(중복 행 방지). Storage=계정 이름, SQL=서버 이름, CloudFront=distribution_id.
+  - **⚠️ Azure CDN 식별자를 route_name→profile_name으로 변경**: `resources.list()`는 최상위 Front Door
+    **profile**만 열거하고 하위 route/endpoint는 못 잡는다. 그래서 `_resource_attrs`(azure/cdn)와
+    `terraform/azure/cdn/outputs.tf`를 profile 이름으로 통일했다(신규 output `profile_name`,
+    `original_resource_type`도 `Microsoft.Cdn/profiles`). 기존 Azure CDN 리소스 행이 DB에 없어 안전
+    (마이그레이션 불필요).
+  - **여전한 한계**: Storage/SQL/CDN은 **조회(동기화)만** 되고 시작/중지/삭제(`resource_actions.py`)는
+    Azure에서 아직 미지원 — "보이게"만 하는 것이지 인벤토리에서 제어까지는 아니다(GCP CDN 버킷과 같은
+    한계). 상태값은 시작/중지 개념이 없어 프로비저닝과 같은 고정값(Storage/SQL="AVAILABLE",
+    CDN="DEPLOYED")으로 둔다.
+  - **검증**: backend 테스트 644개 통과(azure discover 5·aws discover 3 신규). 실제 Azure 계정으로
+    라이브 discover→스토리지 발견 확인, 실동기화로 기존 stale 스토리지 행의 `is_stale`이 True→False로
+    복구되는 것까지 end-to-end 확인.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 

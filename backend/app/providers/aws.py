@@ -539,4 +539,28 @@ def discover_resources(secret_payload: dict) -> list:
     except (BotoCoreError, ClientError):
         pass
 
+    try:
+        # CloudFront도 전역 서비스라 리전별 반복이 필요 없다(region=None — S3와 같은 관례).
+        # 프로비저닝(routers/provisioning.py의 `_resource_attrs`)이 distribution_id를
+        # external_resource_id로 저장하므로 여기서도 배포 Id를 그대로 쓴다 — 안 그러면 방금 만든
+        # 배포가 매 동기화마다 stale로 찍혀 인벤토리에서 사라진다. 태그는 별도 ARN 조회가 필요해
+        # (ListTagsForResource) RDS와 같은 이유로 생략한다.
+        cloudfront = _client(secret_payload, "cloudfront", "us-east-1")
+        for page in cloudfront.get_paginator("list_distributions").paginate():
+            for dist in (page.get("DistributionList", {}) or {}).get("Items", []) or []:
+                results.append(
+                    DiscoveredResource(
+                        service_code="cloudfront",
+                        external_resource_id=dist["Id"],
+                        original_resource_type="CloudFront Distribution",
+                        # 배포엔 Name 태그 개념이 없어 Comment(없으면 도메인)를 표시 이름으로 쓴다.
+                        name=dist.get("Comment") or dist.get("DomainName") or dist["Id"],
+                        region=None,
+                        status=(dist.get("Status") or "").upper() or None,
+                        tags={},
+                    )
+                )
+    except (BotoCoreError, ClientError):
+        pass
+
     return results
