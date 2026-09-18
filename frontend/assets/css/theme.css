@@ -6,12 +6,22 @@
   --muted-foreground:#6a7e90; --border:#e7edf2;
   --sidebar:#102f4b; --sidebar-accent:#224966;
   --primary:#145d91; --sky:#56a5dd; --aero:#77b4e4; --yellow:#ecc815; --cta-text:#162326;
+  /* 비용 화면 전용 — 계열 6 + 상태 3. dataviz 검증기로 밝기 대역·채도·색각이상 분리·배경 대비를
+     확인해 정했다(docs/비용_개발문서/03_데이터계약_표시규칙.md §8-1). 차트 계열에는 이 6개만
+     쓴다 — --sky/--aero는 ΔE 5.5로 사실상 같은 색이고, --yellow는 흰 배경 대비 1.64로 거의
+     안 보인다. */
+  --cost-series-1:#1b6fa8; --cost-series-2:#c25d12; --cost-series-3:#5b3f9d;
+  --cost-series-4:#1f8a52; --cost-series-5:#9c1458; --cost-series-6:#a08020;
+  --cost-up:#b42318; --cost-warn:#b54708; --cost-down:#0f766e;
 }
 [data-theme="dark"]{
   --background:#0b1724; --foreground:#e5edf5; --surface:#142536; --muted:#203348;
   --muted-foreground:#a0b4c7; --border:#2a3d50;
   --sidebar:#10283e; --sidebar-accent:#224966;
   --primary:#77b4e4; --sky:#56a5dd; --aero:#77b4e4; --yellow:#ecc815; --cta-text:#162326;
+  --cost-series-1:#4d9bd4; --cost-series-2:#cf801f; --cost-series-3:#9278d8;
+  --cost-series-4:#45a045; --cost-series-5:#d6478a; --cost-series-6:#b08e1a;
+  --cost-up:#fda29b; --cost-warn:#fdb022; --cost-down:#5eead4;
 }
 
 *{ box-sizing:border-box; }

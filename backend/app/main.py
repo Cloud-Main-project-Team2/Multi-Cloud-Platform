@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from app.cost.scheduler import start_cost_scheduler, stop_cost_scheduler
 from app.db import engine
 from app.error_catalog import explain
 from app.error_patterns import translate_reason
@@ -18,6 +19,7 @@ from app.routers import (
     agent,
     auth,
     client_logs,
+    costs,
     credentials,
     notifications,
     provisioning,
@@ -32,7 +34,9 @@ async def lifespan(_app: FastAPI):
     # 재기동 시각을 app.log에 남긴다 — 관제 중 "언제부터 로그가 끊겼나"를 컨테이너 로그 없이
     # 판단할 수 있는 기준선이다.
     log_business_event("service.started")
+    start_cost_scheduler()
     yield
+    stop_cost_scheduler()
     log_business_event("service.stopping")
 
 
@@ -46,6 +50,9 @@ app.include_router(agent.router)
 app.include_router(client_logs.router)
 app.include_router(notifications.router)
 app.include_router(security_groups.router)
+# teams.router · cost_review.router · cost_reports.router는 PR 7·8(다음 라운드) 몫이라
+# 아직 없다 — 이번 라운드(PR 1~6)는 costs.router(수집 실행 3종)까지만 등록한다.
+app.include_router(costs.router)
 
 # 프론트(:8080, nginx 정적 서빙)와 API(:8000)가 서로 다른 오리진이라 브라우저 fetch에는
 # CORS 허용이 필요하다. Bearer 토큰만 쓰고 쿠키는 쓰지 않으므로 allow_credentials는 False로 둔다.

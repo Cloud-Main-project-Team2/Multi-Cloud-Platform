@@ -241,6 +241,11 @@ def discover_resources(secret_payload: dict, subscription_id: str) -> list:
     try:
         compute_client = ComputeManagementClient(credential, subscription_id)
         for vm in compute_client.virtual_machines.list_all():
+            vm_size = (vm.hardware_profile.vm_size if vm.hardware_profile else None) or None
+            # pricing.py의 정가표는 "Standard_" 접두사 없는 SKU 이름을 키로 쓴다(provisioning.js가
+            # 그 형태로 보내므로 — CLAUDE.md 기록). 이 접두사 제거는 여기(어댑터)에서만 한다 —
+            # pricing.py 자체를 고치면 tests/test_pricing.py의 "Standard_B1s는 None" 기대가 깨진다.
+            instance_type = vm_size.removeprefix("Standard_") if vm_size else None
             results.append(
                 DiscoveredResource(
                     service_code="vm",
@@ -250,6 +255,7 @@ def discover_resources(secret_payload: dict, subscription_id: str) -> list:
                     region=vm.location,
                     status=(vm.provisioning_state or "").upper() or None,
                     tags=dict(vm.tags or {}),
+                    spec={"instance_type": instance_type, "region": vm.location},
                 )
             )
     except (ClientAuthenticationError, HttpResponseError, AzureError):

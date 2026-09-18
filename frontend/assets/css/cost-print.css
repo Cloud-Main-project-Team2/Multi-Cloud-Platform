@@ -1,0 +1,21 @@
+/* frontend/assets/css/cost-print.css — A4 인쇄 · 보고서 조각(GET /cost-reports/fragment)용.
+   cost.html은 <link media="print">로 싣지만, 보고서 조각은 media 속성 없이 이 파일을 그대로
+   실어 보내므로(05_API계약.md §7-4) 파일 안에도 @media print를 둔다. */
+@media print {
+  .no-print { display: none !important; }
+  /* 탭 3개를 모두 펼친다 — 인쇄물에서 "탭을 눌러 보세요"는 뜻이 없다. */
+  .tab-panel[hidden] { display: block !important; }
+  .tabs { display: none !important; }
+  .sidebar { display: none !important; }
+  /* 차트가 페이지 경계에서 잘리지 않게. */
+  .block, .chart { break-inside: avoid; }
+  .chart { max-width: 100%; height: auto; }
+  .print-only { display: block; }
+  .content { max-width: none; padding: 0; }
+  .grid { gap: 10px; }
+  /* [data-theme="dark"]도 함께 덮는다 — theme.css의 두 선택자는 특이도가 같아서 :root만 쓰면
+     다크모드일 때 뒤에 선언된 쪽(이 파일)이 이기긴 하지만, 파일 로드 순서가 바뀌는 순간
+     검은 배경으로 인쇄된다. */
+  :root, [data-theme="dark"] { --background: #ffffff; --surface: #ffffff; --foreground: #111111; }
+  body { background: #fff; }
+}
