@@ -110,9 +110,12 @@
     if (!window.MCPApi) return Promise.resolve(null);
     return MCPApi.request("/resources/utilization/top?limit=10")
       .then(function (res) {
-        var items = (res.data && res.data.items) || [];
+        // MCPApi.request()는 응답 envelope의 data를 이미 벗겨서 돌려준다(api.js) — res.data를
+        // 또 한 번 벗기면 항상 undefined가 되어 이 함수가 매번 null로 떨어지고 목업으로만
+        // 폴백하고 있었다(실제로 겪은 버그).
+        var items = (res && res.items) || [];
         return {
-          asOf: res.data.as_of,
+          asOf: res.as_of,
           items: items
             .filter(function (it) { return clouds.indexOf(it.provider) !== -1; })
             .map(function (it) {
