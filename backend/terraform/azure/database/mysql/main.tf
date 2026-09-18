@@ -102,8 +102,10 @@ resource "azurerm_subnet" "this" {
 
 # Private DNS Zone 이름은 Azure 요구사항상 "mysql.database.azure.com"으로 끝나야 한다. 이 zone은
 # job 전용 리소스 그룹 안에서만 유일하면 되므로(전역 유일성 아님) 고정 이름을 쓴다.
+# 서버 이름을 그대로 접두사로 쓰면 "InvalidPrivateDnsZoneName"으로 거부된다(2026-09-18 실측 —
+# 서버의 실제 FQDN처럼 보이는 이름은 Azure가 막는 것으로 보인다). 고정된 일반 접두사로 바꿨다.
 resource "azurerm_private_dns_zone" "this" {
-  name                = "${var.server_name}.mysql.database.azure.com"
+  name                = "mcp.mysql.database.azure.com"
   resource_group_name = local.resource_group_name
   tags                = var.tags
 }
@@ -123,7 +125,10 @@ resource "azurerm_mysql_flexible_server" "this" {
   administrator_login    = var.admin_login
   administrator_password = var.admin_password
 
-  sku_name              = "B_Standard_B1s" # 맵핑 문서 "사양 완전 제외" — 가장 작은 Burstable 고정
+  # 맵핑 문서 "사양 완전 제외" — 가장 작은 Burstable 고정. B_Standard_B1s는 실제 구독으로 테스트해보니
+  # "OperationNotSupportedStandardB1s"로 거부됨(2026-09-18 실측) — PostgreSQL의 B1s 미지원과 같은
+  # 계열의 제약으로 보여 PostgreSQL과 동일하게 B1ms로 통일한다.
+  sku_name              = "B_Standard_B1ms"
   version               = "8.0.21"
   backup_retention_days  = 7
 

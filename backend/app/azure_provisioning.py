@@ -89,9 +89,22 @@ class ProviderSpec(BaseModel):
     @field_validator("admin_password")
     @classmethod
     def _check_password_length(cls, v: str) -> str:
-        # Azure 요구사항(12~123자, 복잡도)은 최종적으로 Azure API가 검증한다 — 여기선 최소 길이만.
-        if len(v) < 12:
-            raise ValueError("admin_password는 Azure 요구사항상 최소 12자 이상이어야 합니다.")
+        # 2026-09-18 실측(실제 자격증명으로 프로비저닝 테스트 중 발견): 길이만 보고 복잡도를
+        # 안 봐서, 조건 미달 비밀번호가 요청 단계(422)가 아니라 몇 분 뒤 terraform apply 실패로
+        # 처음 드러났다 — azure_database_provisioning.py의 master_password 검증과 같은 기준
+        # (대문자/소문자/숫자/특수문자 중 3종 이상, Azure 실제 요구사항)을 여기도 적용한다.
+        if not (12 <= len(v) <= 123):
+            raise ValueError("admin_password는 Azure 요구사항상 12~123자여야 합니다.")
+        classes = (
+            any(c.islower() for c in v),
+            any(c.isupper() for c in v),
+            any(c.isdigit() for c in v),
+            any(not c.isalnum() and c != "_" for c in v),
+        )
+        if sum(classes) < 3:
+            raise ValueError(
+                "admin_password는 대문자/소문자/숫자/특수문자(밑줄 제외) 중 3종 이상을 포함해야 합니다."
+            )
         return v
 
 

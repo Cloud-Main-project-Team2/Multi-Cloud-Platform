@@ -116,15 +116,18 @@ class _ProviderSpec(BaseModel):
             raise ValueError(
                 f"master_password는 {_MIN_PASSWORD_LENGTH}~{_MAX_PASSWORD_LENGTH}자여야 합니다."
             )
+        # 밑줄(_)은 Azure 실제 복잡도 검사에서 "특수문자"로 안 쳐준다(2026-09-18 실측 —
+        # azure_provisioning.py의 admin_password 검증에 맞춰 통일. Azure 원문 에러 메시지:
+        # `Has a special character other than "_"`).
         classes = (
             any(c.islower() for c in v),
             any(c.isupper() for c in v),
             any(c.isdigit() for c in v),
-            any(not c.isalnum() for c in v),
+            any(not c.isalnum() and c != "_" for c in v),
         )
         if sum(classes) < 3:
             raise ValueError(
-                "master_password는 대문자/소문자/숫자/특수문자 중 3종 이상을 포함해야 합니다."
+                "master_password는 대문자/소문자/숫자/특수문자(밑줄 제외) 중 3종 이상을 포함해야 합니다."
             )
         return v
 

@@ -201,3 +201,23 @@ class NetworkResourcesData(BaseModel):
 
 class NetworkResourcesResponse(BaseModel):
     data: NetworkResourcesData
+
+
+class VmSkuAvailabilityItem(BaseModel):
+    """SKU 하나에 대한 사전 확인 결과(2026-09-18) — `status`는
+    `"available" | "restricted" | "not_offered_in_region"` 중 하나다. 조회 자체가 실패한
+    경우는 이 항목이 아니라 502 에러 응답이 되며(app/providers/azure.py 참고), 이 셋 중
+    어느 값도 "실시간 용량까지 보장"하지는 않는다 — 사전 확인 시점의 스냅샷일 뿐이다."""
+
+    sku: str
+    status: str
+    reason: str | None = None
+
+
+class VmSkuAvailabilityData(BaseModel):
+    region: str
+    skus: list[VmSkuAvailabilityItem] = Field(default_factory=list)
+
+
+class VmSkuAvailabilityResponse(BaseModel):
+    data: VmSkuAvailabilityData

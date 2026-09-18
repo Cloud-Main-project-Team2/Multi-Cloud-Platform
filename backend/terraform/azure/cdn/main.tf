@@ -10,9 +10,12 @@
 # patterns_to_match/supported_protocols가 azurerm 스키마상 Required임을 실제 provider 스키마
 # 조회로 확인함). RG는 job마다 독립적으로 만든다(다른 Azure 러너 3개와 동일 원칙).
 #
-# Front Door 엔드포인트 이름은 전역 유일 제약이 없다 — Microsoft가 항상 의사난수 서브도메인을
-# 붙여 반환한다(예: myendpoint-abcd1234.z01.azurefd.net, 서브도메인 탈취 방지 목적). 그래서 이름
-# 자체의 전역 유일성을 신경 쓸 필요가 없다(S3/GCS 버킷과 다른 점).
+# Front Door는 결과 FQDN에 항상 의사난수 서브도메인을 붙여 반환한다(예:
+# myendpoint-abcd1234.z01.azurefd.net, 서브도메인 탈취 방지 목적) — 다만 이게 "endpoint 이름
+# 자체의 유일성까지 면제해준다"는 뜻은 아니다(2026-09-18 실측 정정: 이전 주석이 틀렸음). 같은
+# common_spec.name으로 재시도하면 "That resource name isn't available." Conflict가 나서,
+# app/azure_cdn_provisioning.py가 이름에 job_id를 붙여 매 job마다 새 이름을 쓰게 했다(S3/Storage
+# Account와 같은 원칙).
 
 terraform {
   required_version = ">= 1.5.0"
@@ -21,6 +24,12 @@ terraform {
     azurerm = {
       source  = "hashicorp/azurerm"
       version = "~> 3.0"
+    }
+    # route가 origin을 "enabled"로 인식하기까지 Azure 쪽 내부 전파 지연이 있어(아래 time_sleep
+    # 참고), 실제 리소스는 안 만들고 대기 용도로만 쓴다.
+    time = {
+      source  = "hashicorp/time"
+      version = "~> 0.11"
     }
   }
 }
@@ -92,6 +101,20 @@ resource "azurerm_cdn_frontdoor_origin" "this" {
   certificate_name_check_enabled  = true
   http_port                       = 80
   https_port                      = 443
+  # 명시적으로 안 주면 Azure가 이 origin을 비활성 상태로 만드는 것으로 보인다(2026-09-18 실측 —
+  # time_sleep을 180초까지 늘려도 route 생성이 "at least one enabled origin" 에러로 계속 실패했다.
+  # `enabled` 필드가 schema상 optional+computed라 "안 주면 알아서 켜지겠지"로 가정한 게 틀렸다).
+  enabled = true
+}
+
+# 원래 "180초를 줘도 계속 실패"했던 진짜 원인은 타이밍이 아니라 위 azurerm_cdn_frontdoor_origin에
+# `enabled`를 안 줘서였다(2026-09-18 실측 정정 — schema가 optional+computed라 "안 주면 켜지겠지"로
+# 가정한 게 틀렸음, 바로 위 주석 참고). `enabled=true`를 명시한 뒤로는 이 대기가 필요 없을 가능성이
+# 높지만, Front Door 리소스 상태 전파에 약간의 지연이 있다는 커뮤니티 보고가 있어 짧게 방어적으로
+# 남겨둔다.
+resource "time_sleep" "wait_for_origin" {
+  create_duration = "20s"
+  depends_on      = [azurerm_cdn_frontdoor_origin.this]
 }
 
 resource "azurerm_cdn_frontdoor_route" "this" {
@@ -99,6 +122,7 @@ resource "azurerm_cdn_frontdoor_route" "this" {
   cdn_frontdoor_endpoint_id     = azurerm_cdn_frontdoor_endpoint.this.id
   cdn_frontdoor_origin_group_id = azurerm_cdn_frontdoor_origin_group.this.id
   cdn_frontdoor_origin_ids      = [azurerm_cdn_frontdoor_origin.this.id]
+  depends_on                    = [time_sleep.wait_for_origin]
 
   supported_protocols     = var.supported_protocols
   patterns_to_match       = ["/*"]

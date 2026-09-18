@@ -46,6 +46,12 @@ _COMPUTE_HOURLY_USD: dict[str, dict[str, dict[str, dict[str, str]]]] = {
     "azure": {
         "vm": {
             "B1s": {"koreacentral": "0.0140", "koreasouth": "0.0140", "eastus": "0.0104", "canadacentral": "0.0109"},
+            # B2ats_v2 — "경량" 등급의 무료 대상 x86-64 대안(AZURE_LIGHT_FREE_ALT, provisioning.js
+            # 참고). 무료 체험 계정의 12개월/월별 한도 안에서는 실제 청구가 0에 가깝지만, 그 한도를
+            # 넘거나 무료 체험이 아닌 구독이면 여기 정가가 그대로 청구된다 — 그래서 무조건 "$0"으로
+            # 하드코딩하지 않고 B-series 저비용 SKU에 준하는 정가를 넣는다(2026-09 근사치, 위 모듈
+            # 설명대로 실측치 아님 — 주기적 재검증 필요).
+            "B2ats_v2": {"koreacentral": "0.0101", "koreasouth": "0.0101", "eastus": "0.0075", "canadacentral": "0.0079"},
             "B2s": {"koreacentral": "0.0562", "koreasouth": "0.0562", "eastus": "0.0416", "canadacentral": "0.0437"},
             "B4ms": {"koreacentral": "0.2241", "koreasouth": "0.2241", "eastus": "0.1660", "canadacentral": "0.1743"},
         },

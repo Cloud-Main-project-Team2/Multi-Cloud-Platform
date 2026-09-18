@@ -53,6 +53,9 @@ from app.schemas.credentials import (
     PatchCredentialRequest,
     VerifyResponse,
     VerifyResponseData,
+    VmSkuAvailabilityData,
+    VmSkuAvailabilityItem,
+    VmSkuAvailabilityResponse,
 )
 from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json, encrypt_credential_json
 from app.serialization import iso_z, mask_public_identifier, str_id
@@ -758,6 +761,59 @@ def get_network_resources(
         del secret_payload
 
     return NetworkResourcesResponse(data=NetworkResourcesData(**data))
+
+
+@router.get("/credentials/{credential_id}/vm-sku-availability", response_model=VmSkuAvailabilityResponse)
+def get_vm_sku_availability(
+    credential_id: str,
+    region: str = Query(...),
+    sku: list[str] = Query(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> VmSkuAvailabilityResponse:
+    """Azure VM SKU 사전 확인(2026-09-18, 읽기 전용) — 프로비저닝 폼에서 "경량" 등급 기본 SKU
+    (B1s)나 무료 대안(B2ats_v2)이 실제 이 구독·리전에서 생성 가능한지 실제 생성 전에 미리 걸러
+    본다. Azure 무료 체험 계정이 안내하는 "무료 혜택 대상"과 "이 구독·리전에서 지금 만들 수
+    있음"은 별개 질문이다(SkuNotAvailable/Capacity Restrictions 실측 — CLAUDE.md·설계 문서
+    참고). 시크릿은 절대 응답에 포함하지 않는다.
+
+    이 조회는 스냅샷일 뿐 실시간 용량(capacity)까지 보장하지 않는다 — "available"이었어도
+    실제 생성 시 Azure가 다시 검증하며 거부될 수 있다. Azure 외 provider는 지원하지 않는다."""
+    credential, account = _get_owned_credential(db, current_user.id, credential_id)
+
+    if account.provider != "azure":
+        raise ApiError(422, "UNSUPPORTED_OPERATION", "VM SKU 사전 확인은 Azure만 지원합니다.")
+
+    if not credential.verified:
+        raise ApiError(422, "CLOUD_PERMISSION_DENIED", "검증된 자격 증명이 아닙니다 — 먼저 재검증하세요.")
+
+    try:
+        secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+    except CredentialEncryptionError:
+        raise ApiError(422, "PROVIDER_API_ERROR", "자격 증명을 복호화하지 못했습니다.")
+
+    # 위임 credential이면 임시 자격증명을 발급받는다(network-resources와 동일 패턴).
+    try:
+        secret_payload = resolve_secret_payload(account.provider, secret_payload, credential_id=credential.id)
+    except CredentialResolutionError as exc:
+        raise ApiError(422, exc.error_code, exc.message or "임시 자격 증명을 발급받지 못했습니다.")
+
+    try:
+        result = azure_provider.list_vm_sku_availability(secret_payload, account.external_account_id, region, sku)
+    except ResourceActionError as exc:
+        raise ApiError(502, exc.code, "클라우드에서 VM SKU 가용성을 조회하지 못했습니다.") from exc
+    finally:
+        del secret_payload
+
+    return VmSkuAvailabilityResponse(
+        data=VmSkuAvailabilityData(
+            region=region,
+            skus=[
+                VmSkuAvailabilityItem(sku=name, status=v["status"], reason=v["reason"])
+                for name, v in result.items()
+            ],
+        )
+    )
 
 
 @router.delete("/credentials/{credential_id}", status_code=204)

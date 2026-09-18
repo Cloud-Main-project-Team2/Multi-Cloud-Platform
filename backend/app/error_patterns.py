@@ -60,6 +60,38 @@ _PATTERNS: tuple[_Pattern, ...] = (
         keywords=("addresslimitexceeded",),
     ),
     _Pattern(
+        # 2026-09-18 실측: 실제 자격증명으로 Azure VM(B1s/B2s/D2s_v3, koreacentral/eastus)을
+        # 만들다가 겪은 진짜 원인 — Azure 무료 체험 계정이 "무료 혜택 대상"이라고 안내하는
+        # SKU라도, 이 구독·리전에는 애초에 그 SKU 용량이 배정돼 있지 않을 수 있다. 이건
+        # 할당량(quota) 문제가 아니다 — quota는 "숫자를 늘려주면 되는" 문제지만, SkuNotAvailable은
+        # "그 SKU 자체가 이 구독·리전엔 없다"는 뜻이라 할당량 증설로 해결되지 않는 경우가 흔하다
+        # (아래 quota 패턴과 절대 같은 문구를 쓰지 않는다 — 원인이 다르므로 안내도 달라야 함).
+        friendly="선택한 구독·리전에서 해당 VM SKU를 현재 사용할 수 없습니다. 다른 SKU·리전·가용 "
+        "영역을 선택하거나 Azure 지원에 SKU 사용 요청을 하세요.",
+        keywords=(
+            "skunotavailable",
+            "sku is not available",
+        ),
+        regex=r"capacit(y|ies) restriction|sku.*not available",
+    ),
+    _Pattern(
+        # Azure의 vCPU 할당량 초과(리전 전체 또는 VM 계열별)는 SkuNotAvailable과 다른 문제다 —
+        # 위 패턴과 혼동하지 않도록 Azure 특유의 키워드(OperationNotAllowed/ResourceQuotaExceeded,
+        # "cores quota")로만 매칭한다. 무료 체험(free trial) 구독은 보통 할당량 증설 신청 대상이
+        # 아니라는 점도 같이 안내한다(전부 할당량 문제라고 단정하지 않음 — SkuNotAvailable의
+        # 다른 원인까지 이걸로 해결된다고 암시하지 않는다).
+        friendly="전체 리전 vCPU 또는 VM 계열별 vCPU 할당량이 부족합니다. 리소스를 정리하거나 "
+        "Azure에 할당량 증설을 요청하세요 — 다만 무료 체험(free trial) 구독은 보통 할당량 증설 "
+        "대상이 아니므로, 계속 사용하려면 종량제(pay-as-you-go) 구독 전환이 필요할 수 있습니다.",
+        keywords=(
+            "operationnotallowed",
+            "resourcequotaexceeded",
+            "family cores quota",
+            "regional cores quota",
+        ),
+        regex=r"exceed(ing|ed)? .*(cores|vcpu) quota|quota.*(cores|vcpu)",
+    ),
+    _Pattern(
         friendly="계정 할당량(quota)을 초과했습니다. 리소스를 정리하거나 CSP에 한도 증설을 요청하세요.",
         keywords=(
             "quotaexceeded",

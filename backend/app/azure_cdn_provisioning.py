@@ -189,7 +189,12 @@ def validate_spec(common_spec: dict, provider_spec: dict) -> None:
 
 
 def build_tfvars(job_id: int, workspace_name: str, common: _CommonSpec, provider: _ProviderSpec) -> dict:
-    base = f"mcp-{common.name}"[:40]
+    # job_id를 안 붙이면 같은 common_spec.name으로 여러 번 시도할 때(예: 이전 시도가 실패해 재시도할
+    # 때) Front Door endpoint 이름이 겹쳐 "That resource name isn't available." Conflict가 난다
+    # (2026-09-18 실측 — 모듈 주석은 "이름 자체의 전역 유일성은 신경 안 써도 된다"고 했었는데,
+    # 실제로는 endpoint 이름 자체가 구독 범위에서 유일해야 하는 것으로 보인다). S3/Storage
+    # Account와 같은 이유로 job_id를 붙여 매 job마다 새 이름을 쓴다.
+    base = f"mcp-{common.name}-{job_id}"[:40]
     resource_group_name = (provider.resource_group or f"rg-cdn-{workspace_name}")[:89]
 
     # https_redirect가 켜져 있으면 azurerm이 supported_protocols에 Http/Https 둘 다 요구한다
