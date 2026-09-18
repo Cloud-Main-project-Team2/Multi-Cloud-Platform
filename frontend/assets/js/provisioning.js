@@ -550,6 +550,12 @@
       ],
       gcp: [["network", "VPC 네트워크 이름", "my-existing-vpc"]],
     },
+    // Storage는 Azure만 "기존 리소스 그룹" 재사용 개념이 있다(AWS/GCP 버킷은 전역 고유 이름이라
+    // 재사용할 상위 리소스가 없음). 2026-09-18까지는 수동 텍스트 입력뿐이었는데, compute/db와
+    // 다르게 취급할 이유가 없어 같은 "실제 목록 불러오기" 드롭다운으로 통일한다.
+    storage_object: {
+      azure: [["existingResourceGroupName", "리소스 그룹 이름", "my-existing-rg"]],
+    },
   };
 
   // provider별로 "불러오기"가 채울 select의 원본 데이터(마지막으로 불러온 값) — 재조회 없이
@@ -608,6 +614,15 @@
       gcp: {
         network: { source: "networks", optionOf: function (n) {
           return { value: n.name, text: n.name + (n.auto_create_subnetworks ? " [자동 서브넷]" : "") };
+        } },
+      },
+    },
+    storage_object: {
+      azure: {
+        // 리소스 그룹 자신의 location이 실제 적용 리전이 되므로(azureEffectiveRegion과 동일 원칙)
+        // regionFilter는 필요 없다 — 리스트 자체를 거를 대상이 없다.
+        existingResourceGroupName: { source: "resource_groups", optionOf: function (r) {
+          return { value: r.name, text: r.name + " (" + r.location + ")" };
         } },
       },
     },
@@ -779,7 +794,7 @@
         if (msg) {
           msg.classList.remove("hidden");
           msg.textContent = "불러왔습니다 — 아래에서 선택하세요." +
-            (p === "azure" ? " (지금 만들 리소스와 같은 리전의 서브넷/NSG/VNet만 표시됩니다)" : "");
+            (p === "azure" && kind !== "storage_object" ? " (지금 만들 리소스와 같은 리전의 서브넷/NSG/VNet만 표시됩니다)" : "");
         }
       })
       .catch(function (err) {
@@ -1300,12 +1315,13 @@
       }
       if (platforms.indexOf("azure") >= 0) {
         // Storage Account엔 VNet/NSG 개념이 없어 재사용할 대상이 리소스 그룹뿐이다(2026-09-17).
+        // 2026-09-18: compute/db와 똑같이 "실제 목록 불러오기" 드롭다운으로 통일(예전엔 수동
+        // 텍스트 입력뿐이었다 — 다르게 취급할 이유가 없었는데 놓친 부분이었다).
         hasExtra = true;
-        var box3 = el("div", { class: "rounded-xl bg-muted p-3" },
-          '<p class="mb-2 text-sm font-medium">Azure 기존 리소스 그룹(선택)</p>' +
-          labelHtml("리소스 그룹 이름") +
-          '<input type="text" data-ps-platform="azure" data-ps="existingResourceGroupName" placeholder="my-existing-rg" class="' + FIELD_INPUT + '" />' +
-          '<p class="mt-1 text-xs text-muted-foreground">비워두면 새 리소스 그룹을 만듭니다.</p>');
+        var box3 = el("div");
+        box3.innerHTML =
+          '<p class="mb-1 text-xs text-muted-foreground">비워두면 새 리소스 그룹을 만듭니다.</p>' +
+          existingResourceFieldsHtml("storage_object", ["azure"]);
         container.appendChild(box3);
       }
       if (!hasExtra) {
@@ -1943,6 +1959,14 @@
         if (del) { del.parentElement.remove(); onFieldChange(); }
         var detailToggle = e.target.closest("[data-gcp-bucket-detail-toggle]");
         if (detailToggle) toggleGcpBucketDetail(detailToggle);
+        // ⑤에 있는 "실제 목록 불러오기"(현재는 Storage의 Azure 기존 리소스 그룹만 해당) —
+        // ④의 networkFieldEl과 같은 패턴이지만 컨테이너가 달라 여기서 따로 배선한다.
+        var fetchBtn = e.target.closest("[data-fetch-existing]");
+        if (fetchBtn) {
+          var p = fetchBtn.getAttribute("data-fetch-existing");
+          var box = fetchBtn.closest('[data-existing-field-wrap="' + p + '"]');
+          fetchExistingResources(state.resourceKind, p, box);
+        }
       });
     }
 
