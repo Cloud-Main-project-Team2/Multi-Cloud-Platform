@@ -100,6 +100,21 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
+  // 규칙 "방향"은 CSP마다 원시 값이 다르다(AWS ingress/egress, GCP INGRESS/EGRESS,
+  // Azure Inbound/Outbound). 화면 표시만 Inbound/Outbound로 통일한다 — 원본 값(API 요청·
+  // data-direction 필터 등)은 그대로 두고 이 함수는 렌더링에만 쓴다.
+  function directionLabel(dir) {
+    switch (String(dir == null ? "" : dir).toLowerCase()) {
+      case "ingress":
+      case "inbound":
+        return "Inbound";
+      case "egress":
+      case "outbound":
+        return "Outbound";
+      default:
+        return escHtml(dir); // 알 수 없는 값은 원본을 이스케이프해 그대로 노출.
+    }
+  }
   function errorMessage(err) {
     return (err && err.message) || "요청 처리 중 오류가 발생했습니다.";
   }
@@ -261,7 +276,7 @@
           '<tr class="border-b border-border" data-name="' + escHtml(r.name) + '">' +
           '<td class="py-2 pr-4 font-medium">' + escHtml(r.name) + "</td>" +
           '<td class="py-2 pr-4">' + escHtml(r.network) + "</td>" +
-          '<td class="py-2 pr-4">' + escHtml(r.direction) + "</td>" +
+          '<td class="py-2 pr-4">' + directionLabel(r.direction) + "</td>" +
           '<td class="py-2 pr-4">' + escHtml(r.action) + "</td>" +
           '<td class="py-2 pr-4">' + escHtml(r.protocol || "-") + (r.ports && r.ports.length ? ":" + r.ports.join(",") : "") + "</td>" +
           '<td class="py-2 pr-4">' + escHtml((r.source_ranges || []).join(", ") || "-") + "</td>" +
@@ -290,7 +305,7 @@
   function awsRuleRowHtml(groupId, rule) {
     return (
       '<tr class="border-b border-border" data-rule-id="' + escHtml(rule.rule_id) + '" data-direction="' + rule.direction + '">' +
-      '<td class="py-1.5 pr-3">' + rule.direction + "</td>" +
+      '<td class="py-1.5 pr-3">' + directionLabel(rule.direction) + "</td>" +
       '<td class="py-1.5 pr-3">' + escHtml(rule.protocol) + "</td>" +
       '<td class="py-1.5 pr-3">' + (rule.from_port != null ? rule.from_port + "-" + rule.to_port : "전체") + "</td>" +
       '<td class="py-1.5 pr-3">' + escHtml(rule.cidr || "-") + "</td>" +
@@ -304,7 +319,7 @@
       '<tr class="border-b border-border" data-rule-id="' + escHtml(rule.name) + '">' +
       '<td class="py-1.5 pr-3">' + escHtml(rule.name) + "</td>" +
       '<td class="py-1.5 pr-3">' + rule.priority + "</td>" +
-      '<td class="py-1.5 pr-3">' + rule.direction + "</td>" +
+      '<td class="py-1.5 pr-3">' + directionLabel(rule.direction) + "</td>" +
       '<td class="py-1.5 pr-3">' + rule.access + "</td>" +
       '<td class="py-1.5 pr-3">' + escHtml(rule.protocol) + "</td>" +
       '<td class="py-1.5 pr-3">' + escHtml(rule.destination_port_range || "-") + "</td>" +
@@ -476,7 +491,7 @@
     ruleFieldsEl.innerHTML =
       acc.provider === "aws"
         ? '<div><label class="mb-1 block text-xs font-medium">유형</label><select data-rule-type class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">' + typeOptionsHtml(AWS_RULE_TYPES) + "</select></div>" +
-          '<div><label class="mb-1 block text-xs font-medium">방향</label><select data-rf="direction" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option value="ingress">ingress(인바운드)</option><option value="egress">egress(아웃바운드)</option></select></div>' +
+          '<div><label class="mb-1 block text-xs font-medium">방향</label><select data-rf="direction" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option value="ingress">Inbound</option><option value="egress">Outbound</option></select></div>' +
           '<div><label class="mb-1 block text-xs font-medium">프로토콜</label><input data-rf="protocol" value="tcp" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:bg-muted disabled:text-muted-foreground" /></div>' +
           '<div class="grid grid-cols-2 gap-2"><div><label class="mb-1 block text-xs font-medium">시작 포트</label><input data-rf="from_port" type="number" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:bg-muted disabled:text-muted-foreground" /></div><div><label class="mb-1 block text-xs font-medium">끝 포트</label><input data-rf="to_port" type="number" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm disabled:bg-muted disabled:text-muted-foreground" /></div></div>' +
           '<div><label class="mb-1 block text-xs font-medium">CIDR</label><input data-rf="cidr" value="0.0.0.0/0" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>' +
@@ -567,7 +582,7 @@
           createFields.innerHTML =
             '<div><label class="mb-1 block text-sm font-medium">이름</label><input data-cf="name" placeholder="allow-ssh" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>' +
             '<div><label class="mb-1 block text-sm font-medium">네트워크</label><select data-cf="network" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option value="">선택하세요</option>' + netOptions + "</select></div>" +
-            '<div><label class="mb-1 block text-sm font-medium">방향</label><select data-cf="direction" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option value="INGRESS">INGRESS</option><option value="EGRESS">EGRESS</option></select></div>' +
+            '<div><label class="mb-1 block text-sm font-medium">방향</label><select data-cf="direction" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option value="INGRESS">Inbound</option><option value="EGRESS">Outbound</option></select></div>' +
             '<div><label class="mb-1 block text-sm font-medium">액션</label><select data-cf="action" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"><option value="allow">allow</option><option value="deny">deny</option></select></div>' +
             '<div><label class="mb-1 block text-sm font-medium">우선순위</label><input data-cf="priority" type="number" value="1000" class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" /></div>' +
             '<div><label class="mb-1 block text-sm font-medium">유형</label><select data-rule-type class="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">' + typeOptionsHtml(GCP_RULE_TYPES) + "</select></div>" +

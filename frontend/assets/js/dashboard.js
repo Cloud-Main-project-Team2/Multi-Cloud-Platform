@@ -42,6 +42,26 @@
     canadacentral: "캐나다 토론토",
   };
 
+  // GCP는 스키마에 zone 컬럼이 없어 resources.region에 zone 값을 그대로 저장한다(CLAUDE.md
+  // "GCP zone 단순화", 예: asia-northeast3-c / us-central1-a). 지도·표 매핑 키는 리전 단위라
+  // 존 단위 값은 직접 매치되지 않는다 — 그래서 매핑 실패 시 zone 접미사(-a/-b/-c…)를 떼고
+  // 리전 단위로 재조회한다. 이 정규화가 없으면 실제 GCP 리소스가 지도에 안 뜨고 각주로만 빠진다.
+  function regionToRegionKey(region) {
+    if (region == null) return region;
+    var m = /^(.*)-[a-z]$/.exec(String(region));
+    return m ? m[1] : region;
+  }
+  // 리전(또는 GCP zone) → 지도상의 지점(site). 직접 매치가 없으면 zone 접미사를 떼고 재시도한다.
+  function siteForRegion(region) {
+    if (REGION_SITE[region]) return REGION_SITE[region];
+    var base = regionToRegionKey(region);
+    return base !== region ? REGION_SITE[base] : undefined;
+  }
+  // 표 "위치" 라벨 — zone 값도 리전 단위 라벨로 보여준다.
+  function regionLabelFor(region) {
+    return REGION_LABEL[region] || REGION_LABEL[regionToRegionKey(region)] || "—";
+  }
+
   // service_catalog.category -> dashboard.html의 카드 id 접미사.
   var CATEGORY_ID = { compute: "compute", db_rdbms: "db", storage_object: "storage_object", cdn: "cdn" };
   // service_catalog.category -> "서비스별 비용 비중"에 쓰는 표시 라벨.
@@ -212,7 +232,10 @@
     wireRegionToggle();
   }
 
-  // 개수 → 마커 지름(px). 개수(숫자 라벨)가 들어가야 하므로 최소 18px는 확보한다.
+  // 한 지점(site)에서 같은 provider의 리소스가 이 개수 이상이면 개별 점 대신 큰 원 하나로 집계한다.
+  var REGION_AGG_THRESHOLD = 5;
+
+  // 개수 → 집계 원 지름(px). 개수(숫자 라벨)가 들어가야 하므로 최소 18px는 확보한다.
   function markerSize(count) {
     return Math.round(18 + Math.min(count, 10) * 1.4); // 18~32px
   }
@@ -238,7 +261,7 @@
     var bySite = {}; // siteKey -> { total, providers:{}, regions:[] }
     var unmapped = []; // 좌표 미등록 리전
     regionKeys.forEach(function (region) {
-      var siteKey = REGION_SITE[region];
+      var siteKey = siteForRegion(region);
       if (!siteKey) { unmapped.push(region); return; }
       if (!bySite[siteKey]) bySite[siteKey] = { total: 0, providers: {}, regions: [] };
       var s = bySite[siteKey];
@@ -254,26 +277,61 @@
       markersEl.innerHTML =
         '<div class="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">아직 리전 정보가 있는 리소스가 없습니다.</div>';
     } else {
-      // 지점(site)마다 클라우드별 원을 flexbox로 나란히 놓는다. 절대 위치 오프셋 대신 flex+gap을
-      // 쓰면 원이 서로 겹치는 것이 구조적으로 불가능하다(같은 리전에 AWS·Azure·GCP가 있어도
-      // 각 회사 원이 확실히 분리돼 보인다). 각 원 안에는 기존처럼 개수(숫자)를 표시한다.
+      // 지점(site)마다 provider별 마커를 그린다. 한 provider의 리소스가 임계치
+      // (REGION_AGG_THRESHOLD=5) 이상이면 "큰 원" 하나로 집계(개수 표시)하고, 미만이면 리소스
+      // 하나당 "작은 점"을 찍는다(분포도). provider는 항상 색으로 구분해 따로 표시하므로 같은
+      // 지점에 AWS·Azure·GCP가 섞여 있어도(예: AWS 2개는 점 2개, GCP 6개는 큰 원 1개) 어느 것도
+      // 가려지지 않는다.
+      //
+      // 배치: 일자(row)로 늘어서면 far-right 지점(서울 x≈85%)에서 마지막 마커가 국가에서 멀리
+      // 밀려나 잘 안 보였다. 그래서 지점 중심을 기준으로 황금각(golden angle) 나선으로 마커를
+      // 방사형(원형)으로 흩뿌린다 — 큰 원(집계)은 중앙, 작은 점들은 그 둘레에 동그랗게 분포한다.
       markersEl.innerHTML = Object.keys(bySite).map(function (siteKey) {
         var s = bySite[siteKey];
         var site = SITES[siteKey];
-        var circles = Object.keys(s.providers).map(function (p) {
-          var d = markerSize(s.providers[p]);
+        // provider별 마커를 한 리스트로 모은다(작은 점은 리소스 개수만큼, 큰 원은 하나).
+        var items = [];
+        PLATFORMS.filter(function (p) { return s.providers[p]; }).forEach(function (p) {
+          var count = s.providers[p];
+          var color = PROVIDER_COLOR[p] || "#94a3b8";
           var tip = providerTooltip(site, p, s.regions, regionProvider);
+          if (count >= REGION_AGG_THRESHOLD) {
+            items.push({ big: true, size: markerSize(count), color: color, tip: tip, count: count });
+          } else {
+            for (var i = 0; i < count; i++) items.push({ big: false, size: 15, color: color, tip: tip });
+          }
+        });
+        // 큰 원이 중앙(i=0)에 오도록 큰 것부터 배치한다(뒤에 그린 작은 점이 위로 올라와 안 가려진다).
+        items.sort(function (a, b) { return b.size - a.size; });
+        var hasBig = items.length && items[0].big;
+        // 황금각 나선: r = step·√i, θ = i·137.5°. step을 마커 지름보다 작게 잡아 마커들이 살짝
+        // 겹치도록(사용자 요청) 촘촘히 모은다. 큰 원이 있으면 점이 그 안으로 파묻히지 않게 step을 키운다.
+        var step = hasBig ? (items[0].size * 0.5 + 4) : 10;
+        var GOLDEN = Math.PI * (3 - Math.sqrt(5)); // ≈2.399 rad (137.5°)
+        var markers = items.map(function (it, i) {
+          var r = items.length === 1 ? 0 : step * Math.sqrt(i);
+          var dx = Math.round(r * Math.cos(i * GOLDEN));
+          var dy = Math.round(r * Math.sin(i * GOLDEN));
+          var pos = "position:absolute;left:0;top:0;transform:translate(calc(-50% + " + dx + "px),calc(-50% + " + dy + "px));";
+          if (it.big) {
+            return (
+              '<div title="' + escHtml(it.tip) + '" style="' + pos + "width:" + it.size + "px;height:" + it.size +
+              "px;border-radius:9999px;background:" + it.color +
+              ";box-shadow:0 0 0 2px #fff,0 0 0 3.5px rgba(2,6,23,.5),0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;\">" +
+              '<span style="font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)">' + it.count + "</span>" +
+              "</div>"
+            );
+          }
           return (
-            '<div title="' + escHtml(tip) + '" style="width:' + d + "px;height:" + d +
-            "px;border-radius:9999px;background:" + (PROVIDER_COLOR[p] || "#94a3b8") +
-            ";box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);display:flex;align-items:center;justify-content:center;\">" +
-            '<span style="font-size:11px;font-weight:700;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6)">' + s.providers[p] + "</span>" +
-            "</div>"
+            '<span title="' + escHtml(it.tip) + '" style="' + pos + "width:" + it.size + "px;height:" + it.size +
+            "px;border-radius:9999px;background:" + it.color +
+            ';box-shadow:0 0 0 2px #fff,0 0 0 3.5px rgba(2,6,23,.5),0 1px 2px rgba(0,0,0,.35);display:block;"></span>'
           );
         }).join("");
+        // 0×0 앵커를 지점 좌표에 두고, 그 안에서 각 마커를 중심(0,0) 기준으로 방사 배치한다.
         return (
           '<div class="absolute" style="left:' + site.x + "%;top:" + site.y +
-          '%;transform:translate(-50%,-50%);display:flex;gap:4px;align-items:center;">' + circles + "</div>"
+          '%;width:0;height:0;">' + markers + "</div>"
         );
       }).join("");
     }
@@ -313,7 +371,7 @@
         rows.push(
           '<tr class="border-b border-border">' +
           '<td class="py-2.5 pr-4">' + escHtml(region) + "</td>" +
-          '<td class="py-2.5 pr-4">' + escHtml(REGION_LABEL[region] || "—") + "</td>" +
+          '<td class="py-2.5 pr-4">' + escHtml(regionLabelFor(region)) + "</td>" +
           '<td class="py-2.5 pr-4"><span class="inline-flex items-center gap-1.5">' +
           '<span style="width:9px;height:9px;border-radius:9999px;display:inline-block;background:' +
           (PROVIDER_COLOR[p] || "#94a3b8") + '"></span>' + (PLATFORM_LABEL[p] || escHtml(p)) + "</span></td>" +

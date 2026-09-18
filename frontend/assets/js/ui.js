@@ -227,7 +227,11 @@
 
     function render() {
       var found = LANGS.filter(function (l) { return l.code === current; })[0] || LANGS[0];
-      if (currentEl) currentEl.textContent = found.short;
+      // 트리거 버튼에는 텍스트를 노출하지 않고 아이콘만 남긴다(지구본). 현재 선택된 언어는
+      // 상시 텍스트 대신 접근성 이름(aria-label)·툴팁(title)으로만 알린다.
+      if (currentEl) currentEl.textContent = found.short; // 마크업에서 제거됨(방어적 유지).
+      btn.setAttribute("aria-label", "언어 선택 (현재: " + found.label + ")");
+      btn.title = "언어: " + found.label;
       Array.prototype.forEach.call(menu.querySelectorAll(".lang-dd__item"), function (it) {
         it.classList.toggle("active", it.getAttribute("data-lang") === current);
       });
