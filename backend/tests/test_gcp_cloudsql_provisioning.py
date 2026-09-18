@@ -45,9 +45,11 @@ def test_build_tfvars_uses_per_engine_config(
     engine, expected_version, expected_tier, expected_admin_user, expected_create_admin_user
 ):
     engine_config = gcp_cloudsql_provisioning._ENGINE_CONFIG[engine]
-    tfvars = gcp_cloudsql_provisioning.build_tfvars(42, "proj-1", "mcp-web-db", "asia-northeast3", engine_config)
+    tfvars = gcp_cloudsql_provisioning.build_tfvars(42, "proj-1", "web-db", "asia-northeast3", engine_config)
 
-    assert tfvars["instance_name"] == "mcp-web-db"
+    # job_id를 접미사로 붙여 프로젝트 내 유일성을 보장한다(2026-09-18) — 같은 이름으로 두
+    # 번째 job을 만들어도 이름 충돌이 나지 않는다.
+    assert tfvars["instance_name"] == "mcp-web-db-42"
     assert tfvars["database_version"] == expected_version
     assert tfvars["tier"] == expected_tier
     assert tfvars["admin_user"] == expected_admin_user
@@ -78,7 +80,7 @@ def test_run_calls_run_apply_with_credentials_file_and_password_env(monkeypatch,
     )
 
     assert result.success is True
-    assert captured["tfvars"]["instance_name"] == "mcp-web-db"
+    assert captured["tfvars"]["instance_name"] == "mcp-web-db-1"
     assert captured["credential_env"] == {"TF_VAR_root_password": "S3curePassw0rd!"}
     assert captured["credentials_file"] == {"type": "service_account", "token_uri": "https://oauth2.googleapis.com/token"}
     assert captured["secrets"] == ["S3curePassw0rd!"]
@@ -96,7 +98,7 @@ def test_validate_spec_rejects_invalid_network_name():
 
 def test_build_tfvars_defaults_network_to_none():
     engine_config = gcp_cloudsql_provisioning._ENGINE_CONFIG["MySQL"]
-    tfvars = gcp_cloudsql_provisioning.build_tfvars(42, "proj-1", "mcp-web-db", "asia-northeast3", engine_config)
+    tfvars = gcp_cloudsql_provisioning.build_tfvars(42, "proj-1", "web-db", "asia-northeast3", engine_config)
     assert tfvars["network"] is None
 
 

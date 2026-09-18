@@ -79,7 +79,8 @@ _NETWORK_NAME_RE = re.compile(r"^[a-z]([-a-z0-9]*[a-z0-9])?$")
 
 
 def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str, dict, str | None]:
-    """`(instance_name, region, master_password, engine_config, network)`를 반환한다.
+    """`(name, region, master_password, engine_config, network)`를 반환한다. `name`은 사용자가
+    입력한 값 그대로다 — 최종 인스턴스 이름(`mcp-{name}-{job_id}`)은 `build_tfvars()`가 조립한다.
 
     실패 시 422 `ApiError`를 raise한다."""
     name = common_spec.get("name")
@@ -120,7 +121,7 @@ def _derive(common_spec: dict, provider_spec: dict) -> tuple[str, str, str, dict
             details=[{"field": "provider_spec.network", "reason": "invalid"}],
         )
 
-    return f"mcp-{name}", region, master_password, engine_config, network
+    return name, region, master_password, engine_config, network
 
 
 def validate_spec(common_spec: dict, provider_spec: dict) -> None:
@@ -131,7 +132,7 @@ def validate_spec(common_spec: dict, provider_spec: dict) -> None:
 def build_tfvars(
     job_id: int,
     project_id: str,
-    instance_name: str,
+    name: str,
     region: str,
     engine_config: dict,
     network: str | None = None,
@@ -139,7 +140,12 @@ def build_tfvars(
     return {
         "project_id": project_id,
         "region": region,
-        "instance_name": instance_name,
+        # job_id를 접미사로 붙여 프로젝트 내에서 유일하게 만든다(2026-09-18 정정) — 원래
+        # job_id 없이 "mcp-{name}"만 썼는데, Cloud SQL 인스턴스 이름은 Compute Engine 인스턴스
+        # 이름과 달리 실제로 유일해야 하는 값이라 같은 이름으로 두 번째 job을 만들면
+        # 이름 충돌로 실패했다(Azure Database는 이미 job_id를 붙이고 있었음 — 3사가 서로 다르게
+        # 동작하던 비대칭을 AWS RDS와 함께 통일한다).
+        "instance_name": f"mcp-{name}-{job_id}",
         "database_version": engine_config["database_version"],
         "tier": engine_config["tier"],
         "admin_user": engine_config["admin_user"],
@@ -165,11 +171,11 @@ def run(
     `provider_spec`은 라우터가 메모리로 넘긴 **원본**(master_password 포함)이다 — DB에 저장된
     sanitize 버전이 아니다."""
     try:
-        instance_name, region, master_password, engine_config, network = _derive(common_spec, provider_spec)
+        name, region, master_password, engine_config, network = _derive(common_spec, provider_spec)
     except ApiError as exc:
         return TerraformResult(success=False, error_code=exc.code, error_message=exc.message)
 
-    tfvars = build_tfvars(job_id, project_id, instance_name, region, engine_config, network)
+    tfvars = build_tfvars(job_id, project_id, name, region, engine_config, network)
     # GCP는 secret_payload(서비스 계정 키 JSON)를 환경변수가 아니라 파일로 넘긴다(compute_engine과
     # 동일) — terraform_runner가 0600 임시 파일로 써서 GOOGLE_APPLICATION_CREDENTIALS로만 노출한다.
     # master_password는 tfvars 파일에 쓰지 않고 TF_VAR_root_password 환경변수로만 전달한다.
