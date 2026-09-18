@@ -22,6 +22,22 @@
   <!-- 오류 리포터: window.onerror/rejection을 서버 로그로 보낸다. 다른 스크립트보다 먼저 로드한다. -->
   <script src="assets/js/error-reporter.js"></script>
   <script src="assets/js/error-explain.js"></script>
+  <!-- #dash-cost-trend 안에서만 적용되는 최소 스타일 — assets/js/cost-chart.js(cost.html과 공용)가
+       그리는 SVG/legend/표 골격에만 필요한 규칙이다. cost.css 전체를 불러오면 그 안의 범용 선택자
+       (table, th, td 등)가 이 화면의 다른 표(최근 프로비저닝 활동·리전 분포)의 Tailwind 스타일과
+       충돌해 대시보드 전체 레이아웃이 흔들릴 수 있어, 필요한 규칙만 이 화면 전용으로 옮겨 왔다. -->
+  <style>
+    #dash-cost-trend .chart { display: block; width: 100%; height: auto; color: var(--muted-foreground); font-size: 11px; }
+    #dash-cost-trend .chart .dot { width: 10px; height: 10px; border-radius: 2px; }
+    #dash-cost-trend .legend { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; font-size: 11px; margin: 7px 0; }
+    #dash-cost-trend .legend .dot { display: inline-block; }
+    #dash-cost-trend .note { font-size: 11px; color: var(--muted-foreground); margin-top: 8px; }
+    #dash-cost-trend .tiny { font-size: 11px; }
+    #dash-cost-trend .muted { color: var(--muted-foreground); }
+    #dash-cost-trend table { border-collapse: collapse; width: 100%; font-size: 12px; }
+    #dash-cost-trend th, #dash-cost-trend td { padding: 6px 8px; border-bottom: 1px solid var(--border); text-align: left; }
+    #dash-cost-trend details summary { cursor: pointer; font-size: 11px; color: var(--muted-foreground); }
+  </style>
 </head>
 <body>
   <div class="app-shell">
@@ -139,24 +155,25 @@
           </div>
         </div>
 
-        <!-- 클라우드별 리소스 수(비용은 아직 미구현) -->
+        <!-- 클라우드별 리소스 수 + 비용(실측 우선, 없으면 정가 추정) -->
         <div class="mt-4 grid gap-4 lg:grid-cols-3" id="dash-cloud-cards">
           <!-- JS(dashboard.js)가 provider별로 카드를 렌더링한다 -->
         </div>
 
-        <!-- 차트 2: 월별 추이 + 서비스별 비중 (비용 수집 미구현 — 준비 중 placeholder) -->
+        <!-- 차트 2: 월별 추이(AWS 실측, /costs/trend) + 서비스별 비중(/costs/breakdown, 없으면 정가 추정) -->
         <div class="mt-4 grid gap-4 lg:grid-cols-2">
-          <div class="rounded-2xl border border-dashed border-border bg-surface p-5">
+          <div class="rounded-2xl border border-border bg-surface p-5">
             <p class="font-semibold">월별 비용 추이</p>
-            <div class="mt-5 grid h-40 place-items-center rounded-xl border border-dashed border-border text-sm text-muted-foreground">
-              비용 수집 기능이 아직 구현되지 않았습니다.
+            <p class="mt-0.5 text-xs text-muted-foreground">AWS 실측 기준 · Azure/GCP는 아직 지원하지 않습니다</p>
+            <div class="mt-4" id="dash-cost-trend">
+              <p class="text-sm text-muted-foreground">불러오는 중…</p>
             </div>
           </div>
 
           <div class="rounded-2xl border border-border bg-surface p-5">
             <div class="flex items-center justify-between">
               <p class="font-semibold">서비스별 비용 비중</p>
-              <span class="rounded border border-yellow px-1.5 text-[11px] text-yellow">추정치</span>
+              <span class="rounded border border-yellow px-1.5 text-[11px] text-yellow" id="dash-cost-by-category-badge">추정치</span>
             </div>
             <div class="mt-4 space-y-3" id="dash-cost-by-category">
               <p class="text-sm text-muted-foreground">불러오는 중…</p>
@@ -284,6 +301,8 @@
   <script src="assets/js/prov-tracker.js"></script>
   <script src="assets/js/modal.js"></script>
   <script src="assets/js/cost-format.js"></script>
+  <script src="assets/js/cost-state.js"></script>
+  <script src="assets/js/cost-chart.js"></script>
   <script src="assets/js/dashboard.js"></script>
   <script src="assets/js/agent.js"></script>
 </body>
