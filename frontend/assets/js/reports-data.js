@@ -156,6 +156,28 @@
 
   var REPORTS = HISTORY_META.map(buildReport);
 
+  // "보고서 생성"이 새 탭(report-view.html)에서 결과를 연다 — 탭마다 이 스크립트가 처음부터
+  // 다시 실행되는 별개 JS 컨텍스트라, REPORTS 배열(메모리)만으로는 방금 생성한 탭 밖에서
+  // 새 보고서를 찾을 수 없다("보고서를 찾을 수 없습니다" 오류의 원인). localStorage로 공유한다.
+  var CREATED_KEY = "mcp_created_reports";
+
+  function loadCreatedReports() {
+    try {
+      var raw = JSON.parse(localStorage.getItem(CREATED_KEY) || "[]");
+      return Array.isArray(raw) ? raw : [];
+    } catch (e) { return []; }
+  }
+
+  function saveCreatedReports(list) {
+    try { localStorage.setItem(CREATED_KEY, JSON.stringify(list.slice(0, 20))); } catch (e) {}
+  }
+
+  // 최신순으로 저장돼 있으므로 역순으로 unshift해 REPORTS 순서를 그대로 복원한다.
+  var createdOnLoad = loadCreatedReports();
+  for (var i = createdOnLoad.length - 1; i >= 0; i--) {
+    REPORTS.unshift(createdOnLoad[i]);
+  }
+
   function getById(id) {
     for (var i = 0; i < REPORTS.length; i++) if (REPORTS[i].id === id) return REPORTS[i];
     return null;
@@ -178,6 +200,9 @@
       createdAt: to.toISOString(),
     });
     REPORTS.unshift(report);
+    var createdList = loadCreatedReports();
+    createdList.unshift(report);
+    saveCreatedReports(createdList);
     return report;
   }
 
