@@ -48,12 +48,6 @@ async def agent_chat(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentChatResponse:
-    # 임시 차단(2026-09-18) — 보고서 모니터링 API 테스트 중 실수로 OpenAI 호출(과금)이 나가지
-    # 않도록 잠깐 막아둔다. 다시 열려면 이 블록만 지우면 된다.
-    raise ApiError(
-        503, "AGENT_TEMPORARILY_DISABLED", "AI 비용 어시스턴트는 지금 잠시 사용이 중단돼 있습니다."
-    )
-
     context = build_user_context(db, current_user.id)
     history = [{"role": m.role, "content": m.content} for m in payload.history]
 
