@@ -202,7 +202,36 @@ PLATFORM_AWS_SESSION_DURATION_SECONDS=3600
    한다 — 없으면 `aws ssm start-session`이 `ssm:StartSession AccessDenied`로 막힌다(2026-09-17
    실사용 중 발견). `iam:PassRole`과 달리 이미 갖고 있는 EC2 전체 제어 권한(인스턴스 시작·중지·
    삭제) 이상으로 위험 범위를 넓히지 않아 `Resource: "*"`로 둔다.
-10. 만들어진 **역할 ARN**을 마이페이지에 붙여넣고 저장한다. 계정 ID는 ARN에서 자동으로 읽는다.
+10. **(선택) 최소 권한으로 좁히고 싶다면** 같은 인라인 정책 화면에 statement를 하나 더
+    추가한다 — 프로비저닝(EC2/RDS/S3/CloudFront)이 실제로 리소스를 생성·삭제하는 데 쓰는 액션만
+    모아 둔 것으로, §3-4에서 붙인 관리형 정책 4개가 이미 포함하는 권한이라 **필수는 아니다**:
+    ```json
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ec2:RunInstances", "ec2:TerminateInstances", "ec2:DescribeInstances",
+        "ec2:DescribeImages", "ec2:CreateSubnet",
+        "rds:CreateDBInstance", "rds:CreateDBSubnetGroup", "rds:AddTagsToResource",
+        "rds:DeleteDBInstance", "rds:DescribeDBInstances", "rds:DescribeDBSubnetGroups",
+        "s3:CreateBucket", "s3:DeleteBucket",
+        "s3:PutBucketPublicAccessBlock", "s3:GetBucketPublicAccessBlock",
+        "s3:PutBucketVersioning", "s3:GetBucketVersioning", "s3:GetBucketLocation",
+        "cloudfront:CreateDistribution", "cloudfront:GetDistribution",
+        "cloudfront:UpdateDistribution", "cloudfront:DeleteDistribution",
+        "cloudfront:TagResource"
+      ],
+      "Resource": "*"
+    }
+    ```
+    관리형 정책은 서비스 전체에 대한 광범위한 권한(FullAccess)이라 이 기능이 정확히 어디까지
+    쓰는지 알 방법이 없다 — 최소 권한 원칙을 지키고 싶은 회사는 §3-4의 관리형 정책 4개 대신
+    이 statement로 시도해 볼 수 있다. 다만 이 목록은 이 저장소가 호출하는 terraform 리소스
+    블록(`terraform/aws/{ec2,rds,s3,cloudfront}`) 기준으로 뽑은 것이라, Terraform AWS provider가
+    내부적으로 거치는 모든 조회(§6에서 실제로 겪었던 `DescribeVpcAttribute`처럼 겉으로 드러나지
+    않는 호출)까지 전부 검증된 것은 아니다 — 관리형 정책을 당장 떼지 말고 먼저 이 statement와
+    함께 병행 테스트하길 권장한다. 마이페이지 → AWS → "역할 위임" 화면의 인라인 정책 ②에도
+    항상 최신 값이 다섯 번째 statement로 표시되며, 복사 버튼으로 그대로 가져올 수 있다.
+11. 만들어진 **역할 ARN**을 마이페이지에 붙여넣고 저장한다. 계정 ID는 ARN에서 자동으로 읽는다.
 
 ### ⚠️ ExternalId — 가장 흔한 실패 원인
 
@@ -245,8 +274,9 @@ ExternalId는 **그 페이지를 열었을 때 발급된 값**이고 서버에 �
 >    ```
 > 3. 권한: `AmazonEC2FullAccess`, `AmazonRDSFullAccess`, `AmazonS3FullAccess`,
 >    `CloudFrontFullAccess` + 마이페이지 → AWS → "역할 위임" 화면에 표시되는 인라인 정책
->    4개(비용/조회용 + `mcp-ssm-*` IAM 관리용 + 보안그룹 관리용 + SSM 세션 접속용, ⚠️ 두 번째가
->    없으면 EC2 생성이 실패합니다)를 그대로 복사해 붙여주세요
+>    5개(비용/조회용 + `mcp-ssm-*` IAM 관리용 + 보안그룹 관리용 + SSM 세션 접속용 + 프로비저닝용,
+>    ⚠️ 두 번째가 없으면 EC2 생성이 실패합니다. 다섯 번째는 참고용으로, 위 관리형 정책 4개가
+>    이미 포함하고 있어 없어도 됩니다)를 그대로 복사해 붙여주세요
 > 4. 역할 이름은 **`MultiCloudOpsAccess`** 로 만들어주세요
 > 5. 만들어진 **역할 ARN**만 알려주시면 됩니다
 >
