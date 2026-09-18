@@ -104,6 +104,8 @@ def supported_actions(provider: str, service_code: str, original_resource_type: 
         return {"delete"}
     if provider == "azure" and service_code == "vm":
         return {"start", "stop", "delete"}
+    if provider == "azure" and service_code in ("storage_account", "sql_database", "cdn"):
+        return {"delete"}
     if provider == "gcp" and service_code == "compute_engine":
         return {"start", "stop", "delete"}
     if provider == "gcp" and service_code == "cloud_sql":
@@ -140,7 +142,9 @@ def perform_action(
                 force_empty=force_empty,
             )
         elif provider == "azure":
-            azure_provider.perform_resource_action(service_code, action, secret_payload, external_resource_id)
+            azure_provider.perform_resource_action(
+                service_code, action, secret_payload, external_resource_id, external_account_id=external_account_id,
+            )
         elif provider == "gcp":
             gcp_provider.perform_resource_action(
                 service_code, action, secret_payload, external_account_id, region, external_resource_id,

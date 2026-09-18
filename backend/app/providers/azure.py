@@ -20,6 +20,28 @@ _ARM_ID_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Storage Account/SQL Database/CDN 삭제는 전용 SDK(azure-mgmt-storage/-rdbms/-sql/-cdn)를 새로
+# 추가하지 않고, discover_resources()와 같은 이유로 이미 있는 azure-mgmt-resource의
+# ResourceManagementClient.resources.begin_delete_by_id()(ARM 리소스를 타입 불문 범용으로
+# 지우는 API)를 쓴다. 이 API는 리소스 타입별 api-version을 요구해서 ARM 타입별로 하나씩 적어
+# 둔다(2026-09-18 추가 — 동기화가 이 세 타입을 발견하기 시작한 뒤 삭제 버튼을 누르면
+# UNSUPPORTED_OPERATION만 뜨는 걸 실사용 중 발견: 보이는데 지울 수 없는 상태였다). 시작/중지는
+# 아직 구현하지 않는다 — sql_database가 엔진 3종(MySQL/PostgreSQL flexible server, 고전
+# Azure SQL Database)을 한 service_code로 묶고 있어 SDK 없이 범용 시작/중지를 걸 방법이 없다.
+#
+# ⚠️ VM과 달리 이 세 타입의 external_resource_id는 ARM 전체 ID가 아니라 **짧은 이름**이다
+# (routers/provisioning.py의 `_resource_attrs`/discover_resources()가 프로비저닝·동기화 사이
+# 키를 맞추려고 일부러 짧은 이름을 쓴다 — 자세한 배경은 그 두 함수의 주석 참고). 그래서 VM처럼
+# ID에서 resource group을 파싱할 수 없다 — discover_resources()와 같은 방식으로 구독 전체
+# 리소스를 나열해 이름이 일치하는 항목을 찾고, 그 항목의 진짜 ARM ID로 삭제한다.
+_DELETE_ONLY_ARM_API_VERSIONS: dict[str, str] = {
+    "microsoft.storage/storageaccounts": "2023-01-01",
+    "microsoft.dbformysql/flexibleservers": "2023-06-30",
+    "microsoft.dbforpostgresql/flexibleservers": "2023-06-01-preview",
+    "microsoft.sql/servers": "2021-11-01",
+    "microsoft.cdn/profiles": "2023-05-01",
+}
+
 
 def verify(external_account_id: str, secret_payload: dict) -> VerificationResult:
     try:
@@ -45,33 +67,71 @@ def verify(external_account_id: str, secret_payload: dict) -> VerificationResult
     return VerificationResult(verified=True, permission_scope=scope)
 
 
-def perform_resource_action(service_code: str, action: str, secret_payload: dict, external_resource_id: str) -> None:
+def perform_resource_action(
+    service_code: str,
+    action: str,
+    secret_payload: dict,
+    external_resource_id: str,
+    *,
+    external_account_id: str | None = None,
+) -> None:
     from app.resource_actions import ResourceActionError
 
-    if service_code != "vm":
-        raise ResourceActionError("UNSUPPORTED_OPERATION")
+    if service_code == "vm":
+        match = _ARM_ID_RE.search(external_resource_id)
+        if not match:
+            raise ResourceActionError("PROVIDER_API_ERROR")
+        subscription_id, resource_group, vm_name = match.group("sub"), match.group("rg"), match.group("name")
 
-    match = _ARM_ID_RE.search(external_resource_id)
-    if not match:
-        raise ResourceActionError("PROVIDER_API_ERROR")
-    subscription_id, resource_group, vm_name = match.group("sub"), match.group("rg"), match.group("name")
+        try:
+            credential = ClientSecretCredential(
+                tenant_id=secret_payload["tenant_id"],
+                client_id=secret_payload["client_id"],
+                client_secret=secret_payload["client_secret"],
+            )
+            compute_client = ComputeManagementClient(credential, subscription_id)
+            if action == "start":
+                poller = compute_client.virtual_machines.begin_start(resource_group, vm_name)
+            elif action == "stop":
+                poller = compute_client.virtual_machines.begin_power_off(resource_group, vm_name)
+            else:
+                poller = compute_client.virtual_machines.begin_delete(resource_group, vm_name)
+            poller.result()
+        except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+            raise ResourceActionError("PROVIDER_API_ERROR") from exc
+        return
 
-    try:
-        credential = ClientSecretCredential(
-            tenant_id=secret_payload["tenant_id"],
-            client_id=secret_payload["client_id"],
-            client_secret=secret_payload["client_secret"],
-        )
-        compute_client = ComputeManagementClient(credential, subscription_id)
-        if action == "start":
-            poller = compute_client.virtual_machines.begin_start(resource_group, vm_name)
-        elif action == "stop":
-            poller = compute_client.virtual_machines.begin_power_off(resource_group, vm_name)
-        else:
-            poller = compute_client.virtual_machines.begin_delete(resource_group, vm_name)
-        poller.result()
-    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
-        raise ResourceActionError("PROVIDER_API_ERROR") from exc
+    if service_code in ("storage_account", "sql_database", "cdn") and action == "delete":
+        if not external_account_id:
+            raise ResourceActionError("PROVIDER_API_ERROR")
+        try:
+            credential = ClientSecretCredential(
+                tenant_id=secret_payload["tenant_id"],
+                client_id=secret_payload["client_id"],
+                client_secret=secret_payload["client_secret"],
+            )
+            resource_client = ResourceManagementClient(credential, external_account_id)
+            # external_resource_id는 짧은 이름이라(위 주석 참고) discover_resources()와 같은
+            # 방식으로 구독 전체를 나열해 이름·타입이 일치하는 항목을 찾는다 — 그 항목의 진짜
+            # ARM ID로만 begin_delete_by_id를 호출할 수 있다.
+            target = next(
+                (
+                    res
+                    for res in resource_client.resources.list()
+                    if res.name == external_resource_id
+                    and (res.type or "").lower() in _DELETE_ONLY_ARM_API_VERSIONS
+                ),
+                None,
+            )
+            if target is None:
+                raise ResourceActionError("PROVIDER_API_ERROR")
+            api_version = _DELETE_ONLY_ARM_API_VERSIONS[target.type.lower()]
+            resource_client.resources.begin_delete_by_id(target.id, api_version).result()
+        except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError) as exc:
+            raise ResourceActionError("PROVIDER_API_ERROR") from exc
+        return
+
+    raise ResourceActionError("UNSUPPORTED_OPERATION")
 
 
 def get_cpu_utilization(secret_payload: dict, resource_ids: list[str]) -> dict[str, float | None]:
