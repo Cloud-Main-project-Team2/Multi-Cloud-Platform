@@ -5,10 +5,14 @@
  * Azure/GCP 리소스가 나중에 실제로 쌓이기 시작해도 이 파일을 고칠 필요가 없다(PLATFORMS 배열에
  * 이미 셋 다 들어있고, 데이터가 없는 provider는 0으로 표시될 뿐이다).
  *
- * 비용은 `app/pricing.py`의 정가(list price) 기반 추정치(`resources.estimated_monthly_cost`,
- * `/resources` 응답의 `cost_summary`)를 쓴다 — 실제 CSP 비용 API(Cost Explorer 등) 연동은 아직
- * 없다. 그래서 "예상 총 비용"/"클라우드별"/"서비스별 비중"은 실제 값이지만 전부 "추정치" 배지를
- * 붙인다. 월별 추이·예산 임계값은 시계열 스냅샷/예산 설정 자체가 DB에 없어 여전히 "준비 중"이다.
+ * 비용(2026-09-18, `/costs/*` 연동): `/costs/summary`·`/costs/breakdown`·`/costs/trend`
+ * (`app/cost/query.py`)를 우선 쓴다 — 지금은 AWS 계정만 실측 데이터가 있고(`app/cost/__init__.py`의
+ * COST_ADAPTERS), Azure/GCP는 아직 없다. "월말 예상 비용" 카드는 `kpis.forecast_month_end`
+ * (이번 달 진행 중일 때만, 어제까지 실측을 남은 일수 비율로 늘린 값)를 쓰고, 전망을 낼 실측이
+ * 없으면 `app/pricing.py` 정가(list price) 추정치로 자동 대체된다(서버가 이미 `/costs/summary`의
+ * kpis.list_price_monthly·accounts[].list_price_estimate에 같이 담아 준다 — 클라이언트에서
+ * 따로 계산하지 않는다). "월말 전망"과 "추정치"는 항상 배지로 구분해 보여준다.
+ * 월별 추이는 `/costs/trend`(AWS 실측만) — 팀·예산(임계값 경고)은 여전히 백엔드가 없어 "준비 중"이다.
  */
 (function () {
   "use strict";
@@ -83,7 +87,9 @@
     return pad(d.getMonth() + 1) + "-" + pad(d.getDate()) + " " + pad(d.getHours()) + ":" + pad(d.getMinutes());
   }
 
-  // ── 비용 집계(/resources 각 항목의 cost_summary.estimated_monthly_cost) ────
+  // ── 정가 추정 집계(/resources 각 항목의 cost_summary.estimated_monthly_cost) ──────────
+  // "서비스별 비용 비중"의 실측 데이터(/costs/breakdown)가 없을 때만 쓰는 대체 경로다 —
+  // 총 비용·클라우드별 카드는 이제 서버가 낸 /costs/summary 값을 그대로 쓴다(중복 계산 제거).
   // app/pricing.py가 정가 기준으로 채워준 값을 그대로 합산한다 — 사용량 기반 서비스(S3/CDN 등)나
   // 허용 목록 밖 스펙은 cost_summary 자체가 없어 자동으로 missing 카운트에 들어간다.
   // 합계는 MCPCostFormat.sumWithGuard로 낸다(비용 파트 PR 6) — Number() 합산은 통화가 섞이면
@@ -112,11 +118,44 @@
     };
   }
 
-  // ── 전체 리소스 수 + 예상 총 비용 + 클라우드별 카드(/resources/summary + costInfo) ─
-  function renderResourceSummary(summary, costInfo, failures) {
+  // ── /costs/summary.accounts를 provider별로 합친다 ──────────────────────────
+  // 계정마다 실측(actual, MTD 누적)이 있으면 실측을 쓰고, 없으면 정가 추정(list_price_estimate)
+  // 으로 대체한다 — 둘을 같은 provider 안에서 더하지 않는다(하나가 실측이면 그 provider는
+  // "실측"으로 표시하고, 정가만 있는 계정 몫은 반영되지 않는다). 지금은 AWS만 실측이 나온다
+  // (app/cost/__init__.py의 COST_ADAPTERS).
+  function costByProviderFromSummary(costSummary) {
+    var F = window.MCPCostFormat;
+    var buckets = {}; // provider -> { actual: [items for sumWithGuard], estimate: [items] }
+    (costSummary && costSummary.accounts || []).forEach(function (a) {
+      if (!buckets[a.provider]) buckets[a.provider] = { actual: [], estimate: [] };
+      // a.currency는 "실측 비용의 통화"다(app/cost/query.py의 summary() — actual_currency or
+      // cap["currency"]) — list_price_estimate는 별도로 resources.cost_currency 기준이라(항상
+      // "USD" 기본, app/cost/query.py의 list_price_monthly()) 실측이 없는 계정은 currency가
+      // null이어도 정가는 있을 수 있다. 정가 쪽은 여기서 같은 기본값(USD)을 맞춰 준다.
+      var cost_kind = "x", period_start = "current", period_end = "current";
+      if (a.actual != null) {
+        buckets[a.provider].actual.push({ amount: a.actual, currency: a.currency, cost_kind: cost_kind, period_start: period_start, period_end: period_end });
+      }
+      if (a.list_price_estimate != null) {
+        buckets[a.provider].estimate.push({ amount: a.list_price_estimate, currency: a.currency || "USD", cost_kind: cost_kind, period_start: period_start, period_end: period_end });
+      }
+    });
+    var out = {};
+    Object.keys(buckets).forEach(function (p) {
+      var b = buckets[p];
+      var actualSum = F.sumWithGuard(b.actual);
+      if (actualSum.groups.length) { out[p] = { amount: actualSum.groups[0].total, currency: actualSum.groups[0].currency, kind: "actual" }; return; }
+      var estSum = F.sumWithGuard(b.estimate);
+      if (estSum.groups.length) out[p] = { amount: estSum.groups[0].total, currency: estSum.groups[0].currency, kind: "estimate" };
+    });
+    return out;
+  }
+
+  // ── 전체 리소스 수 + 예상 총 비용 + 클라우드별 카드(/resources/summary + /costs/summary) ─
+  function renderResourceSummary(summary, costSummaryRes, costEstimateFallback, failures) {
     failures = failures || {};
     var byProvider = (summary && summary.by_provider) || [];
-    costInfo = costInfo || { totalCost: 0, hasAny: false, missing: 0, byProvider: {}, byCategory: {} };
+    var F = window.MCPCostFormat;
 
     var totalEl = document.getElementById("dash-total-resources");
     if (totalEl) totalEl.textContent = failures.summaryFailed ? "—" : (summary && summary.total_resources) || 0;
@@ -133,34 +172,57 @@
     var countByProvider = {};
     byProvider.forEach(function (p) { countByProvider[p.provider] = p.count; });
 
-    var F = window.MCPCostFormat;
     var costEl = document.getElementById("dash-total-cost");
     var costNoteEl = document.getElementById("dash-total-cost-note");
-    if (costEl) {
-      costEl.textContent = costInfo.hasAny
-        ? (F ? F.money(costInfo.totalCost.toFixed(6), costInfo.currency) : "$" + costInfo.totalCost.toFixed(2)) + "/mo"
-        : "—";
-    }
-    if (costNoteEl) {
-      if (failures.itemsFailed) {
-        costNoteEl.textContent = "조회 실패 — 리소스 목록을 불러오지 못해 비용을 계산할 수 없습니다.";
-      } else if (!costInfo.hasAny) {
-        costNoteEl.textContent = "정가 기준으로 추정 가능한 리소스가 없습니다(사용량 기반 서비스만 있거나 리소스 없음).";
-      } else if (costInfo.mixedCurrencies) {
-        costNoteEl.textContent = "정가(list price) 기준 추정 · 통화가 섞여 있어 " + costInfo.currency + " 기준 합계만 표시합니다.";
-      } else if (costInfo.missing > 0) {
-        costNoteEl.textContent = "정가(list price) 기준 추정 · 사용량 기반 리소스 " + costInfo.missing + "개는 제외됨.";
-      } else {
-        costNoteEl.textContent = "정가(list price) 기준 추정 — 실제 청구액과 다를 수 있습니다.";
+    var badgeEl = document.getElementById("dash-total-cost-badge");
+    var costSummary = costSummaryRes && costSummaryRes.ok ? costSummaryRes.value : null;
+    // "월말 예상 비용" — app/cost/query.py의 forecast_month_end(): 이번 달 진행 중일 때만
+    // (1일 제외) 어제까지의 실측(AWS만)을 남은 일수 비율로 늘린 전망치를 낸다. 아직 실측이
+    // 없거나 계산 조건이 안 맞으면 빈 배열이라 정가(list price) 추정으로 내려간다.
+    var forecastRows = (costSummary && costSummary.kpis && costSummary.kpis.forecast_month_end) || [];
+    var estRows = (costSummary && costSummary.kpis && costSummary.kpis.list_price_monthly) || [];
+
+    function setBadge(text, cls) { if (badgeEl) { badgeEl.textContent = text; badgeEl.className = "rounded border px-1.5 text-[11px] " + cls; } }
+
+    if (!costSummaryRes || !costSummaryRes.ok) {
+      if (costEl) costEl.textContent = "—";
+      if (costNoteEl) costNoteEl.textContent = "조회 실패 — 비용 정보를 불러오지 못했습니다.";
+      setBadge("오류", "border-border text-muted-foreground");
+    } else if (forecastRows.length) {
+      var frow = forecastRows[0]; // 통화 하나만 고른다(ADR-023) — 여러 통화면 첫 값만 보여준다
+      if (costEl) costEl.textContent = F.money(frow.amount, frow.currency);
+      setBadge("월말 전망", "border-primary text-primary");
+      if (costNoteEl) {
+        costNoteEl.textContent = "이번 달 말 전망(AWS 실측 기준) — 어제(" + frow.based_through + ")까지의 실측을 남은 일수 비율로 늘린 값 · 저장하지 않음." +
+          (forecastRows.length > 1 ? " 통화가 섞여 있어 " + frow.currency + " 기준만 표시합니다." : "");
       }
+    } else if (estRows.length) {
+      var erow = estRows[0];
+      if (costEl) costEl.textContent = F.money(erow.amount, erow.currency) + "/mo";
+      setBadge("추정치", "border-yellow text-yellow");
+      if (costNoteEl) {
+        costNoteEl.textContent = "월말 전망을 낼 실측 데이터가 아직 없어 정가(list price) 기준 추정으로 대신 표시합니다." +
+          (erow.missing_count > 0 ? " 사용량 기반 리소스 " + erow.missing_count + "개는 제외됨." : "");
+      }
+    } else {
+      if (costEl) costEl.textContent = "—";
+      setBadge("—", "border-border text-muted-foreground");
+      if (costNoteEl) costNoteEl.textContent = "집계할 수 있는 비용 데이터가 없습니다.";
     }
+
+    var costByProvider = costSummary ? costByProviderFromSummary(costSummary) : {};
 
     var container = document.getElementById("dash-cloud-cards");
     if (container) {
       container.innerHTML = PLATFORMS.map(function (p) {
         var count = countByProvider[p] || 0;
-        var cost = costInfo.byProvider[p];
-        var costText = cost != null ? "$" + cost.toFixed(2) + "/mo · Estimated · 정가 730h" : "추정 불가";
+        var c = costByProvider[p];
+        var estFallback = costEstimateFallback.byProvider[p];
+        var costText;
+        if (c && c.kind === "actual") costText = F.money(c.amount, c.currency) + " · 실측(MTD)";
+        else if (c) costText = F.money(c.amount, c.currency) + "/mo · Estimated · 정가 730h";
+        else if (estFallback != null) costText = "$" + estFallback.toFixed(2) + "/mo · Estimated · 정가 730h";
+        else costText = "추정 불가";
         return (
           '<div class="rounded-2xl border border-border bg-surface p-5">' +
           '<div class="flex items-center justify-between">' +
@@ -170,31 +232,18 @@
           '<span class="rounded border border-border px-1.5 text-[11px] text-muted-foreground">' + costText + "</span>" +
           "</div>" +
           '<p class="mt-2 text-2xl font-extrabold">' + count + "개 리소스</p>" +
-          '<p class="mt-1 text-xs text-muted-foreground">리소스 수·비용 모두 실시간 조회(비용은 정가 기준 추정치)</p>' +
+          '<p class="mt-1 text-xs text-muted-foreground">리소스 수는 실시간 조회 · 비용은 실측 우선, 없으면 정가 추정</p>' +
           "</div>"
         );
       }).join("");
     }
   }
 
-  // ── 서비스별 비용 비중(카테고리별 합산 막대) ────────────────────────────────
-  function renderCostBreakdown(costInfo, itemsFailed) {
-    var el = document.getElementById("dash-cost-by-category");
-    if (!el) return;
-    if (itemsFailed) {
-      el.innerHTML = '<p class="text-sm text-muted-foreground">조회 실패 — 리소스 목록을 불러오지 못했습니다.</p>';
-      return;
-    }
-    if (!costInfo.hasAny) {
-      el.innerHTML = '<p class="text-sm text-muted-foreground">추정 가능한 리소스가 없습니다.</p>';
-      return;
-    }
-    var entries = Object.keys(costInfo.byCategory)
-      .map(function (cat) { return { cat: cat, amount: costInfo.byCategory[cat] }; })
-      .sort(function (a, b) { return b.amount - a.amount; });
-
-    el.innerHTML = entries.map(function (e) {
-      var pct = costInfo.totalCost > 0 ? (e.amount / costInfo.totalCost) * 100 : 0;
+  // ── 서비스별 비용 비중(카테고리별 합산 막대) — 실측(/costs/breakdown) 우선, 없으면 정가 추정 ──
+  function costBreakdownBarsHtml(entries) {
+    var total = entries.reduce(function (sum, e) { return sum + e.amount; }, 0);
+    return entries.map(function (e) {
+      var pct = total > 0 ? (e.amount / total) * 100 : 0;
       return (
         "<div>" +
         '<div class="flex items-center justify-between text-sm"><span>' + (CATEGORY_LABEL[e.cat] || escHtml(e.cat)) +
@@ -205,6 +254,73 @@
         "</div>"
       );
     }).join("");
+  }
+
+  function setCostByCategoryBadge(text, cls) {
+    var el = document.getElementById("dash-cost-by-category-badge");
+    if (el) { el.textContent = text; el.className = "rounded border px-1.5 text-[11px] " + cls; }
+  }
+
+  function renderCostBreakdown(breakdownRes, costInfoEstimate, itemsFailed) {
+    var el = document.getElementById("dash-cost-by-category");
+    if (!el) return;
+
+    // dimension=category 실측이 있으면 그걸 쓴다(AWS만 실측 지원 — app/cost/query.py의
+    // _category_for). 총액이 0이면 아직 수집된 실측이 없다는 뜻이라 정가 추정으로 내려간다.
+    if (breakdownRes && breakdownRes.ok) {
+      var d = breakdownRes.value;
+      var items = (d.items || []).filter(function (it) { return CATEGORY_LABEL[it.key]; });
+      if (Number(d.total) > 0 && items.length) {
+        setCostByCategoryBadge("실측", "border-primary text-primary");
+        var entries = items.map(function (it) { return { cat: it.key, amount: Number(it.amount) }; })
+          .sort(function (a, b) { return b.amount - a.amount; });
+        el.innerHTML = costBreakdownBarsHtml(entries);
+        return;
+      }
+    }
+
+    setCostByCategoryBadge("추정치", "border-yellow text-yellow");
+    if (itemsFailed) {
+      el.innerHTML = '<p class="text-sm text-muted-foreground">조회 실패 — 리소스 목록을 불러오지 못했습니다.</p>';
+      return;
+    }
+    if (!costInfoEstimate.hasAny) {
+      el.innerHTML = '<p class="text-sm text-muted-foreground">추정 가능한 리소스가 없습니다.</p>';
+      return;
+    }
+    var estEntries = Object.keys(costInfoEstimate.byCategory)
+      .map(function (cat) { return { cat: cat, amount: costInfoEstimate.byCategory[cat] }; })
+      .sort(function (a, b) { return b.amount - a.amount; });
+    el.innerHTML = costBreakdownBarsHtml(estEntries);
+  }
+
+  // ── 월별 비용 추이(/costs/trend, granularity=monthly, group_by=provider) — AWS 실측만 ──
+  function renderCostTrendChart(trendRes) {
+    var el = document.getElementById("dash-cost-trend");
+    if (!el) return;
+    if (!trendRes || !trendRes.ok) {
+      el.innerHTML = '<p class="text-sm text-muted-foreground">비용 추이를 불러오지 못했습니다.</p>';
+      return;
+    }
+    var d = trendRes.value;
+    if (!d.series || !d.series.length) {
+      el.innerHTML = '<p class="text-sm text-muted-foreground">아직 수집된 실측 비용 데이터가 없습니다 — 비용 관리 화면에서 "비용 새로고침"을 먼저 실행하세요.</p>';
+      return;
+    }
+    var labelSet = {}, labels = [];
+    d.series.forEach(function (s) {
+      s.points.forEach(function (p) { if (!labelSet[p.period_start]) { labelSet[p.period_start] = true; labels.push(p.period_start); } });
+    });
+    labels.sort();
+    var series = d.series.map(function (s) {
+      var points = {};
+      s.points.forEach(function (p) { points[p.period_start] = p.amount; });
+      return { key: s.key, label: PLATFORM_LABEL[s.key] || s.key, points: points };
+    });
+    el.innerHTML = window.MCPCostChart.lineChart({
+      labels: labels, series: series, currency: d.currency, missingLabels: d.missing_days,
+      state: "CONNECTED_OK", title: "월별 비용 추이(AWS 실측)"
+    });
   }
 
   // ── 주요 리소스 요약 + 리전 분포(/resources 목록, 기본 필터=활성 리소스만) ───
@@ -678,13 +794,23 @@
     renderConsoleLauncher();
   }
 
+  // 월별 추이 조회 구간: 이번 달을 포함해 최근 6개월(1일 시작 ~ 내일, API는 끝 제외 경계).
+  function trendQueryRange() {
+    var today = new Date();
+    var start = new Date(today.getFullYear(), today.getMonth() - 5, 1);
+    var end = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+    function iso(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+    return "period_start=" + iso(start) + "&period_end=" + iso(end);
+  }
+
   function init() {
     if (!window.MCPApi) return;
 
     // /resources/summary(전체 개수·provider별 개수)와 /resources(항목별 cost_summary 포함)를
-    // 같이 기다린다 — 비용 집계는 /resources 쪽 데이터로 하고, 그 결과를 요약 카드/클라우드별
-    // 카드에도 같이 써야 해서 두 응답이 다 와야 렌더링이 정확하다(따로 부르면 순서에 따라
-    // 클라우드별 카드가 비용 없이 먼저 그려질 수 있음).
+    // 같이 기다린다 — 카테고리·리전 집계는 /resources 쪽 데이터로 하고, 그 결과를 요약 카드/
+    // 클라우드별 카드에도 같이 써야 해서 두 응답이 다 와야 렌더링이 정확하다(따로 부르면 순서에
+    // 따라 클라우드별 카드가 비용 없이 먼저 그려질 수 있음). 비용은 /costs/summary·
+    // /costs/breakdown·/costs/trend(실측 우선, app/cost/query.py)로 따로 받는다.
     // .catch(()=>null) 대신 {ok, value|error}로 감싼다 — null로 뭉개면 "조회 실패"와
     // "데이터 없음"이 같은 모양이 되어 실패한 조회가 0/빈 상태로 보인다(비용 파트 PR 6,
     // docs/비용_개발문서 QA-01과 같은 원칙).
@@ -698,15 +824,20 @@
       settle(MCPApi.request("/resources/summary")),
       settle(MCPApi.request("/resources")),
       settle(MCPApi.request("/cloud-accounts")),
+      settle(MCPApi.request("/costs/summary")),
+      settle(MCPApi.request("/costs/breakdown?dimension=category&top_n=6")),
+      settle(MCPApi.request("/costs/trend?" + trendQueryRange() + "&granularity=monthly&group_by=provider")),
     ]).then(function (results) {
       var summaryRes = results[0], itemsRes = results[1], accountsRes = results[2];
+      var costSummaryRes = results[3], costBreakdownRes = results[4], costTrendRes = results[5];
       var summary = summaryRes.ok ? summaryRes.value : null;
       var items = itemsRes.ok ? (itemsRes.value && itemsRes.value.items) || [] : [];
       var accounts = accountsRes.ok ? (accountsRes.value && accountsRes.value.items) || [] : [];
-      var costInfo = computeCostAggregates(items);
-      renderResourceSummary(summary, costInfo, { summaryFailed: !summaryRes.ok, itemsFailed: !itemsRes.ok });
+      var costEstimateFallback = computeCostAggregates(items);
+      renderResourceSummary(summary, costSummaryRes, costEstimateFallback, { summaryFailed: !summaryRes.ok, itemsFailed: !itemsRes.ok });
       renderCategoriesAndRegions(items);
-      renderCostBreakdown(costInfo, !itemsRes.ok);
+      renderCostBreakdown(costBreakdownRes, costEstimateFallback, !itemsRes.ok);
+      renderCostTrendChart(costTrendRes);
       initConsoleLauncher(accounts, items);
     });
 
