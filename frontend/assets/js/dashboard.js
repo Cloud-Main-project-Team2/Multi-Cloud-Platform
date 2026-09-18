@@ -5,12 +5,13 @@
  * Azure/GCP 리소스가 나중에 실제로 쌓이기 시작해도 이 파일을 고칠 필요가 없다(PLATFORMS 배열에
  * 이미 셋 다 들어있고, 데이터가 없는 provider는 0으로 표시될 뿐이다).
  *
- * 비용(2026-09-18, `/costs/*` 연동): 실측 비용 수집이 붙은 뒤부터는 `/costs/summary`·
- * `/costs/breakdown`·`/costs/trend`(`app/cost/query.py`)를 우선 쓴다 — 지금은 AWS 계정만
- * 실측 데이터가 있고(`app/cost/__init__.py`의 COST_ADAPTERS), Azure/GCP는 아직 없다. 실측이
- * 없는 계정/구간은 `app/pricing.py` 정가(list price) 추정치로 자동 대체된다(서버가 이미
- * `/costs/summary`의 kpis.list_price_monthly·accounts[].list_price_estimate에 같이 담아
- * 준다 — 클라이언트에서 따로 계산하지 않는다). "실측"과 "추정치"는 항상 배지로 구분해 보여준다.
+ * 비용(2026-09-18, `/costs/*` 연동): `/costs/summary`·`/costs/breakdown`·`/costs/trend`
+ * (`app/cost/query.py`)를 우선 쓴다 — 지금은 AWS 계정만 실측 데이터가 있고(`app/cost/__init__.py`의
+ * COST_ADAPTERS), Azure/GCP는 아직 없다. "월말 예상 비용" 카드는 `kpis.forecast_month_end`
+ * (이번 달 진행 중일 때만, 어제까지 실측을 남은 일수 비율로 늘린 값)를 쓰고, 전망을 낼 실측이
+ * 없으면 `app/pricing.py` 정가(list price) 추정치로 자동 대체된다(서버가 이미 `/costs/summary`의
+ * kpis.list_price_monthly·accounts[].list_price_estimate에 같이 담아 준다 — 클라이언트에서
+ * 따로 계산하지 않는다). "월말 전망"과 "추정치"는 항상 배지로 구분해 보여준다.
  * 월별 추이는 `/costs/trend`(AWS 실측만) — 팀·예산(임계값 경고)은 여전히 백엔드가 없어 "준비 중"이다.
  */
 (function () {
@@ -175,7 +176,10 @@
     var costNoteEl = document.getElementById("dash-total-cost-note");
     var badgeEl = document.getElementById("dash-total-cost-badge");
     var costSummary = costSummaryRes && costSummaryRes.ok ? costSummaryRes.value : null;
-    var actualRows = (costSummary && costSummary.kpis && costSummary.kpis.mtd_actual) || [];
+    // "월말 예상 비용" — app/cost/query.py의 forecast_month_end(): 이번 달 진행 중일 때만
+    // (1일 제외) 어제까지의 실측(AWS만)을 남은 일수 비율로 늘린 전망치를 낸다. 아직 실측이
+    // 없거나 계산 조건이 안 맞으면 빈 배열이라 정가(list price) 추정으로 내려간다.
+    var forecastRows = (costSummary && costSummary.kpis && costSummary.kpis.forecast_month_end) || [];
     var estRows = (costSummary && costSummary.kpis && costSummary.kpis.list_price_monthly) || [];
 
     function setBadge(text, cls) { if (badgeEl) { badgeEl.textContent = text; badgeEl.className = "rounded border px-1.5 text-[11px] " + cls; } }
@@ -184,20 +188,20 @@
       if (costEl) costEl.textContent = "—";
       if (costNoteEl) costNoteEl.textContent = "조회 실패 — 비용 정보를 불러오지 못했습니다.";
       setBadge("오류", "border-border text-muted-foreground");
-    } else if (actualRows.length) {
-      var row = actualRows[0]; // 통화 하나만 고른다(ADR-023) — 여러 통화면 첫 값만 보여준다
-      if (costEl) costEl.textContent = F.money(row.amount, row.currency);
-      setBadge("실측", "border-primary text-primary");
+    } else if (forecastRows.length) {
+      var frow = forecastRows[0]; // 통화 하나만 고른다(ADR-023) — 여러 통화면 첫 값만 보여준다
+      if (costEl) costEl.textContent = F.money(frow.amount, frow.currency);
+      setBadge("월말 전망", "border-primary text-primary");
       if (costNoteEl) {
-        costNoteEl.textContent = "이번 달 누적 실제 사용 비용(MTD, AWS) — Azure/GCP는 아직 실측을 지원하지 않아 제외됩니다." +
-          (actualRows.length > 1 ? " 통화가 섞여 있어 " + row.currency + " 기준만 표시합니다." : "");
+        costNoteEl.textContent = "이번 달 말 전망(AWS 실측 기준) — 어제(" + frow.based_through + ")까지의 실측을 남은 일수 비율로 늘린 값 · 저장하지 않음." +
+          (forecastRows.length > 1 ? " 통화가 섞여 있어 " + frow.currency + " 기준만 표시합니다." : "");
       }
     } else if (estRows.length) {
       var erow = estRows[0];
       if (costEl) costEl.textContent = F.money(erow.amount, erow.currency) + "/mo";
       setBadge("추정치", "border-yellow text-yellow");
       if (costNoteEl) {
-        costNoteEl.textContent = "정가(list price) 기준 추정 — 실측 비용 수집 전이거나 지원하지 않는 리소스만 있습니다." +
+        costNoteEl.textContent = "월말 전망을 낼 실측 데이터가 아직 없어 정가(list price) 기준 추정으로 대신 표시합니다." +
           (erow.missing_count > 0 ? " 사용량 기반 리소스 " + erow.missing_count + "개는 제외됨." : "");
       }
     } else {
