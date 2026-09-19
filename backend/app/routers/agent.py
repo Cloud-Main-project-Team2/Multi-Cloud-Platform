@@ -8,6 +8,8 @@
 
 from __future__ import annotations
 
+import datetime as dt
+
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
@@ -28,10 +30,22 @@ class AgentMessage(BaseModel):
     content: str = Field(min_length=1, max_length=4000)
 
 
+class AgentConditions(BaseModel):
+    """비용 화면이 선택한 조건(PR 8, 선택 필드). 금액은 받지 않는다 — 서버가 소유권을 확인하고 계산한다.
+    없으면 당월·전체 계정·전체 팀. period_end는 /costs/*와 같은 제외 경계다."""
+
+    period_start: dt.date | None = None
+    period_end: dt.date | None = None
+    provider: list[str] = Field(default_factory=list, max_length=3)
+    cloud_account_id: list[str] = Field(default_factory=list, max_length=50)
+    team_id: list[str] = Field(default_factory=list, max_length=50)
+
+
 class AgentChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     # 클라이언트가 이전 대화를 그대로 돌려보낸다 — 서버는 대화 기록을 저장하지 않는다(무상태).
     history: list[AgentMessage] = Field(default_factory=list, max_length=_MAX_HISTORY)
+    conditions: AgentConditions | None = None  # 기존 호출과 호환 — 없으면 이전과 같은 동작
 
 
 class AgentChatData(BaseModel):
@@ -48,7 +62,18 @@ async def agent_chat(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> AgentChatResponse:
-    context = build_user_context(db, current_user.id)
+    cost_conditions = None
+    if payload.conditions is not None:
+        c = payload.conditions
+        try:
+            account_ids = [int(v) for v in c.cloud_account_id]
+        except ValueError as exc:
+            raise ApiError(422, "VALIDATION_ERROR", "cloud_account_id는 숫자 ID여야 합니다.", details=[{"field": "conditions.cloud_account_id", "reason": "invalid"}]) from exc
+        cost_conditions = {
+            "period_start": c.period_start, "period_end": c.period_end, "providers": c.provider,
+            "cloud_account_ids": account_ids, "team_ids": c.team_id,
+        }
+    context = build_user_context(db, current_user.id, cost_conditions)
     history = [{"role": m.role, "content": m.content} for m in payload.history]
 
     try:

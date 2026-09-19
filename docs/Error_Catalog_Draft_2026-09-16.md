@@ -66,16 +66,17 @@
 
 ### 비용 (cost) — 2026-09-19 채택
 
-`docs/비용_개발문서/05_API계약.md` §2-5 "추가 제안 9개" 중 `*_NOT_FOUND` 관례를 따르는 3개만 채택했다.
+`docs/비용_개발문서/05_API계약.md` §2-5 "추가 제안 9개" 중 `*_NOT_FOUND` 관례를 따르는 4개를 채택했다(3개는 PR 7, `COST_REVIEW_ITEM_NOT_FOUND`는 PR 8 · 2026-09-19).
 `ACCOUNT_ALREADY_IN_TEAM`·`BUDGET_PERIOD_OVERLAP`은 `409 CONFLICT` + `details.reason`으로,
 `BUDGET_PERIOD_TOO_LONG`은 `422 VALIDATION_ERROR`로 흡수한다. `BUDGET_EXCEEDED`는 ADR-042로 보류,
-`COST_SETUP_REQUIRED`·`COST_REVIEW_ITEM_NOT_FOUND`는 아직 쓰는 곳이 없다.
+`COST_SETUP_REQUIRED`는 아직 쓰는 곳이 없다.
 
 | 코드 | HTTP | 서버 메시지 | 증상 | 원인 | 해결책 |
 |---|---|---|---|---|---|
 | `TEAM_NOT_FOUND` | 404 | 팀을 찾을 수 없습니다. | 팀 조회/수정/예산이 안 됨 | 잘못된 팀 ID이거나 삭제됨 | 팀 목록 새로고침 후 다시 선택 |
 | `TEAM_BUDGET_NOT_FOUND` | 404 | 예산을 찾을 수 없습니다. | 예산 수정/삭제가 안 됨 | 잘못된 예산 ID이거나 삭제됨 | 예산 목록 새로고침 후 다시 선택 |
 | `COST_INGESTION_RUN_NOT_FOUND` | 404 | 비용 수집 실행을 찾을 수 없습니다. | 수집 실행 상세 조회가 안 됨 | 잘못된 실행 ID이거나 타 사용자 | 수집을 다시 실행한 뒤 그 ID로 조회 |
+| `COST_REVIEW_ITEM_NOT_FOUND` | 404 | 검토 항목을 찾을 수 없습니다. | 검토 상태 변경이 안 됨 | 잘못된 항목 ID이거나 타 사용자 | 비용 작업 큐 새로고침 후 다시 선택 |
 
 ### 공통 (cross-cutting)
 
