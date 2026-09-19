@@ -14,6 +14,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
 from app.cost.ingest import AccountLockedError, replace_cost_rows
+from app.cost.notify import evaluate_for_account
 from app.cost import COST_ADAPTERS, is_cost_supported
 from app.config import get_settings
 from app.db import SessionLocal
@@ -102,6 +103,8 @@ def _run_single_account(db: Session, account: CloudAccount, period_start: dt.dat
     run.status = "success"
     run.finished_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
+    # 수집이 커밋된 뒤 그 계정의 팀 예산 임계(80/100%)를 평가한다(PR 7). 실패는 로그만.
+    evaluate_for_account(db, account)
 
 
 def run_daily_ingestion() -> None:
