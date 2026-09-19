@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from app.cost import COST_ADAPTERS, is_cost_supported
 from app.cost.capability import account_capability
 from app.cost.ingest import AccountLockedError, replace_cost_rows
+from app.cost.notify import evaluate_for_account
 from app.cost.query import (
     CostQuery,
     breakdown,
@@ -23,6 +24,7 @@ from app.cost.query import (
     collection_status,
     owned_accounts,
     parse_period,
+    resolve_team_scope,
     staleness_threshold_hours,
     summary,
     trend,
@@ -235,6 +237,9 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             cloud_account_id=account.id, provider=account.provider, status=run.status,
             api_calls=run.api_calls, records_replaced=replaced,
         )
+        # 수집이 커밋된 뒤 그 계정의 팀 예산 임계(80/100%)를 평가한다(PR 7). 실패는 로그만 —
+        # 수집 결과에는 영향이 없다.
+        evaluate_for_account(db, account)
     finally:
         db.close()
 
@@ -391,9 +396,17 @@ def _build_query(
     cloud_account_id: list[str],
     currency: str | None,
     charge_category: list[str],
+    *,
+    team_id: list[str] | None = None,
+    db: Session | None = None,
+    user_id: int | None = None,
 ) -> CostQuery:
     start, end = parse_period(period_start, period_end)
     account_ids = _parse_int_list(cloud_account_id, "cloud_account_id") if cloud_account_id else []
+    if team_id:
+        # 팀 필터(§4 공통 query, CFL-03)는 계정 집합으로 풀어서 넣는다 — query.py의 필터 지점
+        # 18곳을 전부 고치지 않기 위해서다. "unassigned"는 team_id IS NULL.
+        account_ids = resolve_team_scope(db, user_id, team_id, account_ids)
     return CostQuery(
         period_start=start, period_end=end, providers=provider, cloud_account_ids=account_ids,
         currency=currency, charge_categories=charge_category or ["usage"],
@@ -404,10 +417,11 @@ def _build_query(
 def get_cost_capabilities(
     provider: list[str] = Query(default=[]),
     cloud_account_id: list[str] = Query(default=[]),
+    team_id: list[str] = Query(default=[]),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> CostCapabilitiesResponse:
-    q = _build_query(None, None, provider, cloud_account_id, None, [])
+    q = _build_query(None, None, provider, cloud_account_id, None, [], team_id=team_id, db=db, user_id=current_user.id)
     accounts = owned_accounts(db, current_user.id, q)
 
     items = []
@@ -444,12 +458,13 @@ def get_cost_summary(
     period_end: str | None = None,
     provider: list[str] = Query(default=[]),
     cloud_account_id: list[str] = Query(default=[]),
+    team_id: list[str] = Query(default=[]),
     currency: str | None = None,
     charge_category: list[str] = Query(default=[]),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> CostSummaryResponse:
-    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, charge_category)
+    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, charge_category, team_id=team_id, db=db, user_id=current_user.id)
     data = summary(db, current_user.id, q)
     data["as_of"] = iso_z(data["as_of"])
     data["accounts"] = [_iso_z_fields(a, ("as_of", "resources_synced_at")) for a in data["accounts"]]
@@ -462,6 +477,7 @@ def get_cost_trend(
     period_end: str | None = None,
     provider: list[str] = Query(default=[]),
     cloud_account_id: list[str] = Query(default=[]),
+    team_id: list[str] = Query(default=[]),
     currency: str | None = None,
     charge_category: list[str] = Query(default=[]),
     granularity: str = "daily",
@@ -471,7 +487,7 @@ def get_cost_trend(
 ) -> CostTrendResponse:
     if granularity not in ("daily", "weekly", "monthly", "quarterly"):
         raise validation_error("granularity는 daily|weekly|monthly|quarterly 중 하나여야 합니다.")
-    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, charge_category)
+    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, charge_category, team_id=team_id, db=db, user_id=current_user.id)
     data = trend(db, current_user.id, q, granularity, group_by, currency)
     data.update({"granularity": granularity, "group_by": group_by, "staleness_threshold_hours": staleness_threshold_hours()})
     return CostTrendResponse(data=data)
@@ -483,6 +499,7 @@ def get_cost_breakdown(
     period_end: str | None = None,
     provider: list[str] = Query(default=[]),
     cloud_account_id: list[str] = Query(default=[]),
+    team_id: list[str] = Query(default=[]),
     currency: str | None = None,
     charge_category: list[str] = Query(default=[]),
     dimension: str = "provider",
@@ -497,7 +514,7 @@ def get_cost_breakdown(
     if dimension not in ("provider", "service", "category", "account", "team"):
         raise validation_error("dimension이 올바르지 않습니다.")
     top_n = max(1, min(top_n, 20))
-    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, charge_category)
+    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, charge_category, team_id=team_id, db=db, user_id=current_user.id)
     data = breakdown(db, current_user.id, q, dimension, top_n, currency)
     return CostBreakdownResponse(data=data)
 
@@ -508,6 +525,7 @@ def get_cost_changes(
     period_end: str | None = None,
     provider: list[str] = Query(default=[]),
     cloud_account_id: list[str] = Query(default=[]),
+    team_id: list[str] = Query(default=[]),
     charge_category: list[str] = Query(default=[]),
     compare: str = "previous_period",
     dimension: str = "service",
@@ -518,7 +536,7 @@ def get_cost_changes(
     if compare not in ("previous_period", "previous_month"):
         raise validation_error("compare는 previous_period|previous_month 중 하나여야 합니다.")
     top_n = max(1, min(top_n, 50))
-    q = _build_query(period_start, period_end, provider, cloud_account_id, None, charge_category)
+    q = _build_query(period_start, period_end, provider, cloud_account_id, None, charge_category, team_id=team_id, db=db, user_id=current_user.id)
     data = changes(db, current_user.id, q, compare, dimension, top_n)
     return CostChangesResponse(data=data)
 
@@ -527,10 +545,11 @@ def get_cost_changes(
 def get_cost_collection_status(
     provider: list[str] = Query(default=[]),
     cloud_account_id: list[str] = Query(default=[]),
+    team_id: list[str] = Query(default=[]),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> CostCollectionStatusResponse:
-    q = _build_query(None, None, provider, cloud_account_id, None, [])
+    q = _build_query(None, None, provider, cloud_account_id, None, [], team_id=team_id, db=db, user_id=current_user.id)
     raw_items = collection_status(db, current_user.id, q)
     items = [
         CostCollectionStatusItem(

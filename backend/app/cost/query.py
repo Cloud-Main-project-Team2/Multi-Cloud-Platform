@@ -8,7 +8,7 @@ import datetime as dt
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from sqlalchemy import Date, cast, func
+from sqlalchemy import Date, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -41,8 +41,41 @@ class CostQuery:
     cloud_account_ids: list[int] = field(default_factory=list)
     currency: str | None = None
     charge_categories: list[str] = field(default_factory=lambda: list(DEFAULT_CHARGE_CATEGORIES))
-    # team_id 필터는 파라미터로 받아 두되(§4 공통 query 7개 계약), 팀 배정 UI가 아직 없는
-    # 이번 라운드(PR 7 이전)에는 실제로 적용하지 않는다 — 모든 계정이 미배정이라 걸러도 무의미하다.
+    # team_id 필터(§4 공통 query 7개 계약)는 여기 두지 않는다 — 라우터가 resolve_team_scope()로
+    # cloud_account_ids에 풀어 넣는다(PR 7). 아래 필터 지점 18곳이 전부 cloud_account_ids만 본다.
+
+
+# 팀 필터 결과가 빈 집합일 때 넣는 값 — 빈 리스트는 "필터 없음"이라 구분이 필요하다. id는 1부터
+# 시작하므로 -1은 어떤 계정과도 일치하지 않는다.
+EMPTY_SCOPE_IDS = [-1]
+UNASSIGNED_TEAM = "unassigned"
+
+
+def resolve_team_scope(db: Session, user_id: int, team_ids: list[str], account_ids: list[int]) -> list[int]:
+    """`team_id` 필터를 그 사용자의 계정 id 목록으로 바꾼다. `unassigned`는 team_id IS NULL.
+    명시적 cloud_account_id가 함께 오면 교집합. 결과가 비면 EMPTY_SCOPE_IDS."""
+    ids: list[int] = []
+    include_unassigned = False
+    for raw in team_ids:
+        if raw == UNASSIGNED_TEAM:
+            include_unassigned = True
+            continue
+        try:
+            ids.append(int(raw))
+        except ValueError as exc:
+            raise validation_error(
+                "team_id는 숫자 ID 또는 unassigned여야 합니다.", details=[{"field": "team_id", "reason": "invalid"}]
+            ) from exc
+    conds = []
+    if ids:
+        conds.append(CloudAccount.team_id.in_(ids))
+    if include_unassigned:
+        conds.append(CloudAccount.team_id.is_(None))
+    query = db.query(CloudAccount.id).filter(CloudAccount.user_id == user_id, or_(*conds))
+    if account_ids:
+        query = query.filter(CloudAccount.id.in_(account_ids))
+    scoped = [row[0] for row in query.all()]
+    return scoped or list(EMPTY_SCOPE_IDS)
 
 
 def default_period() -> tuple[dt.date, dt.date]:
