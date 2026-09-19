@@ -28,7 +28,7 @@ class ErrorExplanation:
     symptom: str  # 무슨 일이 일어났나 (사용자가 겪는 현상)
     cause: str  # 왜 일어났나
     remedy: str  # 어떻게 해결하나
-    category: str  # provisioning | sync | resource | credential | auth | common | unknown
+    category: str  # provisioning | sync | resource | credential | auth | cost | common | unknown
 
     def as_dict(self) -> dict[str, str]:
         return {
@@ -166,6 +166,26 @@ _CATALOG: dict[str, ErrorExplanation] = {
             "자격 증명 문제로 작업이 실패했습니다.",
             "등록된 키에 필수 필드가 빠졌거나 형식이 잘못되었습니다.",
             "마이페이지에서 해당 자격 증명을 '수정'으로 키를 다시 넣고 재검증하세요.",
+        ),
+        # ---- 비용(cost) — 2026-09-19 채택. docs/비용_개발문서/05_API계약.md §2-5의 "추가 제안" 중
+        #      *_NOT_FOUND 관례를 따르는 3개만. 나머지는 CONFLICT/VALIDATION_ERROR로 흡수한다. ----
+        _e(
+            "TEAM_NOT_FOUND", "cost",
+            "팀을 찾을 수 없습니다.",
+            "잘못된 팀 ID이거나 이미 삭제된 팀입니다.",
+            "비용 화면의 팀 목록을 새로고침한 뒤 다시 선택하세요.",
+        ),
+        _e(
+            "TEAM_BUDGET_NOT_FOUND", "cost",
+            "예산을 찾을 수 없습니다.",
+            "잘못된 예산 ID이거나 이미 삭제된 예산입니다.",
+            "예산 목록을 새로고침한 뒤 다시 선택하세요.",
+        ),
+        _e(
+            "COST_INGESTION_RUN_NOT_FOUND", "cost",
+            "비용 수집 실행을 찾을 수 없습니다.",
+            "잘못된 실행 ID이거나 다른 사용자의 실행입니다.",
+            "비용 화면에서 수집을 다시 실행한 뒤 그 실행 ID로 조회하세요.",
         ),
         # ---- 공통(cross-cutting) ----
         _e(

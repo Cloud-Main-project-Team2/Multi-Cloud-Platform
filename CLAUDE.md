@@ -75,6 +75,8 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | AWS 인증 방식 전환 — Access Key 저장 → 역할 위임(AssumeRole) 임시 자격증명 | `solcho/be-assume-role` | 조은솔 | in progress |
 | 로깅 보강 Phase 1 — ts/level·예외 로깅·백그라운드 태스크·로그 영속화 | `solcho/be-logging-hardening` | 조은솔 | in progress |
 | 로깅 보강 Phase 2 — 도메인 이벤트·프론트 오류 수집(`/client-logs`)·nginx JSON 로그 | `solcho/be-logging-coverage` | 조은솔 | in progress |
+| 비용 관리 — PR 1~6(정가 추정·`cost.html`·스키마·AWS 실측 수집·조회 API 6종·화면 연동) | `seunghyun/be-cost-*`·`seunghyun/fe-cost-*` (`docs/비용_개발문서/14_개발_트래커.md`가 정본) | 이승현 | merged (#100, #109) |
+| 비용 관리 PR 7 — 팀·예산 API 9종 + 소진율 + 80/100% 임계 알림 (초과 차단은 ADR-042로 보류) | `seunghyun/be-cost-team-budget` | 이승현 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -562,6 +564,37 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   - **검증**: backend 테스트 644개 통과(azure discover 5·aws discover 3 신규). 실제 Azure 계정으로
     라이브 discover→스토리지 발견 확인, 실동기화로 기존 stale 스토리지 행의 `is_stale`이 True→False로
     복구되는 것까지 end-to-end 확인.
+
+- **비용 팀·예산 PR 7 — 문서가 정하지 않아 세션에서 확정한 규칙(2026-09-19, `seunghyun/be-cost-team-budget`)**:
+  정본 설계는 `docs/비용_개발문서/05_API계약.md` §6 · `08` §6 · ADR-020/021/037/042. 그 문서들이 비워 둔
+  칸을 승현이 아래처럼 정했다(`app/cost/budget.py`·`notify.py` 머리 주석에도 있음).
+  - **반복 예산은 period_type과 무관하게 팀당 시간순 체인 하나**: 새 반복 행의 `start_date`는 기존 최신
+    반복 행보다 뒤여야 한다(같거나 이르면 `409 CONFLICT` + `existing_budget_id`). 각 행의 효력은 자기
+    `start_date`부터 다음 행 `start_date` 전까지. 계산 구간은 `period_start = max(달력 시작, 행 start_date)`,
+    `period_end = min(달력 종료, 다음 행 start_date)`.
+  - **이미 시작된 예산은 PATCH로 한도를 바꾸지 않는다** — 새 행을 POST한다(이력 보존, 확정 8). `start_date`·
+    `period_type`·`currency`는 어떤 상태에서도 변경 불가(보내면 409 `create_new_budget`). 예정(upcoming)
+    예산만 `limit_amount`(custom은 `end_date`도) 오타 수정 허용.
+  - **budget-status 선택 순서**: 진행 중 custom → 진행 중 반복 → 가장 가까운 예정 → 가장 최근 종료 →
+    `NO_BUDGET`. custom은 해당 기간의 임시 override다. `reason_code` 우선순위는 NO_BUDGET > NO_ACCOUNTS >
+    UNSUPPORTED > CURRENCY_MISMATCH > MISSING_DAYS. 결측일 판정은 **실측 행이 있거나 성공한 수집 run 범위에
+    든 날**을 수집됨으로 본다 — $0인 날은 행이 안 생기므로 행 유무만 보면 CONNECTED_EMPTY 계정이 영원히 결측이다.
+  - **알림 평가 시점**: 자동·수동 수집 성공 직후(`evaluate_for_account`, 실패는 로그만) · 예산 생성 · 계정
+    배정 변경 · 팀 통화 변경 · 예산 삭제 뒤. `GET budget-status`는 평가하지 않는다. in_progress이며 computable인
+    예산만 보고, 처음부터 100% 이상이면 80·100을 각각 한 번 만든다. 중복 방지는 기존
+    `team_budget_notifications` UNIQUE(SAVEPOINT로 IntegrityError 격리)이고 알림 행과 같은 트랜잭션이다.
+  - **오류 코드 채택(09 §14 #2 닫음)**: `TEAM_NOT_FOUND`·`TEAM_BUDGET_NOT_FOUND`·`COST_INGESTION_RUN_NOT_FOUND`
+    3개를 `error_catalog.py`(category `cost`)·`docs/Error_Catalog_Draft_2026-09-16.md`에 등록. `ACCOUNT_ALREADY_IN_TEAM`·
+    `BUDGET_PERIOD_OVERLAP`은 `409 CONFLICT` + `details.reason`, `BUDGET_PERIOD_TOO_LONG`은 `422 VALIDATION_ERROR`로
+    흡수. `BUDGET_EXCEEDED`·`COST_SETUP_REQUIRED`·`COST_REVIEW_ITEM_NOT_FOUND`는 미사용.
+  - **`/costs/*` 6종 `team_id` 필터**(05 §4 공통 query)를 이 PR에서 켰다 — `query.py`의 필터 지점 18곳을 고치지
+    않고 라우터 `_build_query`가 `resolve_team_scope()`로 계정 id 집합에 풀어 넣는다(`unassigned` 허용, 빈 집합은
+    `EMPTY_SCOPE_IDS=[-1]`로 "전체"와 구분).
+  - **로컬 환경 주의**: 호스트에 별도 Postgres(127.0.0.1:5432)가 떠 있어 docker `db`의 5432 포워딩을 가린다 —
+    `DATABASE_URL=...@localhost:5432`로 돌린 pytest는 **호스트 Postgres**의 `mcp_db_test`를 쓴다(스키마는
+    create_all이라 테스트엔 문제없음). 실 DB 스모크는 `docker compose run --rm -T --no-deps --entrypoint "" -v
+    $PWD/backend/app:/app/app api python - < script.py`로 컨테이너 안에서 한다. 현재 `api` 이미지는 PR 4 이전
+    빌드라(`apscheduler` 없음) main을 쓰려면 `docker compose build api` 재빌드가 필요하다.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 
