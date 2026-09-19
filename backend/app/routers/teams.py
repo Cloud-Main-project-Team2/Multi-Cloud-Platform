@@ -437,11 +437,20 @@ def delete_budget(
 @router.get("/teams/{team_id}/budget-status", response_model=BudgetStatusResponse)
 def get_budget_status(
     team_id: str,
+    reference_date: str | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> BudgetStatusResponse:
+    """`reference_date`(YYYY-MM-DD, 선택)를 주면 그 날을 기준으로 예산·구간을 고르고 그 날까지의
+    사용액을 낸다 — 보고서 등이 과거 기간을 볼 때 쓴다. 미래 날짜는 오늘로 내린다. 생략하면 오늘."""
     team = _get_owned_team(db, current_user, team_id)
-    s = compute_budget_status(db, team)
+    ref: dt.date | None = None
+    if reference_date:
+        try:
+            ref = dt.date.fromisoformat(reference_date)
+        except ValueError as exc:
+            raise validation_error("reference_date는 YYYY-MM-DD 형식이어야 합니다.", details=[{"field": "reference_date", "reason": "invalid"}]) from exc
+    s = compute_budget_status(db, team, reference_date=ref)
     b = s["budget"]
     u = s["usage"]
     f = s["forecast"]
@@ -451,7 +460,7 @@ def get_budget_status(
             budget=BudgetStatusBudget(
                 id=str_id(b["id"]), period_type=b["period_type"], limit_amount=b["limit_amount"], currency=b["currency"],
                 period_start=b["period_start"].isoformat(), period_end=b["period_end"].isoformat(),
-                period_state=b["period_state"],
+                period_state=b["period_state"], basis_date=b["basis_date"].isoformat(),
             ) if b else None,
             usage=BudgetStatusUsage(
                 currency=u["currency"], amount=u["amount"], basis=u["basis"], net_amount=u["net_amount"],

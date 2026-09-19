@@ -17,6 +17,7 @@ from app.cost import COST_ADAPTERS, is_cost_supported
 from app.cost.capability import account_capability
 from app.cost.ingest import AccountLockedError, replace_cost_rows
 from app.cost.notify import evaluate_for_account
+from app.cost.review import evaluate_and_notify_for_account_safely
 from app.cost.query import (
     CostQuery,
     breakdown,
@@ -240,6 +241,8 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
         # 수집이 커밋된 뒤 그 계정의 팀 예산 임계(80/100%)를 평가한다(PR 7). 실패는 로그만 —
         # 수집 결과에는 영향이 없다.
         evaluate_for_account(db, account)
+        # 급증 탐지(PR 8) — 이번 run 범위가 아니라 저장된 판정 대상 날 전부를 본다.
+        evaluate_and_notify_for_account_safely(db, account)
     finally:
         db.close()
 

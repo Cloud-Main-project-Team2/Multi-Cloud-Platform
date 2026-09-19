@@ -168,7 +168,8 @@ _CATALOG: dict[str, ErrorExplanation] = {
             "마이페이지에서 해당 자격 증명을 '수정'으로 키를 다시 넣고 재검증하세요.",
         ),
         # ---- 비용(cost) — 2026-09-19 채택. docs/비용_개발문서/05_API계약.md §2-5의 "추가 제안" 중
-        #      *_NOT_FOUND 관례를 따르는 3개만. 나머지는 CONFLICT/VALIDATION_ERROR로 흡수한다. ----
+        #      *_NOT_FOUND 관례를 따르는 4개(COST_REVIEW_ITEM_NOT_FOUND는 2026-09-19 PR 8에서 채택).
+        #      나머지는 CONFLICT/VALIDATION_ERROR로 흡수한다. ----
         _e(
             "TEAM_NOT_FOUND", "cost",
             "팀을 찾을 수 없습니다.",
@@ -180,6 +181,12 @@ _CATALOG: dict[str, ErrorExplanation] = {
             "예산을 찾을 수 없습니다.",
             "잘못된 예산 ID이거나 이미 삭제된 예산입니다.",
             "예산 목록을 새로고침한 뒤 다시 선택하세요.",
+        ),
+        _e(
+            "COST_REVIEW_ITEM_NOT_FOUND", "cost",
+            "검토 항목을 찾을 수 없습니다.",
+            "잘못된 항목 ID이거나 다른 사용자의 항목입니다.",
+            "비용 작업 큐를 새로고침한 뒤 다시 선택하세요.",
         ),
         _e(
             "COST_INGESTION_RUN_NOT_FOUND", "cost",

@@ -10,6 +10,12 @@
 - custom은 해당 기간의 임시 override — budget-status는 진행 중 custom → 진행 중 반복 → 가장
   가까운 예정 → 가장 최근 종료 → NO_BUDGET 순으로 고른다.
 - 예산 미설정은 $0이 아니다. `computable=false`면 `ratio_pct=null`. 100을 넘는 값은 자르지 않는다.
+- **기준일(reference_date)과 오늘(today)을 분리한다**(2026-09-19, PR 8): 기준일은 "어느 예산·어느
+  구간을 보는가"를 정하고, 사용액은 기준일까지(포함) 합하며, 결측 검사는 `min(기준일+1, 오늘)`까지 —
+  기준일이 과거면 그 날도 완료된 날이라 결측 검사에 **포함**한다(오늘만 "아직 수집될 수 없음"으로
+  제외). 기본값(기준일=오늘)일 때 동작은 이전과 같다. 기준일이 속한 구간에 완료된 날이 하나도 없으면
+  이전 구간의 예산을 대신 가져오지 않고 `NO_COMPLETED_DAYS`로 산출 불가를 돌려준다. 이것은 "당시
+  저장된 스냅샷"이 아니라 **지금 저장된 데이터로 그 기간을 다시 계산한 것**이다.
 """
 
 from __future__ import annotations
@@ -21,6 +27,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.cost import is_cost_supported
+from app.cost.coverage import missing_days as coverage_missing_days
 from app.cost.query import accounts_currency_map, money, staleness_threshold_hours
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Team, TeamBudget, TeamBudgetNotification
 
@@ -33,6 +40,7 @@ REASON_CURRENCY_MISMATCH = "CURRENCY_MISMATCH"
 REASON_NO_BUDGET = "NO_BUDGET"
 REASON_NO_ACCOUNTS = "NO_ACCOUNTS"
 REASON_UNSUPPORTED = "UNSUPPORTED"
+REASON_NO_COMPLETED_DAYS = "NO_COMPLETED_DAYS"  # 기준일 구간에 완료된 날이 없다(PR 8 추가 — 05 §6-2 5종 밖)
 
 STATE_UPCOMING = "upcoming"
 STATE_IN_PROGRESS = "in_progress"
@@ -158,42 +166,13 @@ def find_custom_overlap(
 
 
 def _missing_days_for_account(
-    db: Session, account: CloudAccount, period_start: dt.date, period_end: dt.date, today: dt.date
+    db: Session, account: CloudAccount, period_start: dt.date, check_end: dt.date
 ) -> list[dt.date]:
-    """계정 하나의 결측일. 실측 행이 있거나 성공한 수집 run의 범위에 들면 '수집됨'으로 본다 — $0인
-    날은 행이 안 생기므로 행 유무만 보면 CONNECTED_EMPTY 계정이 영원히 결측이 된다. 오늘·미래는
-    아직 수집될 수 없어 세지 않는다(query.missing_days와 같은 기준)."""
-    check_end = min(period_end, today)
+    """계정 하나의 결측일 — 정의는 coverage.py 한 곳(행 또는 성공 run 범위)이다. `check_end`는
+    호출부가 정한다(기준일+1과 오늘 중 이른 쪽)."""
     if check_end <= period_start:
         return []
-    have = {
-        row[0]
-        for row in db.query(CloudAccountCost.period_start)
-        .filter(
-            CloudAccountCost.cloud_account_id == account.id,
-            CloudAccountCost.period_start >= period_start,
-            CloudAccountCost.period_start < check_end,
-        )
-        .distinct()
-        .all()
-    }
-    runs = (
-        db.query(CostIngestionRun.period_start, CostIngestionRun.period_end)
-        .filter(
-            CostIngestionRun.cloud_account_id == account.id,
-            CostIngestionRun.status == "success",
-            CostIngestionRun.period_start < check_end,
-            CostIngestionRun.period_end > period_start,
-        )
-        .all()
-    )
-    missing = []
-    d = period_start
-    while d < check_end:
-        if d not in have and not any(rs <= d < re for rs, re in runs):
-            missing.append(d)
-        d += dt.timedelta(days=1)
-    return missing
+    return coverage_missing_days(db, account.id, period_start, check_end)
 
 
 def _sum_usage(
@@ -220,10 +199,17 @@ def _ratio_pct(amount: Decimal, limit: Decimal) -> str:
     return str((amount / limit * Decimal(100)).quantize(Decimal("0.1")))
 
 
-def compute_budget_status(db: Session, team: Team, today: dt.date | None = None) -> dict:
+def compute_budget_status(
+    db: Session, team: Team, today: dt.date | None = None, *, reference_date: dt.date | None = None
+) -> dict:
     """`GET /teams/{id}/budget-status` 본체이자 임계 알림(notify.py)의 판정 근거. 반환 dict는
-    `schemas.teams.BudgetStatusData` 모양(날짜는 date/datetime 그대로 — 라우터가 문자열로 바꾼다)."""
+    `schemas.teams.BudgetStatusData` 모양(날짜는 date/datetime 그대로 — 라우터가 문자열로 바꾼다).
+
+    `today`는 실제 오늘(수집될 수 없는 날의 경계), `reference_date`는 보고 싶은 기준일. 생략하면 둘 다
+    오늘이라 기존 호출(화면·알림)의 동작이 그대로다. 기준일이 오늘보다 뒤면 오늘로 내린다 — 미래
+    날짜를 기준일로 쓰지 않는다."""
     today = today or dt.date.today()
+    reference_date = min(reference_date or today, today)
     out: dict = {
         "team_id": team.id,
         "budget": None,
@@ -238,18 +224,23 @@ def compute_budget_status(db: Session, team: Team, today: dt.date | None = None)
     }
 
     budgets = team_budgets(db, team.id)
-    budget = select_status_budget(budgets, today)
+    budget = select_status_budget(budgets, reference_date)
     if budget is None:
         out["reason_code"] = REASON_NO_BUDGET
         return out
 
     chain = recurring_chain(budgets)
-    state = budget_state(budget, chain, today)
-    period_start, period_end = budget_period(budget, chain, today)
+    state = budget_state(budget, chain, reference_date)
+    period_start, period_end = budget_period(budget, chain, reference_date)
     out["budget"] = {
         "id": budget.id, "period_type": budget.period_type, "limit_amount": money(budget.limit_amount),
         "currency": budget.currency, "period_start": period_start, "period_end": period_end, "period_state": state,
+        "basis_date": reference_date,
     }
+    # 사용액은 기준일까지(포함), 결측 검사는 기준일까지(포함)이되 실제 오늘은 제외 — 오늘은 아직
+    # 수집될 수 없다. 기준일이 과거면 두 범위가 같다.
+    usage_end = min(period_end, reference_date + dt.timedelta(days=1))
+    check_end = min(usage_end, today)
 
     notified_rows = (
         db.query(TeamBudgetNotification)
@@ -283,7 +274,6 @@ def compute_budget_status(db: Session, team: Team, today: dt.date | None = None)
     included_ids = [a.id for a in included]
 
     # 사용액은 팀 통화로만 합한다 — 다른 통화 계정은 위에서 excluded로 뺐다(ADR-020).
-    usage_end = min(period_end, today + dt.timedelta(days=1))
     amount, as_of, is_est = _sum_usage(db, included_ids, team.currency, period_start, usage_end, categories=USAGE_CATEGORIES)
     net_amount, _, _ = _sum_usage(db, included_ids, team.currency, period_start, usage_end, categories=None)
     amount = amount if amount is not None else Decimal("0")
@@ -299,8 +289,13 @@ def compute_budget_status(db: Session, team: Team, today: dt.date | None = None)
         return out
 
     if state != STATE_UPCOMING:
+        if check_end <= period_start:
+            # 구간은 시작됐지만 완료된 날이 아직 없다(월초 1일 조회 등) — 0%라고 말하지 않고
+            # 이전 구간의 예산을 대신 보여주지도 않는다.
+            out["reason_code"] = REASON_NO_COMPLETED_DAYS
+            return out
         for a in included:
-            if _missing_days_for_account(db, a, period_start, period_end, today):
+            if _missing_days_for_account(db, a, period_start, check_end):
                 out["reason_code"] = REASON_MISSING_DAYS
                 return out
 
@@ -319,8 +314,9 @@ def compute_budget_status(db: Session, team: Team, today: dt.date | None = None)
         for p in THRESHOLDS
     ]
 
-    if state == STATE_IN_PROGRESS:
-        # 전망은 진행 중에만(확정 8) — 어제까지의 실측을 남은 일수로 늘린다(CF-003과 같은 방법).
+    if state == STATE_IN_PROGRESS and reference_date == today:
+        # 전망은 진행 중 + 기준일이 오늘일 때만(확정 8) — 어제까지의 실측을 남은 일수로 늘린다
+        # (CF-003과 같은 방법). 과거 기준일 재계산에는 전망이 의미 없다.
         based_through = min(today, period_end) - dt.timedelta(days=1)
         elapsed = (based_through - period_start).days + 1
         total_days = (period_end - period_start).days
