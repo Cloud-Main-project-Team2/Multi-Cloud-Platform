@@ -123,10 +123,13 @@
     var symbol = cost.currency === "USD" ? "$" : (cost.currency ? cost.currency + " " : "");
     return symbol + parseFloat(amount).toFixed(2);
   }
+  // 금액이 없으면 null — 0이 아니다. 정렬은 금액 없는 행을 오름/내림 무관하게 맨 뒤로 보낸다(비용 파트 확정 16).
   function costValue(r) {
-    if (!r.cost_summary) return 0;
+    if (!r.cost_summary) return null;
     var v = r.cost_summary.collected_cost_amount != null ? r.cost_summary.collected_cost_amount : r.cost_summary.estimated_monthly_cost;
-    return v ? parseFloat(v) : 0;
+    if (v == null || v === "") return null;
+    var n = parseFloat(v);
+    return isNaN(n) ? null : n;
   }
   function isRunningStatus(status) { return /RUNNING|AVAILABLE/i.test(status || ""); }
 
@@ -193,6 +196,9 @@
     list.sort(function (a, b) {
       if (mode === "name") return (a.name || a.external_resource_id).localeCompare(b.name || b.external_resource_id);
       var ca = costValue(a), cb = costValue(b);
+      if (ca == null && cb == null) return 0;
+      if (ca == null) return 1;   // 금액 없는 행은 항상 뒤
+      if (cb == null) return -1;
       return mode === "cost-asc" ? ca - cb : cb - ca;
     });
     return list;
