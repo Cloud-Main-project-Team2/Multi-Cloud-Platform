@@ -179,42 +179,11 @@
 
         <!-- ② 비용 분석 -->
         <section id="panel-analysis" class="tab-panel grid" role="tabpanel" aria-labelledby="tab-analysis" hidden>
-          <article id="CF-013" data-block="CF-013" class="block wide">
-            <div class="block-head">
-              <div>
-                <span class="block-id">CF-013</span>
-                <h2>비용 추이</h2>
-              </div>
-            </div>
-            <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
-          </article>
-
-          <article id="CF-016" data-block="CF-016" class="block">
-            <div class="block-head">
-              <div>
-                <span class="block-id">CF-016</span>
-                <h2>서비스별 비용 비중</h2>
-              </div>
-            </div>
-            <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
-          </article>
-
-          <article id="EXT-F12" data-block="EXT-F12" class="block">
-            <div class="block-head">
-              <div>
-                <span class="block-id">EXT-F12</span>
-                <h2>증가액 상위</h2>
-              </div>
-            </div>
-            <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
-          </article>
-
-          <!-- CF-024 — 와이어프레임에 없던 신규 블록(04 §8-1 마크업 그대로) -->
           <article id="CF-024" data-block="CF-024" class="block wide">
             <div class="block-head">
               <div>
                 <span class="block-id">CF-024</span>
-                <h2>같은 길이 기간 비교</h2>
+                <h2>기간 비교 (같은 길이)</h2>
               </div>
               <div class="button-row no-print">
                 <button type="button" class="btn" data-action="compare-basis" data-compare="previous_period">직전 동일 기간</button>
@@ -243,11 +212,41 @@
             </div>
           </article>
 
+          <article id="CF-013" data-block="CF-013" class="block wide">
+            <div class="block-head">
+              <div>
+                <span class="block-id">CF-013</span>
+                <h2>비용 추이 (실측)</h2>
+              </div>
+            </div>
+            <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
+          </article>
+
+          <article id="CF-016" data-block="CF-016" class="block">
+            <div class="block-head">
+              <div>
+                <span class="block-id">CF-016</span>
+                <h2>서비스별 비용 분포 (실측)</h2>
+              </div>
+            </div>
+            <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
+          </article>
+
+          <article id="EXT-F12" data-block="EXT-F12" class="block">
+            <div class="block-head">
+              <div>
+                <span class="block-id">EXT-F12</span>
+                <h2>서비스별 증가액 (이전 기간 대비)</h2>
+              </div>
+            </div>
+            <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
+          </article>
+
           <article id="CF-022" data-block="CF-022" class="block wide">
             <div class="block-head">
               <div>
                 <span class="block-id">CF-022</span>
-                <h2>비용 상위 리소스</h2>
+                <h2>현재 구성의 예상 월 비용 상위 리소스 (정가 추정)</h2>
               </div>
             </div>
             <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
@@ -262,7 +261,7 @@
             </div>
             <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
           </article>
-        </section>
+          <!-- CF-024 — 와이어프레임에 없던 신규 블록(04 §8-1 마크업 그대로) -->        </section>
 
         <!-- ③ 예산·검토 -->
         <section id="panel-budget" class="tab-panel grid" role="tabpanel" aria-labelledby="tab-budget" hidden>

@@ -172,10 +172,8 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
   padding: 12px 20px; border-radius: 9px; z-index: 100; font-size: 13px; max-width: 85vw;
 }
 
-@media (min-width: 1120px) {
-  #CF-013 { grid-column: span 3; }
-  #CF-016 { grid-column: span 1; }
-}
+/* (2026-09-21) 예전엔 넓은 화면에서 추이 3/4 + 분포 1/4로 나눠 도넛이 작았다. 이제 추이는 전체폭,
+   분포·증가액이 반폭씩 나란히 — 빈 오른쪽 칸이 생기지 않는다(cost.html 블록 순서 참고). */
 @media (max-width: 1050px) {
   .block.kpi { grid-column: span 2; }
   .meta-grid { grid-template-columns: repeat(3, 1fr); }
@@ -266,3 +264,38 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
   .account-table td.actions::before { content: none; }
   .filter-grid .filter-box { flex: 1 1 140px; }
 }
+
+/* ═══ ② 비용 분석 탭 (2026-09-21) ═══ */
+/* 기간 비교 — 압축 스트립: 이전 / 현재 / 증감 세 칸 */
+.compare-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: end; }
+.compare-strip .cs-label { font-size: 11px; color: var(--muted-foreground); }
+.compare-strip .value { margin: 4px 0 0; font-size: 22px; }
+.compare-strip .cs-delta .value { font-size: 20px; }
+.compare-compact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 12px; }
+
+/* 서비스별 분포 — 가로 막대 목록(이름·금액·비중을 한 줄에서 읽는다) */
+.share-list { display: grid; gap: 8px; }
+.share-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 10px; align-items: center; font-size: 12px; }
+.share-row .sr-name { min-width: 0; overflow-wrap: anywhere; }
+.share-row .sr-amount { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.share-row .sr-pct { width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+.share-row .bar-track { grid-column: 1 / -1; margin-top: 0; height: 8px; }
+.share-row.residual .bar-fill { background: var(--muted-foreground); }
+.share-row.residual .sr-name { color: var(--muted-foreground); }
+
+/* 증가액 표 — 서비스명 열은 줄바꿈, 숫자 열은 오른쪽 정렬·고정폭 숫자 */
+.changes-table td.num, .changes-table th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.changes-table td:first-child { overflow-wrap: anywhere; }
+.sub-amount { display: block; font-size: 11px; color: var(--muted-foreground); }
+
+/* 집계 단위 토글 — 눌린 버튼 */
+.btn[aria-pressed="true"] { background: var(--primary); color: var(--surface); border-color: var(--primary); }
+
+@media (max-width: 720px) {
+  .compare-strip { grid-template-columns: 1fr; }
+}
+
+/* (2026-09-21 마무리) 분석 탭 카드는 옆 카드 높이에 맞춰 늘리지 않는다 — 빈 표 아래 큰 여백 방지 */
+#panel-analysis.grid { align-items: start; }
+/* 차트: viewBox 너비 = 실제 픽셀 너비라 height:auto가 곧 설계 높이(200~260px)다. 비율은 왜곡하지 않는다 */
+.chart { max-width: 100%; }
