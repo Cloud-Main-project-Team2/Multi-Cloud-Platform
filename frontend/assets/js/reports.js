@@ -1,8 +1,7 @@
 /* 보고서 작성 페이지(reports.html) 전용 스크립트.
-   비용/미사용/인수인계는 아직 assets/js/reports-data.js(MCReports)의 목업이다(비용 API 미구현) —
-   보고서_구현명세_v5.md §9 구현 순서의 "7. 프론트엔드 드롭다운 + 렌더링"을 비용 API 연동 전에
-   먼저 완성해 두는 단계. "사용률 90% 초과" 카드만 2026-09-18부터 실 API
-   (GET /resources/utilization/top)로 교체했다. */
+   비용 요약(2026-09-19)·미사용 리소스(2026-09-19)·사용률(2026-09-18)은 실 API로 교체됐다 —
+   비용은 report_generations.cost_snapshot(생성 시점 고정, app/report_cost.py), 나머지 둘은
+   조회 시점 실시간 값이다. AI 분석 요약·인수인계는 재사용할 API가 없어 여전히 목업이다. */
 (function () {
   "use strict";
   if (!window.MCReports) return;
@@ -13,6 +12,14 @@
   var PROVIDER_ICON = { aws: "assets/imgs/aws.png", azure: "assets/imgs/azure.png", gcp: "assets/imgs/gcp.png" };
 
   function fmtMoney(n) { return "$" + Math.round(n).toLocaleString(); }
+  // 비용 요약 카드는 계정 통화가 USD가 아닐 수 있다(§7 "USD와 KRW는 분리해서 표시") — 미사용
+  // 리소스 정가 추정치(항상 USD)와 달리 실제 계정 통화를 그대로 보여준다.
+  function fmtIn(currency, amount) {
+    var n = parseFloat(amount);
+    if (isNaN(n)) return "—";
+    var prefix = currency === "USD" ? "$" : currency === "KRW" ? "₩" : currency + " ";
+    return prefix + Math.round(n).toLocaleString();
+  }
   function fmtPct(n) {
     var s = (n >= 0 ? "▲ " : "▼ ") + Math.abs(n).toFixed(1) + "%";
     return s;
@@ -30,26 +37,81 @@
       .join(" ");
   }
 
+  function esc(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+    });
+  }
+
   // ── 최근 보고서 요약 카드 (최신 보고서 = MCReports.latest()) ──────────────
   function renderSummary() {
-    var r = MCReports.latest();
-    var periodEl = document.getElementById("report-summary-period");
-    if (periodEl) periodEl.textContent = fmtDateRange(r.from, r.to) + " · " + r.periodLabel;
+    // MCReports.latest()는 실 API(GET /api/v1/reports) 호출이라 Promise다 — 아직 한 번도
+    // "생성하기"를 누른 적 없으면 null이 온다. 그 상태를 목업으로 가리지 않고 그대로 보여준다
+    // (비용·인수인계는 아직 실 API가 없어 대체할 실데이터가 없다).
+    MCReports.latest().then(renderSummaryWith);
+  }
 
+  function renderSummaryWith(r) {
+    var periodEl = document.getElementById("report-summary-period");
     var costEl = document.getElementById("report-sum-cost");
     var costDeltaEl = document.getElementById("report-sum-cost-delta");
-    if (costEl) costEl.textContent = fmtMoney(r.cost.total);
-    if (costDeltaEl) {
-      costDeltaEl.textContent = fmtPct(r.cost.changePct) + " " + r.compareLabel + " 대비";
-      costDeltaEl.className = "mt-1 text-xs " + (r.cost.changePct >= 0 ? "text-red-600" : "text-emerald-600");
+    var handoverEl = document.getElementById("report-sum-handover");
+    var handoverSubEl = document.getElementById("report-sum-handover-sub");
+
+    if (!r) {
+      if (periodEl) periodEl.textContent = "아직 생성된 보고서가 없습니다";
+      if (costEl) costEl.textContent = "—";
+      if (costDeltaEl) { costDeltaEl.textContent = ""; costDeltaEl.className = "mt-1 text-xs text-muted-foreground"; }
+      if (handoverEl) handoverEl.textContent = "—";
+      if (handoverSubEl) handoverSubEl.textContent = "";
+    } else {
+      if (periodEl) periodEl.textContent = fmtDateRange(r.from, r.to) + " · " + r.periodLabel;
+      // r.cost는 report_cost.py가 생성 시점에 고정한 스냅샷(reports-data.js::mapCostSnapshot)이다.
+      // null이면 계산 자체가 실패한 것, totalsByCurrency가 비어 있으면 그 기간에 수집된 비용이
+      // 없는 것 — 카드 공간이 좁아 여러 통화 중 첫 번째만 대표로 보여준다.
+      var totals = r.cost && r.cost.totalsByCurrency;
+      if (totals && totals.length) {
+        var t = totals[0];
+        if (costEl) costEl.textContent = fmtIn(t.currency, t.amount) + (totals.length > 1 ? " 외" : "");
+        var changes = r.cost.changes;
+        if (costDeltaEl && changes && changes.comparable && changes.currency === t.currency && changes.totals.delta_pct !== null) {
+          var pct = parseFloat(changes.totals.delta_pct);
+          costDeltaEl.textContent = fmtPct(pct) + " " + r.compareLabel + " 대비";
+          costDeltaEl.className = "mt-1 text-xs " + (pct >= 0 ? "text-red-600" : "text-emerald-600");
+        } else if (costDeltaEl) {
+          costDeltaEl.textContent = "";
+          costDeltaEl.className = "mt-1 text-xs text-muted-foreground";
+        }
+      } else {
+        if (costEl) costEl.textContent = r.cost ? "데이터 없음" : "불러오지 못함";
+        if (costDeltaEl) { costDeltaEl.textContent = ""; costDeltaEl.className = "mt-1 text-xs text-muted-foreground"; }
+      }
+      var expiring = r.handover.filter(function (h) { return h.type === "만료 예정"; }).length;
+      if (handoverEl) handoverEl.textContent = r.handover.length + "건";
+      if (handoverSubEl) handoverSubEl.textContent = "만료 예정 " + expiring + "건 포함";
     }
 
+    // "미사용 리소스" 카드도 실 API(2026-09-19, GET /resources/unused/top)로 교체 — 미연결
+    // 디스크(AWS EBS)·유휴 인스턴스(지금 CPU 10% 미만)만 감지한다. 호출 실패/무자격증명이면
+    // 목업으로 그대로 둔다. 절감액은 비용을 아는 항목만 합산한다(모르면 지어내지 않는다).
     var unusedEl = document.getElementById("report-sum-unused");
     var unusedSubEl = document.getElementById("report-sum-unused-sub");
-    if (unusedEl) unusedEl.textContent = r.unused.items.length + "건";
-    if (unusedSubEl) unusedSubEl.textContent = "월 " + fmtMoney(r.unused.totalSaving) + " 절감 가능";
+    function renderUnusedFrom(items, saving) {
+      if (unusedEl) unusedEl.textContent = items.length + "건";
+      if (unusedSubEl) unusedSubEl.textContent = items.length ? "월 " + fmtMoney(saving) + " 절감 가능" : "해당 없음";
+    }
+    renderUnusedFrom(r ? r.unused.items : [], r ? r.unused.totalSaving : 0);
+    if (window.MCPApi) {
+      MCPApi.request("/resources/unused/top?limit=10").then(function (res) {
+        // 응답이 왔다는 것 자체가 실 조회 성공이다 — items가 비어 있어도("정말 미사용 리소스가
+        // 없다") 그대로 반영한다. 호출 자체가 실패했을 때만(catch) 목업을 유지한다.
+        var items = (res && res.items) || [];
+        var saving = items.reduce(function (s, it) { return s + (it.estimated_monthly_cost || 0); }, 0);
+        renderUnusedFrom(items, saving);
+      }).catch(function () {});
+    }
 
-    // "사용률 90% 초과" 카드만 실 API(2026-09-18)로 교체 — 나머지(비용·미사용·인수인계)는
+    // "사용률 90% 초과" 카드도 실 API(2026-09-18)로 교체 — 나머지(비용·인수인계)는
     // 비용 API가 아직 없어 계속 목업이다. 호출 실패/무자격증명이면 목업으로 그대로 둔다.
     var hotEl = document.getElementById("report-sum-hot");
     var hotSubEl = document.getElementById("report-sum-hot-sub");
@@ -58,7 +120,7 @@
       if (hotEl) hotEl.textContent = hotRows.length + "건";
       if (hotSubEl) hotSubEl.textContent = hotRows.length ? hotRows.map(function (u) { return u.name; }).join(", ") : "해당 없음";
     }
-    renderHotFrom(r.utilization);
+    renderHotFrom(r ? r.utilization : []);
     if (window.MCPApi) {
       MCPApi.request("/resources/utilization/top?limit=10").then(function (res) {
         // MCPApi.request()는 응답 envelope의 data를 이미 벗겨서 돌려준다(api.js) — res.data를
@@ -67,38 +129,50 @@
         renderHotFrom(items.map(function (it) { return { cpu: it.cpu_percent, mem: it.mem_percent, name: it.name }; }));
       }).catch(function () {});
     }
-
-    var expiring = r.handover.filter(function (h) { return h.type === "만료 예정"; }).length;
-    var handoverEl = document.getElementById("report-sum-handover");
-    var handoverSubEl = document.getElementById("report-sum-handover-sub");
-    if (handoverEl) handoverEl.textContent = r.handover.length + "건";
-    if (handoverSubEl) handoverSubEl.textContent = "만료 예정 " + expiring + "건 포함";
   }
 
   // ── 생성 이력 표 ──────────────────────────────────────────────────────
+  // 실 API(GET/DELETE /api/v1/reports)를 쓴다(2026-09-19) — 같은 조건으로 다시 생성해도
+  // 서버가 병합해주므로(UNIQUE + ON CONFLICT DO UPDATE) 프론트는 그냥 목록만 다시 그리면 된다.
+  // 행별 "삭제" 버튼도 여기서 같이 붙인다.
   function renderHistory() {
     var tbody = document.getElementById("report-history-body");
     if (!tbody) return;
-    if (!MCReports.list.length) {
-      tbody.innerHTML = '<tr><td class="py-3 text-muted-foreground" colspan="4">아직 생성된 보고서가 없습니다.</td></tr>';
-      return;
-    }
-    tbody.innerHTML = MCReports.list
-      .map(function (r) {
-        return (
-          '<tr class="border-b border-border last:border-0">' +
-          '<td class="py-2.5 pr-4">' + fmtDateRange(r.from, r.to) + "</td>" +
-          '<td class="py-2.5 pr-4"><span class="rounded-full border border-border px-2 py-0.5 text-xs">' + r.periodLabel + "</span></td>" +
-          '<td class="py-2.5 pr-4">' + dotsHtml(r.clouds) + "</td>" +
-          '<td class="py-2.5 text-right">' +
-          '<a href="report-view.html?id=' + encodeURIComponent(r.id) + '" target="_blank" rel="noopener" class="text-primary hover:underline">열기</a>' +
-          '<span class="mx-1.5 text-muted-foreground">·</span>' +
-          '<a href="report-view.html?id=' + encodeURIComponent(r.id) + '&print=1" target="_blank" rel="noopener" class="text-primary hover:underline">인쇄</a>' +
-          "</td>" +
-          "</tr>"
-        );
-      })
-      .join("");
+    tbody.innerHTML = '<tr><td class="py-3 text-muted-foreground" colspan="4">불러오는 중…</td></tr>';
+    MCReports.list().then(function (items) {
+      if (!items.length) {
+        tbody.innerHTML = '<tr><td class="py-3 text-muted-foreground" colspan="4">아직 생성된 보고서가 없습니다.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = items
+        .map(function (r) {
+          return (
+            '<tr class="border-b border-border last:border-0">' +
+            '<td class="py-2.5 pr-4">' + fmtDateRange(r.from, r.to) + "</td>" +
+            '<td class="py-2.5 pr-4"><span class="rounded-full border border-border px-2 py-0.5 text-xs">' + r.periodLabel + "</span></td>" +
+            '<td class="py-2.5 pr-4">' + dotsHtml(r.clouds) + "</td>" +
+            '<td class="py-2.5 text-right">' +
+            '<a href="report-view.html?id=' + encodeURIComponent(r.id) + '" target="_blank" rel="noopener" class="text-primary hover:underline">열기</a>' +
+            '<span class="mx-1.5 text-muted-foreground">·</span>' +
+            '<a href="report-view.html?id=' + encodeURIComponent(r.id) + '&print=1" target="_blank" rel="noopener" class="text-primary hover:underline">인쇄</a>' +
+            '<span class="mx-1.5 text-muted-foreground">·</span>' +
+            '<button type="button" data-report-delete="' + esc(r.id) + '" class="text-red-600 hover:underline">삭제</button>' +
+            "</td>" +
+            "</tr>"
+          );
+        })
+        .join("");
+      tbody.querySelectorAll("[data-report-delete]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          if (!window.confirm("이 보고서 이력을 삭제할까요? (보고서 자체는 다시 생성할 수 있습니다)")) return;
+          btn.disabled = true;
+          MCReports.remove(btn.getAttribute("data-report-delete")).then(function (ok) {
+            if (ok) renderHistory();
+            else btn.disabled = false;
+          });
+        });
+      });
+    });
   }
 
   // ── ① 클라우드 선택 칩 (프로비저닝 화면과 동일한 select-card 패턴) ────────
@@ -142,17 +216,22 @@
       var newTab = window.open("", "_blank");
 
       window.setTimeout(function () {
-        var report = MCReports.createReport(period, clouds);
-        renderSummary();
-        renderHistory();
-        btn.classList.remove("opacity-70");
-        if (status) status.textContent = "생성 완료 — 새 탭에서 열립니다.";
-        var url = "report-view.html?id=" + encodeURIComponent(report.id);
-        if (newTab && !newTab.closed) newTab.location.href = url;
-        else window.open(url, "_blank", "noopener");
-        window.setTimeout(function () {
-          if (status) status.textContent = "";
-        }, 4000);
+        MCReports.createReport(period, clouds).then(function (report) {
+          renderSummary();
+          renderHistory();
+          btn.classList.remove("opacity-70");
+          if (status) status.textContent = "생성 완료 — 새 탭에서 열립니다.";
+          var url = "report-view.html?id=" + encodeURIComponent(report.id);
+          if (newTab && !newTab.closed) newTab.location.href = url;
+          else window.open(url, "_blank", "noopener");
+          window.setTimeout(function () {
+            if (status) status.textContent = "";
+          }, 4000);
+        }).catch(function () {
+          btn.classList.remove("opacity-70");
+          if (status) status.textContent = "생성에 실패했습니다. 다시 시도해주세요.";
+          if (newTab && !newTab.closed) newTab.close();
+        });
       }, 1200);
     });
   }
@@ -248,8 +327,10 @@
     // 웹 다운로드 — 저장할 설정이 없으니 클릭하면 즉시 최신 보고서를 새 탭에서 인쇄/PDF 저장
     // 화면으로 연다(생성 이력 탭의 "인쇄" 링크와 동일한 방식, report-view.html?print=1).
     webDownloadBtn.addEventListener("click", function () {
-      var r = MCReports.latest();
-      window.open("report-view.html?id=" + encodeURIComponent(r.id) + "&print=1", "_blank", "noopener");
+      MCReports.latest().then(function (r) {
+        if (!r) { window.alert("아직 생성된 보고서가 없습니다. 먼저 보고서를 생성하세요."); return; }
+        window.open("report-view.html?id=" + encodeURIComponent(r.id) + "&print=1", "_blank", "noopener");
+      });
     });
 
     if (saveBtn) {

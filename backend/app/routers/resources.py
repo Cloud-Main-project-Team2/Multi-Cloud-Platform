@@ -20,7 +20,7 @@ from app.models import CloudAccount, Credential, Resource, ServiceCatalog, User
 from app.providers import aws as aws_provider
 from app.resource_actions import ResourceActionError, perform_action, supported_actions
 from app.schemas.errors import explanation_for, specific_reason_for
-from app.metrics import get_top_utilization
+from app.metrics import get_top_utilization, get_unused_resources
 from app.schemas.resources import (
     ActionResultError,
     ActionResultItem,
@@ -39,6 +39,9 @@ from app.schemas.resources import (
     ResourceSummaryData,
     ResourceSummaryResponse,
     ServiceBrief,
+    UnusedResourceItem,
+    UnusedResourcesData,
+    UnusedResourcesResponse,
     UtilizationData,
     UtilizationItem,
     UtilizationResponse,
@@ -265,6 +268,24 @@ def resources_utilization_top(
     return UtilizationResponse(
         data=UtilizationData(
             items=[UtilizationItem(**item) for item in items],
+            as_of=iso_z(dt.datetime.now(dt.timezone.utc)),
+        )
+    )
+
+
+@router.get("/resources/unused/top", response_model=UnusedResourcesResponse)
+def resources_unused_top(
+    limit: int = Query(10, ge=1, le=20),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UnusedResourcesResponse:
+    """미연결 디스크·유휴 인스턴스를 실시간으로 조회한다(보고서 §3.3 "미사용 리소스" 섹션용,
+    2026-09-19). 감지 범위·근거는 app/metrics.py::get_unused_resources 참고 — 미연결 공인 IP는
+    아직 어떤 provider도 리소스로 수집하지 않아 이 응답에 포함되지 않는다."""
+    items = get_unused_resources(db, current_user, limit=limit)
+    return UnusedResourcesResponse(
+        data=UnusedResourcesData(
+            items=[UnusedResourceItem(**item) for item in items],
             as_of=iso_z(dt.datetime.now(dt.timezone.utc)),
         )
     )

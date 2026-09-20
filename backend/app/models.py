@@ -721,3 +721,49 @@ class ReportDeliverySetting(CreatedAtMixin, Base):
             "delivery_method <> 'EMAIL' OR email IS NOT NULL", name="ck_report_delivery_settings_email_required"
         ),
     )
+
+
+class ReportGeneration(CreatedAtMixin, Base):
+    """"생성 이력"(reports.html) — 실제로 "생성하기"를 눌러 만든 보고서 기록(2026-09-19).
+
+    지금까지는 브라우저 `localStorage`에만 있어서 팀원끼리 공유가 안 되고, 같은 조건으로 다시
+    누를 때마다 새 행이 계속 쌓여 지저분해지는 문제가 있었다. `(user_id, period_type,
+    period_from, period_to, providers)` UNIQUE로 "같은 조건"을 정의하고, 라우터가
+    `ON CONFLICT ... DO UPDATE`로 `generated_at`만 갱신한다 — 같은 날 같은 조건으로 여러 번
+    눌러도(예: 재확인차 다시 생성) 한 행만 남고 최신 시각으로 갱신된다. 기간이 다르면(예: 다음
+    날 다시 생성해 period_to가 하루 밀림) 별개 행이다 — 이건 중복이 아니라 실제로 다른 보고서다.
+
+    비용 요약(`cost_snapshot`, 2026-09-19 `kwonhyeong/be-next`)은 **생성 시점에 계산해서 그대로
+    저장**한다 — 사용률/미사용 리소스와 달리 "다시 열어도 같은 숫자"가 요구사항이다(팀원 이승현의
+    권형님_보고서_비용연동_개발프롬프트 §9). 재수집이 일어나 실제 비용이 바뀌어도 이미 생성된
+    보고서는 그 시점 값을 그대로 보여준다 — 최신 값이 보고 싶으면 같은 조건으로 다시
+    "생성하기"를 눌러야 한다(ON CONFLICT DO UPDATE가 `cost_snapshot`도 함께 갱신).
+    나머지(AI 요약·인수인계)는 여전히 프론트(`reports-data.js`)가 그때그때 구성한다."""
+
+    __tablename__ = "report_generations"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    period_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    period_from: Mapped[date] = mapped_column(Date, nullable=False)
+    period_to: Mapped[date] = mapped_column(Date, nullable=False)
+    # 정렬된 콤마 구분 문자열("aws,azure,gcp") — 선택 순서가 달라도 같은 조합이면 같은 값이
+    # 되게 정규화한다(안 그러면 UNIQUE가 "같은 조건"을 못 잡는다).
+    providers: Mapped[str] = mapped_column(String(20), nullable=False)
+    # ON CONFLICT DO UPDATE 대상 — 같은 조건으로 재생성할 때마다 이 값만 지금 시각으로 갱신된다.
+    generated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    # app/report_cost.py::build_cost_snapshot()의 결과를 그대로 담는다(cost/query.py
+    # summary·breakdown·trend·changes 원본 dict, JSON-safe 변환만 거침) — 생성 시점 값 고정.
+    cost_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "user_id", "period_type", "period_from", "period_to", "providers",
+            name="uq_report_generations_params",
+        ),
+        sa.CheckConstraint(
+            "period_type IN ('DAILY','WEEKLY','MONTHLY','HALF_YEARLY')", name="ck_report_generations_period"
+        ),
+    )
