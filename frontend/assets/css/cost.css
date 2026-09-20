@@ -189,3 +189,80 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
   .cta-row { display: block; }
   .paired { grid-template-columns: 1fr; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   2026-09-20 비용 개요 다듬기(seunghyun/fe-cost-polish) — 기존 토큰·컴포넌트만 쓴다.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* 기능 ID(CF-001 등)는 개발 추적용 — DOM엔 남기고 화면에서만 숨긴다 */
+.block-id { display: none; }
+
+/* 공통 영역(조회 기준 + 조회 조건)은 카드 두 장이 아니라 한 덩어리처럼 붙여 세로 공간을 줄인다 */
+.common-stack { gap: 8px; }
+.common-stack .block { padding: 12px 18px; }
+.common-stack .block-head { margin-bottom: 8px; }
+.common-stack .block-head h2 { font-size: 13px; }
+#CF-001 .block-head { display: none; }          /* 조회 기준은 제목 없이 한 줄 요약이 곧 제목이다 */
+
+/* 조회 기준 한 줄 요약 */
+.summary-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; }
+.summary-bar .sb-item { display: inline-flex; align-items: center; gap: 5px; }
+.summary-bar .sb-label { color: var(--muted-foreground); }
+.summary-bar .sb-value { font-weight: 650; font-variant-numeric: tabular-nums; }
+.summary-bar .button-row { margin: 0 0 0 auto; }
+.summary-bar .btn { padding: 6px 10px; }
+.summary-bar .busy { color: var(--muted-foreground); }
+
+/* 원인별 경고 — 경고는 최대 2줄, 나머지는 "상세 보기" */
+.warning-list { display: grid; gap: 6px; margin-top: 8px; }
+.warning-list .warning { margin-top: 0; }
+.warning.info { border-left-color: var(--sky); }
+
+/* 접이식 조회 조건 — 접혀 있어도 적용된 조건·오류는 항상 보인다 */
+.filter-panel > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.filter-panel > summary::-webkit-details-marker { display: none; }
+.filter-panel > summary .chip { max-width: 100%; white-space: normal; }
+.filter-panel > summary .toggle { margin-left: auto; }
+.filter-panel[open] > summary .toggle::after { content: " ▴"; }
+.filter-panel:not([open]) > summary .toggle::after { content: " ▾"; }
+.filter-panel .filter-grid { margin-top: 12px; }
+.filter-dirty { color: var(--cost-warn); font-weight: 600; }
+.filter-error { color: var(--cost-up); }
+.filter-grid .input-error { border-color: var(--cost-up) !important; }
+
+/* KPI 카드 — 제목/금액/배지/근거/보조 행동의 세로 순서를 고정한다 */
+.kpi .value { margin: 8px 0 4px; }
+.kpi .kpi-basis { font-size: 11px; color: var(--muted-foreground); margin-top: 6px; line-height: 1.5; }
+.kpi .kpi-note { font-size: 11px; margin-top: 6px; }
+.kpi .button-row { margin-top: 10px; }
+.kpi .badge.est { color: var(--cost-warn); }
+
+/* 계정별 비용 및 수집 상태 — 데스크톱 표 */
+.account-table th, .account-table td { padding: 9px 8px; vertical-align: middle; }
+.account-table td.num { font-weight: 650; }
+.account-table .provider-cell { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.account-table .status-cell { display: flex; flex-direction: column; gap: 2px; }
+.account-table .status-cell .tiny { line-height: 1.4; }
+.account-table td .btn { padding: 5px 9px; font-size: 11px; }
+.status-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; }
+.status-tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted-foreground); flex: 0 0 auto; }
+.status-tag.data::before { background: var(--cost-down); }
+.status-tag.attention::before { background: var(--cost-up); }
+.status-tag.unsupported::before { background: var(--muted-foreground); }
+.status-tag.waiting::before { background: var(--cost-warn); }
+
+/* 준비 중 블록은 KPI와 같은 덩치로 반복하지 않는다 */
+.pending-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-foreground); padding: 6px 0; }
+
+/* 모바일: 표를 세로 카드로 */
+@media (max-width: 720px) {
+  .summary-bar .button-row { margin-left: 0; width: 100%; }
+  .account-table thead { display: none; }
+  .account-table tr { display: block; border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; margin-bottom: 8px; }
+  .account-table td { display: flex; justify-content: space-between; gap: 10px; border: 0; padding: 4px 0; text-align: left; }
+  .account-table td.num { text-align: right; }
+  .account-table td::before { content: attr(data-label); color: var(--muted-foreground); font-size: 11px; flex: 0 0 auto; }
+  .account-table td.actions { justify-content: flex-start; padding-top: 8px; }
+  .account-table td.actions::before { content: none; }
+  .filter-grid .filter-box { flex: 1 1 140px; }
+}
