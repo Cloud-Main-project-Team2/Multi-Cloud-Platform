@@ -406,3 +406,43 @@ def test_costs_summary_team_filter_and_unassigned(client, make_user, auth_header
     assert total("?team_id=999999") == Decimal("0")  # 없는 팀 → 빈 집합(전체가 아니다)
     resp = client.get("/api/v1/costs/summary?team_id=abc", headers=h)
     assert resp.status_code == 422
+
+
+# --- 2026-09-20 보강: 동시 POST 방어(부분 UNIQUE + 팀별 advisory lock) ------------------------
+
+
+def test_recurring_duplicate_start_date_blocked_by_db_returns_409(client, make_user, auth_header, db_session):
+    """애플리케이션 검사를 우회해 같은 시작일 반복 행이 먼저 들어가 있어도(동시 요청 시나리오)
+    DB UNIQUE가 막고 라우터는 같은 409 문구를 돌려준다."""
+    user = make_user()
+    h = auth_header(user)
+    t = _team(client, h)
+    # 라우터의 SELECT 검사와 무관하게 직접 INSERT → 두 번째 INSERT는 IntegrityError
+    db_session.add(TeamBudget(team_id=int(t["id"]), period_type="monthly", start_date=dt.date(2026, 9, 1), limit_amount=Decimal("300"), currency="USD"))
+    db_session.flush()
+    from sqlalchemy.exc import IntegrityError
+
+    import pytest
+
+    with pytest.raises(IntegrityError):
+        with db_session.begin_nested():
+            db_session.add(TeamBudget(team_id=int(t["id"]), period_type="quarterly", start_date=dt.date(2026, 9, 1), limit_amount=Decimal("500"), currency="USD"))
+            db_session.flush()
+    # 라우터 경로: 같은 시작일 → 409 CONFLICT(existing_budget_id 또는 UNIQUE 폴백 모두 같은 코드)
+    resp = _budget(client, h, t["id"], start_date="2026-09-01", limit_amount="500")
+    assert resp.status_code == 409 and resp.json()["error"]["code"] == "CONFLICT"
+    assert resp.json()["error"]["details"][0]["reason"] == "active_recurring_exists"
+
+
+def test_budget_status_uses_utc_date(monkeypatch, db_session, make_user):
+    """예산 기준 '오늘'은 UTC — 급증 판정(coverage.utc_today)과 같은 경계."""
+    import app.cost.budget as budget_mod
+
+    seen = {}
+    monkeypatch.setattr(budget_mod, "utc_today", lambda: seen.setdefault("d", dt.date(2026, 9, 20)))
+    user = make_user()
+    t = Team(user_id=user.id, name="팀", currency="USD")
+    db_session.add(t)
+    db_session.flush()
+    s = budget_mod.compute_budget_status(db_session, t)
+    assert seen["d"] == dt.date(2026, 9, 20) and s["reason_code"] == "NO_BUDGET"

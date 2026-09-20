@@ -27,7 +27,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.cost import is_cost_supported
-from app.cost.coverage import missing_days as coverage_missing_days
+from app.cost.coverage import missing_days as coverage_missing_days, utc_today
 from app.cost.query import accounts_currency_map, money, staleness_threshold_hours
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Team, TeamBudget, TeamBudgetNotification
 
@@ -208,7 +208,7 @@ def compute_budget_status(
     `today`는 실제 오늘(수집될 수 없는 날의 경계), `reference_date`는 보고 싶은 기준일. 생략하면 둘 다
     오늘이라 기존 호출(화면·알림)의 동작이 그대로다. 기준일이 오늘보다 뒤면 오늘로 내린다 — 미래
     날짜를 기준일로 쓰지 않는다."""
-    today = today or dt.date.today()
+    today = today or utc_today()  # 날짜 경계는 UTC — 급증 판정(anomaly.py)과 같은 기준(2026-09-20 통일)
     reference_date = min(reference_date or today, today)
     out: dict = {
         "team_id": team.id,

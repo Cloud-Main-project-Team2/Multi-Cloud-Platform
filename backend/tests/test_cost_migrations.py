@@ -322,3 +322,44 @@ def test_cost_review_items_unique_source_and_resolved_consistency(alembic_config
                 ),
                 {"uid": ids["user_id"]},
             )
+
+
+# --- R2 보강(2026-09-20, b7c2d9e4f1a3): 반복 예산 (team_id, start_date) 부분 UNIQUE -------------
+
+R2_RECURRING_UNIQUE = "b7c2d9e4f1a3"
+
+
+def test_team_budgets_recurring_same_start_date_blocked_but_custom_allowed(alembic_config, migration_db_url):
+    command.upgrade(alembic_config, R2_RECURRING_UNIQUE)
+    engine = create_engine(migration_db_url, future=True)
+    ids = _insert_base_dataset(engine)
+
+    with engine.begin() as conn:
+        team_id = conn.execute(
+            text("INSERT INTO teams (user_id, name) VALUES (:uid, '운영팀') RETURNING id"), {"uid": ids["user_id"]}
+        ).scalar_one()
+        conn.execute(
+            text("INSERT INTO team_budgets (team_id, period_type, start_date, limit_amount) VALUES (:t, 'monthly', '2026-09-01', 300)"),
+            {"t": team_id},
+        )
+        # custom은 대상이 아니다 — 같은 시작일이어도 들어간다(겹침은 애플리케이션이 검사)
+        conn.execute(
+            text("INSERT INTO team_budgets (team_id, period_type, start_date, end_date, limit_amount) VALUES (:t, 'custom', '2026-09-01', '2026-09-15', 50)"),
+            {"t": team_id},
+        )
+
+    with pytest.raises(IntegrityError):
+        with engine.begin() as conn:
+            conn.execute(
+                text("INSERT INTO team_budgets (team_id, period_type, start_date, limit_amount) VALUES (:t, 'quarterly', '2026-09-01', 500)"),
+                {"t": team_id},
+            )
+
+    # downgrade하면 인덱스가 사라진다
+    command.downgrade(alembic_config, HEAD_REVISION)
+    with engine.begin() as conn:
+        conn.execute(
+            text("INSERT INTO team_budgets (team_id, period_type, start_date, limit_amount) VALUES (:t, 'quarterly', '2026-09-01', 500)"),
+            {"t": team_id},
+        )
+    engine.dispose()
