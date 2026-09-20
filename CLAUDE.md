@@ -77,7 +77,9 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 로깅 보강 Phase 2 — 도메인 이벤트·프론트 오류 수집(`/client-logs`)·nginx JSON 로그 | `solcho/be-logging-coverage` | 조은솔 | in progress |
 | 비용 관리 — PR 1~6(정가 추정·`cost.html`·스키마·AWS 실측 수집·조회 API 6종·화면 연동) | `seunghyun/be-cost-*`·`seunghyun/fe-cost-*` (`docs/비용_개발문서/14_개발_트래커.md`가 정본) | 이승현 | merged (#100, #109) |
 | 비용 관리 PR 7 — 팀·예산 API 9종 + 소진율 + 80/100% 임계 알림 (초과 차단은 ADR-042로 보류) | `seunghyun/be-cost-team-budget` | 이승현 | merged (#110) |
-| 비용 관리 PR 8 — 급증 탐지·검토 큐·AI 상담 문맥·`price-comparisons`·예산 기준일 분리 (보고서 부품 3종·반기는 안권형님 확인 후) | `seunghyun/be-cost-anomaly-report` | 이승현 | in progress |
+| 비용 관리 PR 8 — 급증 탐지·검토 큐·AI 상담 문맥·`price-comparisons`·예산 기준일 분리 (보고서 부품 3종·반기는 안권형님 확인 후) | `seunghyun/be-cost-anomaly-report` | 이승현 | merged (#111) |
+| 비용 화면 ③탭 실 연동(팀·예산·급증·검토 큐·가격 비교) + CF-007/CF-030 복귀 + 알림 문구 | `seunghyun/fe-cost-budget-anomaly` | 이승현 | PR #112 |
+| 비용 백엔드 후속 — 반복 예산 부분 UNIQUE·팀별 락·예산 날짜 UTC | `seunghyun/be-cost-hardening` | 이승현 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -630,8 +632,12 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   - **`POST /provisioning/price-comparisons`는 별도 라우터 파일**(`routers/price_comparisons.py`)로 두어
     `routers/provisioning.py`를 건드리지 않았지만 경로 소유(조은솔님) 공유는 필요하다. compute 카테고리만 정가표로
     계산하고 나머지는 `null`+"견적 불가".
-  - **알림 UI 미연결**: `ui.js:notifMeta()`(조은솔님)는 `provisioning_*`만 문구를 만들어 `budget_threshold`·
-    `cost_anomaly`는 type/message_key 원문으로 보인다. 프론트 후속 작업 — 완료로 표시하지 않는다.
+  - **알림 UI**: `ui.js:notifMeta()`(조은솔님)에 `budget_threshold`·`cost_anomaly` 문구·이동 2분기를 프론트 라운드(#112)에서
+    추가했다(별도 커밋, 소유자 확인 필요).
+  - **예산 쓰기 동시성(2026-09-20, `seunghyun/be-cost-hardening`)**: "활성 반복 중복 409"·"custom 겹침 409"는 SELECT→INSERT라
+    동시 요청에 뚫렸다(프론트 스모크가 초기화를 두 번 해 실제 재현). `team_budgets`에 부분 UNIQUE
+    `(team_id, start_date) WHERE end_date IS NULL`(`b7c2d9e4f1a3`) + 예산 생성·수정 라우터가 `pg_advisory_xact_lock`으로
+    팀별 직렬화. IntegrityError는 같은 409로 통일. 예산 쪽 '오늘'도 `coverage.utc_today()`로 통일(급증과 같은 경계).
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 

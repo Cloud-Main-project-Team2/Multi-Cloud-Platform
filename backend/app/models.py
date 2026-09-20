@@ -523,6 +523,12 @@ class TeamBudget(CreatedAtMixin, Base):
             name="ck_team_budgets_custom_max_one_year",
         ),
         sa.Index("ix_team_budgets_team_period", "team_id", "period_type", "start_date"),
+        # 반복 예산은 팀당 시작일이 유일하다 — 애플리케이션의 "활성 반복 중복 409" 검사가 동시 요청에
+        # 뚫리는 것을 DB가 막는다(2026-09-20, b7c2d9e4f1a3). custom은 겹침 검사가 따로 있어 제외.
+        sa.Index(
+            "uq_team_budgets_recurring_start", "team_id", "start_date", unique=True,
+            postgresql_where=sa.text("end_date IS NULL"),
+        ),
     )
 
 
