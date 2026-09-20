@@ -213,6 +213,8 @@
     var costByProvider = costSummary ? costByProviderFromSummary(costSummary) : {};
 
     var container = document.getElementById("dash-cloud-cards");
+    // "실시간"이 아니다 — 마지막 동기화 시점에 저장된 값이다(비용 파트 확정 16). 기준 시각을 함께 적는다.
+    var syncedAtText = summary && summary.last_synced_at ? new Date(summary.last_synced_at).toLocaleString("ko-KR") : "동기화 이력 없음";
     if (container) {
       container.innerHTML = PLATFORMS.map(function (p) {
         var count = countByProvider[p] || 0;
@@ -232,7 +234,7 @@
           '<span class="rounded border border-border px-1.5 text-[11px] text-muted-foreground">' + costText + "</span>" +
           "</div>" +
           '<p class="mt-2 text-2xl font-extrabold">' + count + "개 리소스</p>" +
-          '<p class="mt-1 text-xs text-muted-foreground">리소스 수는 실시간 조회 · 비용은 실측 우선, 없으면 정가 추정</p>' +
+          '<p class="mt-1 text-xs text-muted-foreground">저장된 값 · 기준 시각 ' + escHtml(syncedAtText) + " · 비용은 실측 우선, 없으면 정가 추정</p>" +
           "</div>"
         );
       }).join("");

@@ -208,6 +208,7 @@ class BudgetStatusBudget(BaseModel):
     period_start: str
     period_end: str  # 제외 경계
     period_state: str  # upcoming | in_progress | ended
+    basis_date: str  # 이 응답이 기준으로 삼은 날(기본 오늘). 과거 기준일 재계산은 지금 데이터로 다시 센 것이다
 
 
 class BudgetStatusUsage(BaseModel):

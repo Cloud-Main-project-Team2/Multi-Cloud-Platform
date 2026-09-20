@@ -17,6 +17,8 @@ from __future__ import annotations
 import datetime as dt
 
 from fastapi import APIRouter, Depends, Response
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.cost.budget import (
@@ -30,6 +32,7 @@ from app.cost.budget import (
     select_status_budget,
     team_budgets,
 )
+from app.cost.coverage import utc_today
 from app.cost.notify import evaluate_budget_thresholds
 from app.cost.query import accounts_currency_map, money
 from app.db import get_db
@@ -67,6 +70,14 @@ from app.serialization import iso_z, str_id
 router = APIRouter(prefix="/api/v1", tags=["teams"])
 
 MAX_CUSTOM_DAYS = 366  # DB CHECK(start + 1 year)와 같은 규칙 — 윤년 포함 1년
+BUDGET_LOCK_NAMESPACE = 7_310_002  # pg_advisory_xact_lock 네임스페이스(ingest.py의 수집 락과 다른 값)
+
+
+def _lock_team_budgets(db: Session, team_id: int) -> None:
+    """팀 하나의 예산 쓰기(생성·수정)를 트랜잭션 단위로 직렬화한다 — "활성 반복 중복"·"custom 겹침"
+    검사가 SELECT→INSERT라 동시 요청에 뚫리기 때문(2026-09-20 발견). 같은 시작일은 DB 부분 UNIQUE가
+    최종 방어이고, 이 락은 다른 시작일·custom 겹침까지 막는다. 트랜잭션 끝에 자동 해제."""
+    db.execute(text("SELECT pg_advisory_xact_lock(:ns, :key)"), {"ns": BUDGET_LOCK_NAMESPACE, "key": team_id})
 
 
 # --- 공통 -----------------------------------------------------------------------------------
@@ -120,7 +131,7 @@ def _account_out(account: CloudAccount, currency: str | None, team_currency: str
 
 
 def _serialize_team(db: Session, team: Team, today: dt.date | None = None) -> TeamOut:
-    today = today or dt.date.today()
+    today = today or utc_today()
     accounts = _team_accounts(db, team.id)
     currency_of = accounts_currency_map(db, accounts)
     budgets = team_budgets(db, team.id)
@@ -325,7 +336,7 @@ def list_budgets(
     db: Session = Depends(get_db),
 ) -> BudgetListResponse:
     team = _get_owned_team(db, current_user, team_id)
-    today = dt.date.today()
+    today = utc_today()
     budgets = team_budgets(db, team.id)
     chain = recurring_chain(budgets)
     items = [_serialize_budget(b, chain, today) for b in sorted(budgets, key=lambda b: (b.start_date, b.id), reverse=True)]
@@ -340,6 +351,7 @@ def create_budget(
     db: Session = Depends(get_db),
 ) -> BudgetDetailResponse:
     team = _get_owned_team(db, current_user, team_id)
+    _lock_team_budgets(db, team.id)
     budgets = team_budgets(db, team.id)
     end_date: dt.date | None = None
 
@@ -369,12 +381,20 @@ def create_budget(
         limit_amount=payload.limit_amount, currency=payload.currency or team.currency,
     )
     db.add(budget)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        # 락을 우회한 경로(직접 INSERT 등)까지 DB UNIQUE가 막는다 — 같은 409로 통일한다.
+        db.rollback()
+        raise ApiError(
+            409, "CONFLICT", "이미 같은 적용 시작일의 반복 예산이 있습니다.",
+            details=[{"field": "start_date", "reason": "active_recurring_exists"}],
+        ) from exc
     _safe_evaluate(db, team)
     db.commit()
     db.refresh(budget)
     chain = recurring_chain(team_budgets(db, team.id))
-    return BudgetDetailResponse(data=_serialize_budget(budget, chain, dt.date.today()))
+    return BudgetDetailResponse(data=_serialize_budget(budget, chain, utc_today()))
 
 
 @router.patch("/team-budgets/{budget_id}", response_model=BudgetDetailResponse)
@@ -385,13 +405,14 @@ def patch_budget(
     db: Session = Depends(get_db),
 ) -> BudgetDetailResponse:
     budget, team = _get_owned_budget(db, current_user, budget_id)
+    _lock_team_budgets(db, team.id)
     locked = [k for k in ("start_date", "period_type", "currency") if k in (payload.model_extra or {})]
     if locked:
         raise ApiError(
             409, "CONFLICT", "적용 시작일·주기·통화는 바꿀 수 없습니다. 새 예산을 만드세요.",
             details=[{"field": k, "reason": "create_new_budget"} for k in locked],
         )
-    today = dt.date.today()
+    today = utc_today()
     budgets = team_budgets(db, team.id)
     chain = recurring_chain(budgets)
     if budget_state(budget, chain, today) != STATE_UPCOMING:
@@ -437,11 +458,20 @@ def delete_budget(
 @router.get("/teams/{team_id}/budget-status", response_model=BudgetStatusResponse)
 def get_budget_status(
     team_id: str,
+    reference_date: str | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> BudgetStatusResponse:
+    """`reference_date`(YYYY-MM-DD, 선택)를 주면 그 날을 기준으로 예산·구간을 고르고 그 날까지의
+    사용액을 낸다 — 보고서 등이 과거 기간을 볼 때 쓴다. 미래 날짜는 오늘로 내린다. 생략하면 오늘."""
     team = _get_owned_team(db, current_user, team_id)
-    s = compute_budget_status(db, team)
+    ref: dt.date | None = None
+    if reference_date:
+        try:
+            ref = dt.date.fromisoformat(reference_date)
+        except ValueError as exc:
+            raise validation_error("reference_date는 YYYY-MM-DD 형식이어야 합니다.", details=[{"field": "reference_date", "reason": "invalid"}]) from exc
+    s = compute_budget_status(db, team, reference_date=ref)
     b = s["budget"]
     u = s["usage"]
     f = s["forecast"]
@@ -451,7 +481,7 @@ def get_budget_status(
             budget=BudgetStatusBudget(
                 id=str_id(b["id"]), period_type=b["period_type"], limit_amount=b["limit_amount"], currency=b["currency"],
                 period_start=b["period_start"].isoformat(), period_end=b["period_end"].isoformat(),
-                period_state=b["period_state"],
+                period_state=b["period_state"], basis_date=b["basis_date"].isoformat(),
             ) if b else None,
             usage=BudgetStatusUsage(
                 currency=u["currency"], amount=u["amount"], basis=u["basis"], net_amount=u["net_amount"],
