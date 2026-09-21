@@ -238,7 +238,8 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 /* 계정별 비용 및 수집 상태 — 데스크톱 표 */
 .account-table th, .account-table td { padding: 9px 8px; vertical-align: middle; }
 .account-table td.num { font-weight: 650; }
-.account-table .provider-cell { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.provider-cell { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; vertical-align: middle; }
+.provider-logo { height: 14px; width: auto; flex: none; }
 .account-table .status-cell { display: flex; flex-direction: column; gap: 2px; }
 .account-table .status-cell .tiny { line-height: 1.4; }
 .account-table td .btn { padding: 5px 9px; font-size: 11px; }
@@ -299,3 +300,19 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 #panel-analysis.grid { align-items: start; }
 /* 차트: viewBox 너비 = 실제 픽셀 너비라 height:auto가 곧 설계 높이(200~260px)다. 비율은 왜곡하지 않는다 */
 .chart { max-width: 100%; }
+
+/* ═══ ③ 예산·검토 탭 (2026-09-21) ═══ */
+.start-guide { display: grid; gap: 10px; }
+.start-steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 12px; }
+.start-steps li::marker { color: var(--primary); font-weight: 700; }
+.budget-form > summary { list-style: none; }
+.budget-form > summary::-webkit-details-marker { display: none; }
+.budget-form > summary::after { content: " ▾"; color: var(--muted-foreground); }
+.budget-form[open] > summary::after { content: " ▴"; }
+.budget-form .filter-grid { margin-top: 10px; }
+.budget-form .filter-grid .filter-box { flex: 1 1 120px; }
+/* ③ 마무리(2026-09-21): 팀 삭제 확인 박스·상태 태그가 status-list 안에서도 정렬되게 */
+#team-delete-confirm { margin-top: 10px; }
+.status-list .status-tag { justify-content: flex-end; }
+/* 배지 여러 개를 나란히 — 붙지 않게 gap, 좁으면 줄바꿈 */
+.status-row { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 8px; }

@@ -261,8 +261,8 @@ window.MCPCost = (function () {
       anomalies:        "/cost-anomalies" + apiQuery("status=open"),
       reviewItems:      "/cost-review-items" + scopeQuery("status=open"),
       // CF-034가 큐 항목에 금액을 붙일 때 쓰는 짝 — 큐는 기간 필터가 없으므로 최근 90일을 넓게 본다
-      anomaliesAll:     "/cost-anomalies" + scopeQuery("status=all&period_start=" + addDaysISO(todayISO(), -90) + "&period_end=" + addDaysISO(todayISO(), 1)),
-      notifications:    "/notifications?limit=50"
+      anomaliesAll:     "/cost-anomalies" + scopeQuery("status=all&period_start=" + addDaysISO(todayISO(), -90) + "&period_end=" + addDaysISO(todayISO(), 1))
+      // notifications는 팀 종속 조회(loadTeamScoped)에서 예산 상태와 함께 읽는다 — 쓰기 뒤 재조회와 같은 경로
     };
     var keys = Object.keys(reqs);
     setBusy(true);
@@ -293,18 +293,33 @@ window.MCPCost = (function () {
   }
 
   /** 선택 팀이 정해진 뒤에만 부를 수 있는 3종(budget-status·budgets). 팀이 없으면 비운다. */
+  // 팀별 후속 조회(budget-status·budgets·notifications). A팀 조회 중 B팀을 고르면 늦게 온 A팀 응답이
+  // B팀 화면을 덮을 수 있다 — 요청마다 세대 번호와 "그때 선택한 팀"을 기억하고, 응답을 반영하기 직전에
+  // 둘 다 여전히 유효한지 확인한다. 공통 load()의 순번과는 별개다(공통 조회는 팀 조회를 포함하므로
+  // 여기 세대도 함께 올린다).
+  var teamLoadSeq = 0;
+  var teamLoading = false;
   function loadTeamScoped() {
     var teams = (ctx.teams && ctx.teams.ok && ctx.teams.value.items) || [];
     if (selectedTeamId && !teams.some(function (t) { return t.id === selectedTeamId; })) selectedTeamId = null;
     if (!selectedTeamId && teams.length) selectedTeamId = teams[0].id;
-    if (!selectedTeamId) { ctx.budgetStatus = null; ctx.budgets = null; return Promise.resolve(); }
+    var seq = ++teamLoadSeq;
+    if (!selectedTeamId) { ctx.budgetStatus = null; ctx.budgets = null; teamLoading = false; return Promise.resolve(); }
+    var teamId = selectedTeamId;
+    teamLoading = true;
     return Promise.all([
-      settle(window.MCPApi.request("/teams/" + encodeURIComponent(selectedTeamId) + "/budget-status")),
-      settle(window.MCPApi.request("/teams/" + encodeURIComponent(selectedTeamId) + "/budgets"))
-    ]).then(function (r) { ctx.budgetStatus = r[0]; ctx.budgets = r[1]; });
+      settle(window.MCPApi.request("/teams/" + encodeURIComponent(teamId) + "/budget-status")),
+      settle(window.MCPApi.request("/teams/" + encodeURIComponent(teamId) + "/budgets")),
+      settle(window.MCPApi.request("/notifications?limit=50"))
+    ]).then(function (r) {
+      if (seq !== teamLoadSeq || teamId !== selectedTeamId) return; // 그 사이 다른 팀을 골랐다 — 버린다
+      ctx.budgetStatus = r[0]; ctx.budgets = r[1]; ctx.notifications = r[2];
+      teamLoading = false;
+    });
   }
 
-  /** ③ 탭만 다시 그린다(팀 바꿈·예산 저장 뒤). ①② 탭은 건드리지 않는다. */
+  /** ③ 탭만 다시 가져온다(팀 바꿈·예산 저장 뒤). 서버가 쓰기 뒤 알림을 평가하므로 예산 상태와 최근 알림을
+      함께 새로 읽는다(loadTeamScoped가 세 요청을 다 한다). ①② 탭은 건드리지 않는다. */
   function reloadBudgetTab() {
     return settle(window.MCPApi.request("/teams")).then(function (r) {
       ctx.teams = r;
@@ -335,7 +350,7 @@ window.MCPCost = (function () {
     { id: "CF-027",  tab: "budget",   render: renderThresholds },
     { id: "CF-033",  tab: "budget",   render: renderAnomalies },
     { id: "CF-039",  tab: "budget",   render: renderAiCta },
-    { id: "CF-041",  tab: "budget",   render: function () { return { state: "UNSUPPORTED", html: pendingBlockHtml("비용 보고서 부품(미리보기·CSV)은 보고서 담당과 필요한 데이터·집계 단위·응답 형태를 맞춘 뒤 만듭니다(2026-09-20 결정). 선행 조건: 보고서 비용 섹션 계약 확정.") }; } }
+    { id: "CF-041",  tab: "budget",   render: function () { return { state: "UNSUPPORTED", html: pendingBlockHtml("비용 보고서(미리보기·CSV 내보내기)는 준비 중입니다. 보고서 기능과 연동 방식이 정해지면 이 자리에서 제공됩니다.") }; } }
   ];
 
   /** 나중에 만들어진 <select>에 dropdown.js 룩을 입힌다(CFL-01 필터와 동일 클래스). */
@@ -356,7 +371,7 @@ window.MCPCost = (function () {
     if (!b || !content) return;
     var result;
     try { result = b.render(); }
-    catch (e) { result = { state: "COLLECT_FAILED", html: fetchFailedHtml({ ok: false, error: e }, b.id) }; }
+    catch (e) { if (window.console) console.error("[cost] " + b.id + " 렌더 실패", e); result = { state: "COLLECT_FAILED", html: fetchFailedHtml({ ok: false, error: e }, b.id) }; }
     content.setAttribute("data-rendered-state", result.state || "CONNECTED_OK");
     content.innerHTML = result.html;
   }
@@ -375,7 +390,7 @@ window.MCPCost = (function () {
       if (b.id === "CFL-01" && filtersBuilt) return; // 필터는 renderFilters()가 값만 갱신한다 — DOM 재생성 금지
       var result;
       try { result = b.render(); }
-      catch (e) { result = { state: "COLLECT_FAILED", html: fetchFailedHtml({ ok: false, error: e }, b.id) }; }
+      catch (e) { if (window.console) console.error("[cost] " + b.id + " 렌더 실패", e); result = { state: "COLLECT_FAILED", html: fetchFailedHtml({ ok: false, error: e }, b.id) }; }
       content.setAttribute("data-rendered-state", result.state || "CONNECTED_OK");
       if (result.comparable === false) content.setAttribute("data-comparable", "false");
       else content.removeAttribute("data-comparable");
@@ -844,9 +859,14 @@ window.MCPCost = (function () {
   // ── CF-009 계정별 비용 및 수집 상태 ─────────────────────────────────────────────────
   var PROVIDER_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
   var PROVIDER_DOT = { aws: "", azure: "azure", gcp: "gcp" };
+  // dashboard.js·inventory.js의 PROVIDER_ICON과 같은 에셋 — 표의 플랫폼 이름 앞에 로고를 붙인다(차트 범례는 색 점 유지).
+  var PROVIDER_ICON = { aws: "assets/imgs/aws.png", azure: "assets/imgs/azure.png", gcp: "assets/imgs/gcp.png" };
 
   function providerCellHtml(p) {
-    return '<span class="provider-cell"><span class="dot' + (PROVIDER_DOT[p] ? " " + PROVIDER_DOT[p] : "") + '"></span>' + esc(PROVIDER_LABEL[p] || p) + "</span>";
+    var mark = PROVIDER_ICON[p]
+      ? '<img src="' + PROVIDER_ICON[p] + '" alt="" class="provider-logo" />'
+      : '<span class="dot' + (PROVIDER_DOT[p] ? " " + PROVIDER_DOT[p] : "") + '"></span>';
+    return '<span class="provider-cell">' + mark + esc(PROVIDER_LABEL[p] || p) + "</span>";
   }
   function statusTagHtml(status) {
     return '<span class="status-tag ' + esc(S.kind(status) || "") + '">' + esc(S.label(status) || status) + "</span>";
@@ -1293,7 +1313,7 @@ window.MCPCost = (function () {
         (selectedTeamId ? " · 팀 " + esc(teamNameOf(selectedTeamId)) : "") + "</p>" +
       '<button type="button" class="btn yellow" data-modal-open="#agent-chat-modal">AI 비용 상담</button>' +
       "</div>" +
-      '<p class="note">AI가 직접 계산하지 않습니다. 위 조건(기간·CSP·계정·팀)을 서버에 그대로 보내고, 서버가 계산한 값으로만 답합니다. 금액은 화면에서 보내지 않습니다.</p>';
+      '<p class="note">비용이 왜 늘었는지, 어느 계정이 많이 쓰는지 등을 물어볼 수 있습니다. 위 조건(기간·CSP·계정' + (selectedTeamId ? "·팀" : "") + ")을 서버에 보내고 서버가 계산한 실측·예산·급증 요약을 바탕으로 답합니다 — 화면에서 금액을 보내거나 AI가 계산하지 않습니다. 팀이 없어도 쓸 수 있으며, 답변은 참고용이고 청구 금액을 보장하지 않습니다.</p>";
     return { state: "CONNECTED_OK", html: html };
   }
 
@@ -1341,16 +1361,47 @@ window.MCPCost = (function () {
   }
 
   // ── CFL-03 팀 선택 · 계정 묶음 ─────────────────────────────────────────────────────
+  /** 팀 종속 블록(CF-026·025·027)이 값을 그리기 전에 확인하는 선행 상태. 조회 실패·조회 중·팀 없음·미선택을
+      구분한다 — 조회 실패를 "팀이 없습니다"로, 조회 중을 "값 없음"으로 보여주지 않는다. 그릴 수 있으면 null. */
+  function teamGateHtml(blockName) {
+    if (ctx.teams && !ctx.teams.ok) {
+      return { state: "COLLECT_FAILED", html: '<div class="state-view" role="status"><span class="dash">—</span><p>팀 목록을 가져오지 못해 ' + esc(blockName) + "을(를) 표시할 수 없습니다.</p>" +
+        '<p class="tiny muted">' + esc(window.MCErr ? window.MCErr.headline(ctx.teams.error) : (ctx.teams.error && ctx.teams.error.message) || "") + "</p>" +
+        '<button type="button" class="btn no-print" data-action="reload-budget-tab">다시 조회</button></div>' };
+    }
+    if (!selectedTeamId) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="note">팀을 선택하면 표시됩니다.</p>' };
+    if (teamLoading) return { state: "PENDING", html: '<p class="note" role="status">' + esc(teamNameOf(selectedTeamId)) + " 팀 " + esc(blockName) + " 조회 중…</p>" };
+    return null;
+  }
+
+  /** 팀이 없으면 예산 카드 3장(CF-026·CF-025·CF-027)이 각각 "팀을 먼저 선택하세요"를 반복한다 — 그 대신
+      CFL-03 하나를 시작 안내로 두고 3장은 숨긴다. DOM·id는 그대로(팀이 생기면 다시 보인다). */
+  var BUDGET_DEPENDENT_BLOCKS = ["CF-026", "CF-025", "CF-027"];
+  function setBudgetBlocksHidden(hidden) {
+    BUDGET_DEPENDENT_BLOCKS.forEach(function (id) { var el = document.getElementById(id); if (el) el.hidden = hidden; });
+  }
+
   function renderTeamSelect() {
-    if (!ctx.teams || !ctx.teams.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.teams, "팀 목록") };
+    if (!ctx.teams || !ctx.teams.ok) { setBudgetBlocksHidden(false); return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.teams, "팀 목록") }; }
     var d = ctx.teams.value;
     var teams = d.items || [];
     var unassigned = d.unassigned || { account_count: 0, accounts: [] };
+    setBudgetBlocksHidden(!teams.length);
     var html = "";
     if (!teams.length) {
-      html += '<div class="state-view" role="status"><span class="dash">—</span><p>팀이 아직 없습니다. 팀을 만들고 계정을 묶으면 예산·임계 알림을 쓸 수 있습니다.</p>' +
-        '<button type="button" class="btn primary no-print" data-action="open-team-dialog">팀 만들기</button></div>';
+      setBlockTitle("CFL-03", "예산 시작하기");
+      html += '<div class="start-guide">' +
+        '<p class="small">팀은 예산을 적용할 <strong>계정 묶음</strong>입니다. 순서대로 하면 예산 대비 실적과 80%·100% 알림을 받을 수 있습니다.</p>' +
+        '<ol class="start-steps">' +
+          '<li><strong>팀 만들기</strong> — 이름과 예산 통화(USD 등)를 정합니다</li>' +
+          '<li><strong>계정 배정</strong> — 미배정 계정 ' + unassigned.account_count + "개 중 이 팀에 넣을 계정을 고릅니다(1계정 1팀)</li>" +
+          '<li><strong>예산 설정</strong> — 월간·분기·연간·사용자 지정 중 하나로 한도를 둡니다</li>' +
+        "</ol>" +
+        '<div class="button-row no-print"><button type="button" class="btn primary" data-action="open-team-dialog">팀 만들기</button></div>' +
+        '<p class="note">팀은 조직 권한이나 구성원 초대가 아니라, 내가 연결한 클라우드 계정을 묶는 단위입니다. 아래 급증 탐지·AI 비용 상담은 팀 없이도 동작하고, 비용 작업 큐는 ① 비용 개요 탭에 있습니다.</p>' +
+        "</div>";
     } else {
+      setBlockTitle("CFL-03", "팀 선택");
       html += '<div class="filter-grid">' +
         '<label class="filter-box" style="flex-basis:260px">팀 선택<select id="team-select">' +
         teams.map(function (t) {
@@ -1363,11 +1414,8 @@ window.MCPCost = (function () {
       if (t) {
         var mismatched = (t.accounts || []).filter(function (a) { return a.currency_matches_team === false; });
         html += '<div class="status-list" style="margin-top:14px">' +
-          "<div><span>계정</span><span>" + (t.accounts.length ? t.accounts.map(function (a) {
-            return esc(PROVIDER_LABEL[a.provider] || a.provider) + " " + esc(a.account_label || a.external_account_id) +
-              (a.currency ? " (" + esc(a.currency) + ")" : " (통화 미확인)") +
-              (a.currency_matches_team === false ? ' <span class="badge" style="color:var(--cost-warn)">팀 통화와 다름</span>' : "");
-          }).join(" · ") : "배정된 계정 없음") + "</span></div>" +
+          "<div><span>계정</span><span>" + (t.accounts.length ? accountSummaryText(t.accounts, mismatched) +
+            ' <button type="button" class="btn no-print" data-action="open-team-dialog" style="padding:2px 8px;font-size:11px">목록</button>' : "배정된 계정 없음") + "</span></div>" +
           "<div><span>팀 통화</span><span>" + esc(t.currency) + "</span></div>" +
           "<div><span>현재 예산</span><span>" + (t.active_budget
             ? esc(F.money(t.active_budget.limit_amount, t.active_budget.currency)) + " · " + esc(PERIOD_LABEL[t.active_budget.period_type] || t.active_budget.period_type)
@@ -1376,19 +1424,36 @@ window.MCPCost = (function () {
         if (mismatched.length) html += '<p class="warning">팀 통화(' + esc(t.currency) + ")와 다른 통화의 계정 " + mismatched.length + "개는 예산 계산에서 제외됩니다. 팀에서 자동으로 빠지지는 않습니다.</p>";
       }
     }
-    html += '<p class="note">미배정 계정 ' + unassigned.account_count + "개" +
-      (unassigned.accounts && unassigned.accounts.length ? ": " + unassigned.accounts.map(function (a) { return esc(PROVIDER_LABEL[a.provider] || a.provider) + " " + esc(a.account_label || a.external_account_id); }).join(", ") : "") +
-      " · 팀 선택은 이 탭(예산·검토)에만 적용됩니다.</p>";
+    // 미배정 계정 목록은 길어지기 쉬우니 개수만 보이고 이름은 접는다
+    html += (unassigned.accounts && unassigned.accounts.length
+      ? '<details class="note"><summary style="cursor:pointer">미배정 계정 ' + unassigned.account_count + "개 보기</summary>" +
+          unassigned.accounts.map(function (a) { return esc(PROVIDER_LABEL[a.provider] || a.provider) + " " + esc(a.account_label || a.external_account_id); }).join(", ") + "</details>"
+      : '<p class="note">미배정 계정 없음</p>') +
+      (teams.length ? '<p class="note">팀 선택은 이 탭(예산·검토)에만 적용됩니다.</p>' : "");
     return { state: "CONNECTED_OK", html: html };
   }
 
   var PERIOD_LABEL = { monthly: "월간", quarterly: "분기", annual: "연간", custom: "사용자 지정" };
 
+  /** 팀 계정을 이름으로 다 나열하면 6개만 돼도 한 줄을 넘친다 — 개수·통화 확인/미확인·팀 통화 불일치만 요약하고
+      이름 목록은 "팀 관리" 모달(체크박스)에서 본다. 통화 미확인 = 아직 비용 수집이 안 돼 통화를 모르는 계정. */
+  function accountSummaryText(accounts, mismatched) {
+    var withCur = accounts.filter(function (a) { return a.currency; });
+    var currencies = {};
+    withCur.forEach(function (a) { currencies[a.currency] = true; });
+    var parts = [accounts.length + "개"];
+    if (withCur.length) parts.push("통화 확인 " + withCur.length + " (" + esc(Object.keys(currencies).join(", ")) + ")");
+    if (accounts.length - withCur.length) parts.push("통화 미확인 " + (accounts.length - withCur.length) + " (수집 전)");
+    if (mismatched.length) parts.push('<span style="color:var(--cost-warn)">팀 통화와 다름 ' + mismatched.length + "</span>");
+    return parts.join(" · ");
+  }
+
   function teamDialogHtml() {
     var teams = teamsList();
     var t = teamById(selectedTeamId);
     var allAccounts = capAccounts.slice();
-    var html = '<h3 class="small" style="font-weight:700">새 팀</h3>' +
+    var html = '<p class="note" style="margin-top:0">팀 = 내가 연결한 클라우드 계정의 묶음(예산 적용 단위). 조직 권한·구성원 초대 기능이 아닙니다.</p>' +
+      '<h3 class="small" style="font-weight:700">새 팀</h3>' +
       '<div class="filter-grid" style="margin-top:6px">' +
       '<label class="filter-box" style="flex-basis:200px">이름<input id="team-new-name" type="text" maxlength="200" placeholder="예: 운영팀"></label>' +
       '<label class="filter-box">통화<select id="team-new-currency"><option value="USD">USD</option><option value="KRW">KRW</option></select></label>' +
@@ -1415,7 +1480,9 @@ window.MCPCost = (function () {
         }).join("") : '<div><span class="tiny muted">연결된 계정이 없습니다</span></div>') +
         "</div>" +
         '<div class="button-row"><button type="button" class="btn primary" data-action="team-put-accounts" data-team-id="' + esc(t.id) + '">배정 저장</button>' +
-        '<button type="button" class="btn" data-action="team-delete" data-team-id="' + esc(t.id) + '" data-team-name="' + esc(t.name) + '">팀 삭제</button></div>' +
+        '<button type="button" class="btn" data-action="team-delete-ask" data-team-id="' + esc(t.id) + '">팀 삭제…</button></div>' +
+        '<div id="team-delete-confirm" class="warning" hidden>팀 <strong>' + esc(t.name) + '</strong>을(를) 삭제합니다. 클라우드 계정과 비용 기록은 지워지지 않고 계정은 미배정으로 돌아갑니다. 이 팀의 예산과 알림 기록은 함께 삭제됩니다. ' +
+          '<button type="button" class="btn" data-action="team-delete" data-team-id="' + esc(t.id) + '">삭제 확인</button> <button type="button" class="btn" data-action="team-delete-cancel">취소</button></div>' +
         '<p id="team-edit-feedback" class="note" role="status"></p>';
     }
     return html;
@@ -1448,69 +1515,130 @@ window.MCPCost = (function () {
       " · 팀 전체 계정 · 현재 소속 기준 · <strong>상단 필터 미적용</strong></p>";
   }
 
+  function budgetStateBadge(b) {
+    return '<span class="badge">' + esc(STATE_LABEL[b.period_state] || b.period_state) + " · " + esc(PERIOD_LABEL[b.period_type] || b.period_type) + "</span>";
+  }
+
   function renderBudgetStatus() {
-    if (!selectedTeamId) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="note">팀을 먼저 선택하세요.</p>' };
-    if (!ctx.budgetStatus || !ctx.budgetStatus.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.budgetStatus, "예산 대비 실적") };
+    var gate = teamGateHtml("예산 대비 실적");
+    if (gate) return gate;
+    if (!ctx.budgetStatus || !ctx.budgetStatus.ok) {
+      return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.budgetStatus, "예산 대비 실적") + '<div class="button-row no-print"><button type="button" class="btn" data-action="reload-budget-tab">다시 조회</button></div>' };
+    }
     var d = ctx.budgetStatus.value;
     var b = d.budget;
-    var html = "";
+    var team = teamById(selectedTeamId);
+    var head = '<p class="small" style="margin-bottom:6px"><strong>' + esc(team ? team.name : "팀") + "</strong>" + (b ? " · " + budgetStateBadge(b) + " · 한도 " + esc(F.money(b.limit_amount, b.currency)) : "") + "</p>";
+    var html = head;
     if (!d.computable) {
-      html += '<div class="state-view" role="status"><span class="dash">—</span><p>' + esc(REASON_TEXT[d.reason_code] || ("판정하지 않습니다 (" + d.reason_code + ")")) + "</p>" +
+      html += '<div class="state-view" role="status"><span class="dash">—</span><p>' + esc(REASON_TEXT[d.reason_code] || "판정하지 않습니다.") + "</p>" +
         (d.reason_code === "CURRENCY_MISMATCH" && d.excluded_accounts.length ? "<p>제외 계정: " + d.excluded_accounts.map(function (a) { return esc(PROVIDER_LABEL[a.provider] || a.provider) + " " + esc(a.account_label || a.cloud_account_id) + " (" + esc(a.currency || "통화 미확인") + ")"; }).join(", ") + "</p>" : "") +
-        (d.usage && d.reason_code === "MISSING_DAYS" ? '<p class="tiny muted">지금까지 합산된 사용액 ' + esc(F.money(d.usage.amount, d.usage.currency)) + " (판정 보류 — 결측일이 채워지면 소진률이 나옵니다)</p>" : "") +
+        (d.usage && d.reason_code === "MISSING_DAYS" ? '<p class="tiny muted">' + (Number(d.usage.amount) > 0 ? "지금까지 합산된 사용액 " + esc(F.money(d.usage.amount, d.usage.currency)) : "아직 합산된 사용액이 없습니다(수집된 날 없음)") + " — 결측일이 채워지면 소진율을 냅니다(0%가 아닙니다)</p>" : "") +
         (REASON_ACTION[d.reason_code] || "") + "</div>";
       if (b) html += budgetScopeNote(b);
+      html += '<div class="button-row no-print"><button type="button" class="btn" data-action="open-budget-basis-dialog">계산 근거</button></div>';
       return { state: "CONNECTED_OK", html: html };
     }
     var ratio = Number(d.ratio_pct);
-    var remaining = F.subDecimalString(b.limit_amount, d.usage.amount); // 음수 보존(초과분)
     var over = ratio > 100;
+    var remaining = F.subDecimalString(b.limit_amount, d.usage.amount);   // 음수면 초과
+    var overAmount = F.subDecimalString(d.usage.amount, b.limit_amount);
     html += '<div class="paired">' +
       '<div><div class="value">' + esc(F.money(d.usage.amount, d.usage.currency)) + ' <span class="tiny muted">/ ' + esc(F.money(b.limit_amount, b.currency)) + "</span></div>" +
-        '<p class="small">소진률 <strong>' + esc(d.ratio_pct) + "%</strong> · 잔여 " + (over ? '<span class="money-positive">' : "") + esc(F.money(remaining, b.currency)) + (over ? "</span>" : "") +
-        (d.forecast ? " · 전망 " + esc(d.forecast.ratio_pct) + "% (" + esc(F.money(d.forecast.amount, b.currency)) + ", " + esc(d.forecast.based_through) + "까지 실측 기준)" : "") + "</p>" +
+        '<p class="small">소진율 <strong>' + esc(d.ratio_pct) + "%</strong> · " +
+        (over ? '초과 <span class="money-positive">' + esc(F.money(overAmount, b.currency)) + "</span>" : "남은 금액 " + esc(F.money(remaining, b.currency))) +
+        (d.forecast ? " · 월말 전망 " + esc(d.forecast.ratio_pct) + "% (" + esc(F.money(d.forecast.amount, b.currency)) + ")" : "") + "</p>" +
         '<div class="bar-track" aria-hidden="true"><div class="bar-fill" style="width:' + Math.min(ratio, 100) + '%"></div></div>' +
-        (over ? '<div class="bar-track" style="margin-top:3px"><div class="bar-fill" style="width:' + Math.min(ratio - 100, 100) + '%;background:var(--cost-up)"></div></div><p class="tiny muted">두 번째 막대 = 100% 초과분</p>' : "") +
+        (over ? '<div class="bar-track" style="margin-top:3px"><div class="bar-fill" style="width:' + Math.min(ratio - 100, 100) + '%;background:var(--cost-up)"></div></div><p class="tiny muted">막대는 100%까지, 두 번째 막대가 초과분 — 수치는 ' + esc(d.ratio_pct) + "% 그대로</p>" : "") +
+        (b.period_state === "upcoming" ? '<p class="tiny muted">시작 전 예산입니다 — 사용액은 아직 0입니다.</p>' : "") +
       "</div>" +
-      '<div>' + (over ? '<p class="warning">한도를 ' + esc(F.money(F.subDecimalString(d.usage.amount, b.limit_amount), b.currency)) + " 초과했습니다. 생성 차단은 이번 범위가 아닙니다 — 알림까지입니다.</p>" : '<p class="note">한도 이내입니다.</p>') +
+      '<div>' + (over ? '<p class="warning">한도를 넘었습니다. 예산 초과는 알림 기준이며 리소스 생성을 막지 않습니다.</p>' : '<p class="note">한도 이내입니다. 80%·100% 도달 시 알림이 만들어집니다(생성 차단 없음).</p>') +
         '<div class="status-list">' + d.thresholds.map(function (t) {
-          return "<div><span>" + t.percent + "%</span><span>" + (t.crossed ? "도달" : "미도달") + (t.notified ? " · 알림 발송" : (t.crossed ? " · 알림 대기" : "")) + "</span></div>";
+          return "<div><span>" + t.percent + "%</span><span>" + (t.crossed ? "도달" : "미도달") + (t.notified ? " · 알림 생성됨" : (t.crossed ? " · 알림 생성 미확인" : "")) + "</span></div>";
         }).join("") + "</div>" +
-        '<p class="tiny muted">사용액 기준: ' + esc(d.usage.basis) + " (크레딧·환불 제외) · 순액 " + esc(F.money(d.usage.net_amount, d.usage.currency)) + (d.usage.is_estimated ? " · 잠정치 포함" : "") + "</p>" +
+        '<p class="tiny muted">사용료 기준(크레딧·환불 제외)' + (d.usage.is_estimated ? " · 잠정치 포함" : "") + "</p>" +
       "</div></div>" +
       budgetScopeNote(b) +
-      '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="budget" data-target="CF-025">예산 편집</button></div>';
+      '<div class="button-row no-print"><button type="button" class="btn" data-action="open-budget-basis-dialog">계산 근거</button><button type="button" class="btn" data-action="nav-scroll" data-tab="budget" data-target="CF-025">예산 설정</button></div>';
     return { state: "CONNECTED_OK", html: html };
+  }
+
+  function budgetBasisDialogHtml() {
+    var d = ctx.budgetStatus && ctx.budgetStatus.ok ? ctx.budgetStatus.value : null;
+    if (!d) return '<p class="note">계산 결과가 없습니다.</p>';
+    var b = d.budget, u = d.usage;
+    return '<dl class="meta-grid" style="grid-template-columns:1fr">' +
+      metaItem("선택된 예산", b ? esc(STATE_LABEL[b.period_state] || b.period_state) + " · " + esc(PERIOD_LABEL[b.period_type] || b.period_type) + " · 한도 " + esc(F.money(b.limit_amount, b.currency)) : "없음") +
+      metaItem("적용 구간", b ? esc(b.period_start) + " ~ " + esc(addDaysISO(b.period_end, -1)) + " (기준일 " + esc(b.basis_date) + ")" : "—") +
+      metaItem("예산 선택 규칙", "진행 중인 사용자 지정 예산이 있으면 그것을, 없으면 진행 중인 반복 예산, 그다음 가장 가까운 예정 예산 순(서버 결정)") +
+      metaItem("사용액", u ? esc(F.money(u.amount, u.currency)) + " · " + esc(u.basis === "usage_before_credits" ? "사용료 기준(크레딧·환불 제외)" : u.basis) + " · 순액 " + esc(F.money(u.net_amount, u.currency)) + (u.as_of ? " · 마지막 수집 " + esc(fmtWhen(u.as_of).text) : "") : "—") +
+      metaItem("소진율", d.computable ? esc(d.ratio_pct) + "% = 사용액 ÷ 한도 × 100 (서버 계산, 100% 초과도 그대로)" : "산출 불가 — " + esc(REASON_TEXT[d.reason_code] || d.reason_code || "")) +
+      metaItem("월말 전망", d.forecast ? esc(F.money(d.forecast.amount, b.currency)) + " (" + esc(d.forecast.ratio_pct) + "%) · " + esc(d.forecast.based_through) + "까지 실측을 남은 일수로 늘림 · 저장하지 않음" : "없음(진행 중 예산에서 기준일이 오늘일 때만)") +
+      metaItem("제외 계정", d.excluded_accounts.length ? d.excluded_accounts.map(function (a) { return esc(a.account_label || a.cloud_account_id) + "(" + esc(a.reason === "currency_mismatch" ? "통화 불일치" : "미지원") + ")"; }).join(", ") : "없음") +
+      metaItem("집계 범위", "팀 전체 계정 · 현재 소속 기준 · 상단 기간·CSP·계정 필터 미적용") +
+      metaItem("예산 초과", "알림 기준일 뿐 리소스 생성을 막지 않습니다") +
+      "</dl>";
   }
 
   // ── CF-025 예산 설정 ───────────────────────────────────────────────────────────────
   var STATE_LABEL = { upcoming: "예정", in_progress: "진행 중", ended: "종료" };
 
+  // 작성 중인 예산 입력은 팀별로 메모리에 둔다 — renderAll()·팀 전환·리사이즈로 화면이 다시 그려져도 값이 조용히
+  // 사라지지 않는다(저장 전까지만, 새로고침하면 사라진다). 폼은 "지금 선택한 팀"의 것이고 제출도 그 팀으로 간다.
+  var budgetDrafts = {};
+  function captureBudgetDraft() {
+    if (!selectedTeamId || !document.getElementById("budget-value")) return;
+    var v = budgetFormValues();
+    var endDisp = (document.getElementById("budget-end") || {}).value || "";
+    budgetDrafts[selectedTeamId] = { period_type: v.period_type, start_date: v.start_date, end_display: endDisp, limit_amount: v.limit_amount };
+  }
+  function budgetDraftDirty(teamId) {
+    var d = budgetDrafts[teamId];
+    return !!(d && (d.limit_amount || (d.start_date && d.start_date !== startOfMonthISO()) || d.period_type !== "monthly" || d.end_display));
+  }
+  var budgetPending = false;
+
   function renderBudgetForm() {
-    if (!selectedTeamId) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="note">팀을 먼저 선택하세요.</p>' };
+    var gate = teamGateHtml("예산 설정");
+    if (gate) return gate;
     var t = teamById(selectedTeamId);
-    var items = (ctx.budgets && ctx.budgets.ok && ctx.budgets.value.items) || [];
-    var html = '<div class="filter-grid">' +
+    var draft = budgetDrafts[selectedTeamId] || {};
+    var listOk = ctx.budgets && ctx.budgets.ok;
+    var items = listOk ? (ctx.budgets.value.items || []) : [];
+    var hasActive = items.some(function (b) { return b.state === "in_progress"; });
+    var openForm = !hasActive || budgetDraftDirty(selectedTeamId);
+    var pt = draft.period_type || "monthly";
+    var html = '<details class="budget-form"' + (openForm ? " open" : "") + '><summary class="small" style="cursor:pointer;font-weight:600">' + (hasActive ? "새 적용일로 예산 등록" : "예산 만들기") +
+        (budgetDraftDirty(selectedTeamId) ? ' <span class="filter-dirty">작성 중(저장 전)</span>' : "") + "</summary>" +
+      '<p class="note" style="margin-top:6px">반복(월간·분기·연간)은 달력 구간마다 같은 한도가 적용되고 시작일부터 다음 예산 시작 전까지 유효합니다. 사용자 지정은 한 구간(최대 1년)만 씁니다. 이미 시작된 예산의 한도를 바꾸려면 새 적용일로 등록합니다.</p>' +
+      '<div class="filter-grid">' +
       '<div class="filter-field">주기<span class="button-row" style="margin-top:0;gap:10px">' +
-        ["monthly", "quarterly", "annual", "custom"].map(function (k, i) {
-          return '<label style="display:inline-flex;gap:4px;align-items:center;font-size:12px"><input type="radio" name="budget-period-type" value="' + k + '"' + (i === 0 ? " checked" : "") + "> " + PERIOD_LABEL[k] + "</label>";
+        ["monthly", "quarterly", "annual", "custom"].map(function (k) {
+          return '<label style="display:inline-flex;gap:4px;align-items:center;font-size:12px"><input type="radio" name="budget-period-type" value="' + k + '"' + (pt === k ? " checked" : "") + "> " + PERIOD_LABEL[k] + "</label>";
         }).join("") + "</span></div>" +
-      '<label class="filter-box">시작일<input id="budget-start" type="date" value="' + esc(startOfMonthISO()) + '"></label>' +
-      '<label class="filter-box" id="budget-end-wrap" hidden>종료일(포함)<input id="budget-end" type="date"></label>' +
-      '<label class="filter-box">한도<input id="budget-value" type="number" min="0" step="0.01" placeholder="300"></label>' +
-      '<label class="filter-box" style="flex-basis:80px">통화<input type="text" value="' + esc(t ? t.currency : "USD") + '" disabled title="예산 통화는 팀 통화와 같아야 합니다"></label>' +
-      '<span class="button-row" style="margin-top:0"><button type="button" class="btn primary no-print" data-action="budget-create">저장</button>' +
+      '<label class="filter-box">적용 시작일<input id="budget-start" type="date" value="' + esc(draft.start_date || startOfMonthISO()) + '" aria-describedby="budget-feedback"></label>' +
+      '<label class="filter-box" id="budget-end-wrap"' + (pt === "custom" ? "" : " hidden") + '>종료일(포함)<input id="budget-end" type="date" value="' + esc(draft.end_display || "") + '"></label>' +
+      '<label class="filter-box">한도(' + esc(t ? t.currency : "USD") + ')<input id="budget-value" type="number" min="0.000001" step="0.01" placeholder="예: 300" value="' + esc(draft.limit_amount || "") + '" aria-describedby="budget-feedback"></label>' +
+      '<span class="button-row" style="margin-top:0"><button type="button" class="btn primary no-print" data-action="budget-create"' + (budgetPending ? " disabled" : "") + ">" + (budgetPending ? "저장 중…" : "저장") + "</button>" +
       '<button type="button" class="btn no-print" data-action="budget-reset">취소</button></span>' +
       "</div>" +
-      '<p id="budget-feedback" class="note" role="status">한도를 바꾸면 기존 행을 고치지 않고 새 행이 생깁니다(이력 보존). 예정 예산만 오타 수정할 수 있습니다.</p>' +
-      '<div class="table-wrap"><table><thead><tr><th scope="col">주기</th><th scope="col">적용 시작</th><th scope="col">종료</th><th scope="col">한도</th><th scope="col">상태</th><th scope="col">행동</th></tr></thead><tbody>' +
+      '<p id="budget-feedback" class="note" role="status">통화는 팀 통화(' + esc(t ? t.currency : "USD") + ")로 고정됩니다. 예정(시작 전) 예산만 한도·종료일을 수정할 수 있습니다.</p>" +
+      "</details>";
+    if (!listOk) {
+      html += '<div class="state-view" role="status"><span class="dash">—</span><p>예산 목록을 가져오지 못했습니다.</p><p class="tiny muted">' +
+        esc(ctx.budgets && ctx.budgets.error ? (window.MCErr ? window.MCErr.headline(ctx.budgets.error) : ctx.budgets.error.message) : "") + "</p>" +
+        '<button type="button" class="btn no-print" data-action="reload-budget-tab">다시 조회</button></div>';
+      return { state: "COLLECT_FAILED", html: html };
+    }
+    html += '<div class="table-wrap"><table class="changes-table"><thead><tr><th scope="col">주기</th><th scope="col">적용 시작</th><th scope="col">종료</th><th scope="col" class="num">한도</th><th scope="col">상태</th><th scope="col"><span class="sr-only">행동</span></th></tr></thead><tbody>' +
       (items.length ? items.map(function (b) {
-        return "<tr><td>" + esc(PERIOD_LABEL[b.period_type] || b.period_type) + "</td><td>" + esc(b.start_date) + "</td><td>" + esc(b.end_date ? addDaysISO(b.end_date, -1) : "—") + "</td>" +
+        return "<tr><td>" + esc(PERIOD_LABEL[b.period_type] || b.period_type) + "</td><td>" + esc(b.start_date) + "</td><td>" + esc(b.end_date ? addDaysISO(b.end_date, -1) : "다음 예산 전까지") + "</td>" +
           '<td class="num">' + esc(F.money(b.limit_amount, b.currency)) + '</td><td><span class="badge">' + esc(STATE_LABEL[b.state] || b.state) + "</span></td><td>" +
-          (b.state === "upcoming" ? '<button type="button" class="btn no-print" data-action="budget-patch" data-budget-id="' + esc(b.id) + '" data-period-type="' + esc(b.period_type) + '">한도 수정</button> ' +
-            '<button type="button" class="btn no-print" data-action="budget-delete" data-budget-id="' + esc(b.id) + '">삭제</button>' : '<span class="tiny muted">수정 불가 — 새 행으로</span>') +
+          (b.state === "upcoming"
+            ? '<button type="button" class="btn no-print" data-action="budget-edit-open" data-budget-id="' + esc(b.id) + '">수정</button> <button type="button" class="btn no-print" data-action="budget-delete-open" data-budget-id="' + esc(b.id) + '">삭제</button>'
+            : '<span class="tiny muted" title="이미 시작된 예산은 한도를 직접 바꾸지 않습니다">수정 불가 · 새 적용일로 등록</span>') +
           "</td></tr>";
-      }).join("") : '<tr><td colspan="6" class="tiny muted">예산이 없습니다 — 예산 미설정은 $0이 아닙니다</td></tr>') +
+      }).join("") : '<tr><td colspan="6" class="tiny muted">등록된 예산이 없습니다 — 예산 미설정은 $0이 아닙니다</td></tr>') +
       "</tbody></table></div>";
     return { state: "CONNECTED_OK", html: html };
   }
@@ -1519,71 +1647,157 @@ window.MCPCost = (function () {
     var pt = (document.querySelector('input[name="budget-period-type"]:checked') || {}).value || "monthly";
     var start = (document.getElementById("budget-start") || {}).value || "";
     var endDisp = (document.getElementById("budget-end") || {}).value || "";
-    var limit = (document.getElementById("budget-value") || {}).value || "";
+    var limit = ((document.getElementById("budget-value") || {}).value || "").trim();
     var body = { period_type: pt, start_date: start, limit_amount: limit };
     if (pt === "custom") body.end_date = endDisp ? addDaysISO(endDisp, 1) : null; // 화면은 포함, API는 제외 경계
     return body;
   }
 
+  /** 저장 전 클라이언트 검증 — 서버 규칙(한도 > 0 · custom 종료일 필수 · 최대 1년)과 같은 것만. 문구는 입력 옆(#budget-feedback). */
+  function validateBudgetForm(v) {
+    if (!v.start_date) return "적용 시작일을 입력하세요.";
+    if (!v.limit_amount || !(Number(v.limit_amount) > 0)) return "한도는 0보다 큰 금액이어야 합니다.";
+    if (v.period_type === "custom") {
+      if (!v.end_date) return "사용자 지정 예산은 종료일이 필요합니다.";
+      if (v.end_date <= v.start_date) return "종료일은 시작일 이후여야 합니다.";
+      var days = Math.round((new Date(v.end_date) - new Date(v.start_date)) / 86400000);
+      if (days > 366) return "사용자 지정 예산 기간은 최대 1년입니다(현재 " + days + "일).";
+    }
+    return "";
+  }
+  function showBudgetError(text) {
+    setFeedback("budget-feedback", text, true);
+    var details = document.querySelector("#CF-025 details.budget-form");
+    if (details) details.open = true; // 접힌 폼 안에 오류가 갇히지 않게
+    var el = document.getElementById("budget-value");
+    if (el && /한도/.test(text)) el.focus();
+  }
+
+  function budgetEditDialogHtml(b) {
+    var isCustom = b.period_type === "custom";
+    return '<p class="small">예정 예산의 오타 수정입니다. 적용 시작일·주기·통화는 바꿀 수 없습니다(바꾸려면 새 적용일로 등록).</p>' +
+      '<dl class="meta-grid" style="grid-template-columns:1fr 1fr 1fr"><div><dt>주기</dt><dd>' + esc(PERIOD_LABEL[b.period_type] || b.period_type) + "</dd></div><div><dt>적용 시작</dt><dd>" + esc(b.start_date) + "</dd></div><div><dt>통화</dt><dd>" + esc(b.currency) + "</dd></div></dl>" +
+      '<div class="filter-grid" style="margin-top:10px">' +
+      '<label class="filter-box">한도(' + esc(b.currency) + ')<input id="budget-edit-limit" type="number" min="0.000001" step="0.01" value="' + esc(String(Number(b.limit_amount))) + '"></label>' +
+      (isCustom ? '<label class="filter-box">종료일(포함)<input id="budget-edit-end" type="date" value="' + esc(addDaysISO(b.end_date, -1)) + '"></label>' : "") +
+      '<span class="button-row" style="margin-top:0"><button type="button" class="btn primary" data-action="budget-patch" data-budget-id="' + esc(b.id) + '" data-period-type="' + esc(b.period_type) + '">저장</button></span></div>' +
+      '<p id="budget-edit-feedback" class="note" role="status"></p>';
+  }
+  function budgetDeleteDialogHtml(b) {
+    return '<p class="small">이 예산을 삭제할까요?</p><dl class="meta-grid" style="grid-template-columns:1fr 1fr 1fr"><div><dt>주기</dt><dd>' + esc(PERIOD_LABEL[b.period_type] || b.period_type) + "</dd></div><div><dt>적용 시작</dt><dd>" + esc(b.start_date) + "</dd></div><div><dt>한도</dt><dd>" + esc(F.money(b.limit_amount, b.currency)) + "</dd></div></dl>" +
+      '<p class="note">예산 이력에서 사라지고 이 예산의 알림 기록도 함께 삭제됩니다. 계정과 비용 기록은 그대로입니다.</p>' +
+      '<div class="button-row"><button type="button" class="btn primary" data-action="budget-delete" data-budget-id="' + esc(b.id) + '">삭제 확인</button><button type="button" class="btn" data-modal-close>취소</button></div>' +
+      '<p id="budget-edit-feedback" class="note" role="status"></p>';
+  }
+  function budgetById(id) {
+    var items = (ctx.budgets && ctx.budgets.ok && ctx.budgets.value.items) || [];
+    return items.filter(function (b) { return b.id === id; })[0] || null;
+  }
+
   // ── CF-027 임계치 알림 ─────────────────────────────────────────────────────────────
   function renderThresholds() {
-    if (!selectedTeamId) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="note">팀을 먼저 선택하세요.</p>' };
-    if (!ctx.budgetStatus || !ctx.budgetStatus.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.budgetStatus, "임계치 알림") };
+    var gate = teamGateHtml("임계치 알림");
+    if (gate) return gate;
+    if (!ctx.budgetStatus || !ctx.budgetStatus.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.budgetStatus, "임계치 알림") + '<div class="button-row no-print"><button type="button" class="btn" data-action="reload-budget-tab">다시 조회</button></div>' };
     var d = ctx.budgetStatus.value;
     var grey = !d.computable;
-    var html = '<div class="status-list"' + (grey ? ' style="opacity:.55"' : "") + ">" + d.thresholds.map(function (t) {
-      var text = grey ? "판정하지 않습니다" : (t.crossed ? "도달" + (t.crossed_at ? " · " + fmtDateTime(t.crossed_at) : "") : "미도달");
-      if (!grey && t.crossed && !t.notified) text += ' · <span style="color:var(--cost-warn)">알림 미발송 — 다음 수집 평가에서 발송</span>';
-      if (!grey && t.notified) text += " · 알림 발송됨";
-      return "<div><span>" + t.percent + "%</span><span>" + text + "</span></div>";
+    var html = '<p class="tiny muted" style="margin-bottom:6px">이 예산 구간' + (d.budget ? "(" + esc(d.budget.period_start) + " ~ " + esc(addDaysISO(d.budget.period_end, -1)) + ")" : "") + "의 임계치 상태</p>" +
+      '<div class="status-list">' + d.thresholds.map(function (t) {
+      var tag, text;
+      if (grey) { tag = "unsupported"; text = "판정 불가 — " + (REASON_TEXT[d.reason_code] || "데이터 부족"); }
+      else if (!t.crossed) { tag = "data"; text = "미도달"; }
+      else if (t.notified) { tag = "attention"; text = "도달 · 알림 생성됨" + (t.crossed_at ? " (" + fmtWhen(t.crossed_at).text + ")" : ""); }
+      else { tag = "waiting"; text = "도달 · 알림 생성 미확인 — 서버가 다음 평가(수집·예산 변경 뒤)에서 만들 수 있습니다"; }
+      return "<div><span>" + t.percent + '%</span><span class="status-tag ' + tag + '">' + esc(text) + "</span></div>";
     }).join("") + "</div>";
-    if (grey) html += '<p class="note">' + esc(REASON_TEXT[d.reason_code] || d.reason_code || "") + "</p>";
-    var notes = ((ctx.notifications && ctx.notifications.ok && ctx.notifications.value.items) || []).filter(function (n) {
-      return n.type === "budget_threshold" && n.message_params && n.message_params.team_id === selectedTeamId;
-    }).slice(0, 5);
-    html += '<p class="small" style="margin-top:12px;font-weight:600">최근 알림</p>' +
-      (notes.length ? '<div class="status-list">' + notes.map(function (n) {
-        var p = n.message_params;
-        return "<div><span>" + esc(fmtDateTime(n.created_at)) + "</span><span>" + esc(p.team_name) + " 예산 " + p.percent + "% 도달 (" + esc(p.period_start) + " 시작 구간, 한도 " + esc(F.money(p.limit_amount, p.currency)) + ")</span></div>";
-      }).join("") + "</div>" : '<p class="tiny muted">이 팀의 임계 알림이 아직 없습니다.</p>') +
-      '<p class="note">같은 (예산·구간·임계치)에는 알림이 한 번만 갑니다. 예산 초과 시 생성 차단은 이번 범위가 아닙니다.</p>' +
+
+    // 최근 알림 — /notifications?limit=50 은 "이 사용자의 최근 50건 전체"이지 팀 필터가 아니다. 여기 없다고 이 팀에
+    // 알림이 없었다고 말하지 않는다.
+    var n = ctx.notifications;
+    if (!n || !n.ok) {
+      html += '<p class="note warning" style="margin-top:12px">최근 알림을 가져오지 못했습니다(알림이 없는 것이 아닙니다). <button type="button" class="btn no-print" data-action="reload-budget-tab">다시 조회</button></p>';
+    } else {
+      var notes = (n.value.items || []).filter(function (x) { return x.type === "budget_threshold" && x.message_params && x.message_params.team_id === selectedTeamId; }).slice(0, 5);
+      html += '<p class="small" style="margin-top:12px;font-weight:600">최근 알림(이 팀 · 최근 50건 중)</p>' +
+        (notes.length ? '<div class="status-list">' + notes.map(function (x) {
+          var p = x.message_params;
+          return "<div><span>" + esc(fmtWhen(x.created_at).text) + "</span><span>예산 " + p.percent + "% 도달 · " + esc(p.period_start) + " 시작 구간 · 한도 " + esc(F.money(p.limit_amount, p.currency)) + "</span></div>";
+        }).join("") + "</div>" : '<p class="tiny muted">최근 50건 범위에 이 팀의 예산 알림이 없습니다.</p>');
+    }
+    html += '<p class="note">알림은 사이드바 🔔에 쌓이는 서비스 내 알림입니다(이메일·문자 아님). 같은 예산·구간·임계치에는 한 번만 만들어지고, 화면을 여는 것만으로는 만들어지지 않습니다. 예산 초과가 리소스 생성을 막지는 않습니다.</p>' +
       '<div class="button-row no-print"><button type="button" class="btn" data-action="open-threshold-dialog">알림 조건 보기</button></div>';
     return { state: "CONNECTED_OK", html: html };
   }
 
   // ── CF-033 급증 탐지 ───────────────────────────────────────────────────────────────
-  function ruleText(rule) {
-    return "규칙: 계정×서비스×완료된 날 · 직전 " + rule.baseline_days + "일 평균 대비 증가액 ≥ " + esc(F.money(rule.min_delta_amount, rule.currency)) +
-      " AND 증가율 ≥ " + rule.min_increase_pct + "% · 이력 " + rule.min_history_days + "일 이상 · 최근 " + rule.exclude_recent_days + "일 제외 · " +
-      esc(rule.charge_category.join("/")) + " 기준 · 임계 통화 " + esc(rule.currency);
+  /* 규칙 한 줄 요약 — 긴 기술 규칙(이력 12일·최근 3일 제외·요금 분류·통화)은 "규칙 상세" 모달로. */
+  function ruleSummaryText(rule) {
+    return "직전 " + rule.baseline_days + "일 평균보다 " + esc(F.money(rule.min_delta_amount, rule.currency)) + " 이상 <strong>그리고</strong> " + rule.min_increase_pct + "% 이상 늘어난 날을 급증으로 봅니다.";
   }
+  function ruleDialogHtml(rule) {
+    return '<dl class="meta-grid" style="grid-template-columns:1fr">' +
+      metaItem("판정 단위", "계정 × 서비스 × 완료된 날(하루)") +
+      metaItem("기준선", "그 날 직전 " + rule.baseline_days + "일의 평균. " + rule.baseline_days + "일이 전부 수집 확인됐을 때만 판정하고, 하나라도 미수집이면 그 날은 판정 보류(0으로 넣지 않음)") +
+      metaItem("조건", "증가액 ≥ " + esc(F.money(rule.min_delta_amount, rule.currency)) + " AND 증가율 ≥ " + rule.min_increase_pct + "%. 기준선이 0이면 증가율을 낼 수 없어 증가액만으로 판정하고 '신규 비용 발생'으로 표시") +
+      metaItem("이력", "판정일까지 수집 확인된 날이 " + rule.min_history_days + "일 이상인 계정만 판정") +
+      metaItem("최근 " + rule.exclude_recent_days + "일 제외", "CSP가 아직 확정하지 않은 구간이라 판정하지 않음") +
+      metaItem("요금 분류", esc(rule.charge_category.join(", ")) + " 기준 — 크레딧·환불을 섞어 순액으로 판정하면 크레딧이 들어온 날이 급증으로 잡힘") +
+      metaItem("통화", "최소 증가액은 " + esc(rule.currency) + " 기준. 다른 통화(KRW 등)는 정책이 정해질 때까지 판정 보류") +
+      metaItem("라벨", "항상 \"원인 확인 필요\" — 원인을 단정하지 않음") +
+      "</dl>";
+  }
+  var lastAnomalyRule = null;
   function anomalyPctText(it) {
     return it.delta_pct == null ? "신규 비용 발생(기준선 0 — 증가율 없음)" : "+" + esc(it.delta_pct) + "%";
   }
 
+  /** 표 위에 먼저 말할 판정 상태. "탐지된 급증 없음"과 "평가하지 못함"을 섞지 않고, API가 주지 않는
+      "판정 완료"·"모든 계정 정상"은 말하지 않는다. 대상 범위는 전역 capabilities가 아니라 현재 필터의
+      summary.accounts(같은 CSP·계정 조건)다. 보류 개수는 계정 id로 중복 제거해 계정 수로 센다. */
+  function anomalyStatusHtml(d) {
+    var heldIds = {};
+    (d.held || []).forEach(function (h) { heldIds[h.cloud_account_id] = "기준선 미수집"; });
+    (d.insufficient_history || []).forEach(function (h) { heldIds[h.cloud_account_id] = "이력 부족"; });
+    (d.unsupported_currency || []).forEach(function (u) { heldIds[u.cloud_account_id] = "통화 정책 미정"; });
+    var heldCount = Object.keys(heldIds).length;
+    var reasonCounts = {};
+    Object.keys(heldIds).forEach(function (id) { reasonCounts[heldIds[id]] = (reasonCounts[heldIds[id]] || 0) + 1; });
+    var reasonText = Object.keys(reasonCounts).map(function (k) { return k + " " + reasonCounts[k]; }).join(" · ");
+    var scoped = (ctx.summary && ctx.summary.ok && ctx.summary.value.accounts) || [];
+    var supported = scoped.filter(function (a) { return S.kind(a.status) !== "unsupported"; });
+    var out = "";
+    if ((d.items || []).length) out += '<span class="status-tag attention">급증 ' + d.items.length + "건 탐지 — 원인 확인 필요</span>";
+    else if (!supported.length) out += '<span class="status-tag unsupported">판정 대상 계정 없음 — 현재 조건에 비용 수집을 지원하는 계정이 없습니다</span>';
+    else out += '<span class="status-tag data">현재 응답에서 탐지된 급증 없음</span>';
+    if (heldCount) out += '<span class="status-tag waiting">평가하지 못한 계정 ' + heldCount + "개 (" + esc(reasonText) + ") — 이 계정들은 급증 여부를 판정하지 않았습니다</span>";
+    return '<div class="status-row">' + out + "</div>";
+  }
+
   function renderAnomalies() {
-    if (!ctx.anomalies || !ctx.anomalies.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.anomalies, "급증 탐지") };
+    if (!ctx.anomalies || !ctx.anomalies.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.anomalies, "급증 탐지") + '<div class="button-row no-print"><button type="button" class="btn" data-action="apply-filters">다시 조회</button></div>' };
     var d = ctx.anomalies.value;
+    lastAnomalyRule = d.rule;
     var rows = (d.items || []).map(function (it) {
       return "<tr><td>" + esc(it.date) + "<br><span class=\"tiny muted\">" + esc(PROVIDER_LABEL[it.provider] || it.provider) + " " + esc(accountLabelOf(it.cloud_account_id)) + " · " + esc(it.service) + "</span>" +
         (it.is_sample_data ? ' <span class="badge">예시 데이터</span>' : "") + "</td>" +
         '<td class="num">' + esc(F.money(it.baseline_amount, it.currency)) + " → " + esc(F.money(it.amount, it.currency)) + "</td>" +
         '<td class="num"><span class="money-positive">+' + esc(F.money(it.delta, it.currency)) + "</span><br><span class=\"tiny muted\">" + anomalyPctText(it) + " · 그 날의 증가액</span></td>" +
-        "<td>" + esc(it.label) + (it.review ? '<br><span class="badge">검토 ' + esc(it.review.status) + "</span>" : "") + "</td>" +
+        "<td>" + esc(it.label) + (it.review ? '<br><span class="badge">검토 ' + esc(REVIEW_STATUS_LABEL[it.review.status] || it.review.status) + "</span>" : "") + "</td>" +
         '<td><button type="button" class="btn no-print" data-action="open-anomaly-dialog" data-source-key="' + esc(it.source_key) + '">근거 보기</button></td></tr>';
     });
-    var html = '<p class="note">' + ruleText(d.rule) + "</p>" +
-      '<div class="table-wrap"><table><thead><tr><th scope="col">날짜 / 대상</th><th scope="col">기준 → 실제</th><th scope="col">증가액</th><th scope="col">상태</th><th scope="col">행동</th></tr></thead><tbody>' +
-      (rows.length ? rows.join("") : '<tr><td colspan="5" class="tiny muted">확인이 필요한 항목이 없습니다</td></tr>') + "</tbody></table></div>";
-    (d.insufficient_history || []).forEach(function (h) {
-      html += '<p class="note">' + esc(accountLabelOf(h.cloud_account_id)) + ": 이력 " + h.days_available + "일 / 필요 " + h.days_required + "일 — 아직 판정하지 않습니다</p>";
-    });
-    (d.held || []).forEach(function (h) {
-      html += '<p class="note">' + esc(accountLabelOf(h.cloud_account_id)) + ": 기준선 7일 중 미수집일이 있어 " + h.days.length + "일 판정 보류 (0으로 넣지 않습니다)</p>";
-    });
-    (d.unsupported_currency || []).forEach(function (u) {
-      html += '<p class="note">' + esc(accountLabelOf(u.cloud_account_id)) + ": " + esc(u.currency || "통화 미확인") + " 최소 차액 정책이 아직 없어 판정을 보류합니다</p>";
-    });
+    var html = anomalyStatusHtml(d) +
+      '<p class="note">' + ruleSummaryText(d.rule) + ' <button type="button" class="btn no-print" data-action="open-rule-dialog" style="padding:2px 8px;font-size:11px">규칙 상세</button></p>';
+    if (rows.length) {
+      html += '<div class="table-wrap"><table class="changes-table"><thead><tr><th scope="col">날짜 / 대상</th><th scope="col" class="num">기준 → 실제</th><th scope="col" class="num">증가액</th><th scope="col">상태</th><th scope="col"><span class="sr-only">행동</span></th></tr></thead><tbody>' +
+        rows.join("") + "</tbody></table></div>";
+    }
+    // 계정별 사유 — 위 배지가 "왜"를 요약했으니 여기는 어느 계정인지만
+    var reasons = [];
+    (d.insufficient_history || []).forEach(function (h) { reasons.push(esc(accountLabelOf(h.cloud_account_id)) + ": 이력 " + h.days_available + "/" + h.days_required + "일 — 판정 전"); });
+    (d.held || []).forEach(function (h) { reasons.push(esc(accountLabelOf(h.cloud_account_id)) + ": 기준선 " + d.rule.baseline_days + "일 중 미수집일이 있어 " + h.days.length + "일 보류"); });
+    (d.unsupported_currency || []).forEach(function (u) { reasons.push(esc(accountLabelOf(u.cloud_account_id)) + ": " + esc(u.currency || "통화 미확인") + " 임계값 미정 — 보류"); });
+    if (reasons.length) html += '<details class="note"><summary style="cursor:pointer">평가하지 못한 계정 사유 ' + reasons.length + "건</summary>" + reasons.join("<br>") + "</details>";
+    html += '<p class="note">적용 조건: 상단 기간·CSP·계정 필터 · 팀 선택은 이 블록에 적용되지 않음 · 통화 ' + esc(d.rule.currency) + " 계정만 판정 · 검토 등록 항목은 ① 비용 개요 탭의 비용 작업 큐에서 상태를 바꿉니다</p>";
     return { state: "CONNECTED_OK", html: html };
   }
 
@@ -1601,7 +1815,7 @@ window.MCPCost = (function () {
     return '<dl class="meta-grid" style="grid-template-columns:1fr 1fr">' +
       metaItem("대상", esc(PROVIDER_LABEL[it.provider] || it.provider) + " " + esc(accountLabelOf(it.cloud_account_id)) + " · " + esc(it.service)) +
       metaItem("날짜", esc(it.date)) +
-      metaItem("기준값(직전 7일 평균)", esc(F.money(it.baseline_amount, it.currency))) +
+      metaItem("기준값(직전 " + (lastAnomalyRule ? lastAnomalyRule.baseline_days : 7) + "일 평균)", esc(F.money(it.baseline_amount, it.currency))) +
       metaItem("실제값", esc(F.money(it.amount, it.currency))) +
       metaItem("증가액(그 날)", "+" + esc(F.money(it.delta, it.currency))) +
       metaItem("증가율", anomalyPctText(it)) +
@@ -1612,7 +1826,7 @@ window.MCPCost = (function () {
         : '<p class="tiny muted">같은 날 프로비저닝 기록 없음</p>') +
       '<p class="note">원인을 단정하지 않습니다 — "원인 확인 필요"입니다. 태그 기준 검토 후보이며 조직 소유권을 뜻하지 않습니다.</p>' +
       (withActions ? '<div class="button-row">' +
-        (it.review ? '<span class="badge">이미 큐에 있음 · ' + esc(it.review.status) + "</span>" : '<button type="button" class="btn primary" data-action="anomaly-add-queue" data-source-key="' + esc(it.source_key) + '">검토 큐에 추가</button>') +
+        (it.review ? '<span class="badge">이미 검토 등록됨 · ' + esc(REVIEW_STATUS_LABEL[it.review.status] || it.review.status) + '</span> <button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-034">작업 큐에서 보기</button>' : '<button type="button" class="btn primary" data-action="anomaly-add-queue" data-source-key="' + esc(it.source_key) + '">검토 등록</button>') +
         '<a class="btn" href="inventory.html?cloud_account_id=' + encodeURIComponent(it.cloud_account_id) + '">인벤토리 보기(계정)</a></div>' +
         '<p id="anomaly-feedback" class="note" role="status"></p>' : "");
   }
@@ -1628,7 +1842,7 @@ window.MCPCost = (function () {
       return "<tr><td>" + (an ? esc(an.label) : "검토 항목") + "<br><span class=\"tiny muted\">" + esc(accountLabelOf(accId)) + " · " + esc(svc) + " · " + esc(day) + "</span></td>" +
         '<td class="num">' + (an ? '<span class="money-positive">+' + esc(F.money(an.delta, an.currency)) + "</span><br><span class=\"tiny muted\">" + anomalyPctText(an) + " · 그 날의 증가액 (정가 노출액 / 절감액이 아님)</span>" : '— <br><span class="tiny muted">현재 규칙으로 급증이 아니거나 기간 밖 — 금액 없음</span>') + "</td>" +
         "<td>" + esc(r.note || "—") + "</td>" +
-        '<td><span class="badge">' + esc(r.status) + "</span>" + (r.resolution ? "<br><span class=\"tiny muted\">" + esc(r.resolution) + "</span>" : "") + "</td>" +
+        '<td><span class="badge">' + esc(REVIEW_STATUS_LABEL[r.status] || r.status) + "</span>" + (r.resolution ? "<br><span class=\"tiny muted\">" + esc(RESOLUTION_LABEL[r.resolution] || r.resolution) + "</span>" : "") + "</td>" +
         '<td><button type="button" class="btn no-print" data-action="open-review-dialog" data-item-id="' + esc(r.id) + '">검토</button> ' +
         '<button type="button" class="btn no-print" data-action="open-price-compare">비교하기</button></td></tr>';
     });
@@ -1638,6 +1852,8 @@ window.MCPCost = (function () {
     return { state: "CONNECTED_OK", html: html };
   }
 
+  var REVIEW_STATUS_LABEL = { open: "열림", investigating: "조사 중", resolved: "종결" };
+  var RESOLUTION_LABEL = { too_small: "소액(무시)", expected: "예상된 증가", unexpected: "예상 밖" };
   function reviewItemById(id) {
     var items = (ctx.reviewItems && ctx.reviewItems.ok && ctx.reviewItems.value.items) || [];
     return items.filter(function (r) { return r.id === id; })[0] || null;
@@ -1647,8 +1863,8 @@ window.MCPCost = (function () {
     var an = anomalyByKey(r.source_key);
     return (an ? anomalyDialogHtml(an, false) : '<p class="tiny muted">현재 급증 목록에 짝이 없어 금액을 표시하지 않습니다(0원이 아니라 미확인).</p>') +
       '<div class="filter-grid" style="margin-top:12px">' +
-      '<label class="filter-box">상태<select id="review-status">' + ["open", "investigating", "resolved"].map(function (k) { return '<option value="' + k + '"' + (r.status === k ? " selected" : "") + ">" + k + "</option>"; }).join("") + "</select></label>" +
-      '<label class="filter-box">사유(resolved)<select id="review-resolution"><option value="">—</option>' + ["too_small", "expected", "unexpected"].map(function (k) { return '<option value="' + k + '"' + (r.resolution === k ? " selected" : "") + ">" + k + "</option>"; }).join("") + "</select></label>" +
+      '<label class="filter-box">상태<select id="review-status">' + ["open", "investigating", "resolved"].map(function (k) { return '<option value="' + k + '"' + (r.status === k ? " selected" : "") + ">" + REVIEW_STATUS_LABEL[k] + "</option>"; }).join("") + "</select></label>" +
+      '<label class="filter-box">종결 사유<select id="review-resolution"><option value="">—</option>' + ["too_small", "expected", "unexpected"].map(function (k) { return '<option value="' + k + '"' + (r.resolution === k ? " selected" : "") + ">" + RESOLUTION_LABEL[k] + "</option>"; }).join("") + "</select></label>" +
       '<label class="filter-box" style="flex-basis:260px">메모<input id="review-note" type="text" maxlength="2000" value="' + esc(r.note || "") + '"></label>' +
       '<span class="button-row" style="margin-top:0"><button type="button" class="btn primary" data-action="review-patch" data-item-id="' + esc(r.id) + '">저장</button></span></div>' +
       '<p class="note">resolved로 닫힌 항목은 되돌릴 수 없습니다 — 재발은 새 항목입니다. 검토 상태는 금액·합계에 영향을 주지 않습니다.</p>' +
@@ -1698,8 +1914,24 @@ window.MCPCost = (function () {
   function handleBudgetAction(action, btn) {
     var teamPath = "/teams/" + encodeURIComponent(selectedTeamId || "");
     switch (action) {
+      case "reload-budget-tab":
+        reloadBudgetTab();
+        return true;
       case "open-team-dialog":
         openDialog("팀 관리", teamDialogHtml());
+        return true;
+      case "team-delete-ask": {
+        var box = document.getElementById("team-delete-confirm");
+        if (box) { box.hidden = false; var cb = box.querySelector('[data-action="team-delete"]'); if (cb) cb.focus(); }
+        return true;
+      }
+      case "team-delete-cancel": {
+        var box2 = document.getElementById("team-delete-confirm");
+        if (box2) box2.hidden = true;
+        return true;
+      }
+      case "open-budget-basis-dialog":
+        openDialog("예산 계산 근거", budgetBasisDialogHtml());
         return true;
       case "team-create": {
         var name = (document.getElementById("team-new-name") || {}).value || "";
@@ -1730,41 +1962,66 @@ window.MCPCost = (function () {
         return true;
       }
       case "team-delete": {
-        var tname = btn.getAttribute("data-team-name");
-        if (!window.confirm("팀 '" + tname + "'을(를) 삭제할까요?\n계정은 미배정으로 돌아가고 비용 기록은 남습니다. 예산·알림 기록은 함께 삭제됩니다.")) return true;
+        btn.disabled = true; btn.textContent = "삭제 중…";
         window.MCPApi.request("/teams/" + encodeURIComponent(btn.getAttribute("data-team-id")), { method: "DELETE", headers: { "X-Action-Confirmed": "true" } })
-          .then(function () { selectedTeamId = null; toast("팀을 삭제했습니다."); if (window.MCPModal) window.MCPModal.close("#cost-dialog"); return load(); })
-          .catch(function (e) { setFeedback("team-edit-feedback", serverErrorText(e), true); });
+          .then(function () { selectedTeamId = null; toast("팀을 삭제했습니다. 계정은 미배정으로 돌아갔고 비용 기록은 그대로입니다."); if (window.MCPModal) window.MCPModal.close("#cost-dialog"); return load(); })
+          .catch(function (e) { btn.disabled = false; btn.textContent = "삭제 확인"; setFeedback("team-edit-feedback", serverErrorText(e), true); });
         return true;
       }
       case "budget-create": {
+        if (budgetPending) return true;                       // 중복 제출 방지
         var b = budgetFormValues();
-        if (!b.limit_amount) { setFeedback("budget-feedback", "한도를 입력하세요.", true); return true; }
-        window.MCPApi.request(teamPath + "/budgets", { method: "POST", body: b })
-          .then(function () { toast("예산을 저장했습니다(새 행)."); return reloadBudgetTab(); })
-          .catch(function (e) { setFeedback("budget-feedback", serverErrorText(e), true); });
+        var err = validateBudgetForm(b);
+        if (err) { showBudgetError(err); return true; }
+        var teamForSubmit = selectedTeamId;                   // 응답이 오기 전에 팀을 바꿔도 이 팀으로만 처리
+        budgetPending = true; btn.disabled = true; btn.textContent = "저장 중…";
+        window.MCPApi.request("/teams/" + encodeURIComponent(teamForSubmit) + "/budgets", { method: "POST", body: b })
+          .then(function () { budgetPending = false; delete budgetDrafts[teamForSubmit]; toast("예산을 등록했습니다. 기존 예산은 이력으로 남습니다."); return reloadBudgetTab(); })
+          .catch(function (e) { budgetPending = false; btn.disabled = false; btn.textContent = "저장"; showBudgetError(serverErrorText(e)); }); // 입력값은 그대로 남는다
         return true;
       }
       case "budget-reset":
+        delete budgetDrafts[selectedTeamId];
         renderAll();
         return true;
+      case "budget-edit-open": {
+        var bo = budgetById(btn.getAttribute("data-budget-id"));
+        if (bo) openDialog("예정 예산 수정", budgetEditDialogHtml(bo));
+        return true;
+      }
+      case "budget-delete-open": {
+        var bd = budgetById(btn.getAttribute("data-budget-id"));
+        if (bd) openDialog("예산 삭제", budgetDeleteDialogHtml(bd));
+        return true;
+      }
       case "budget-patch": {
-        var v = window.prompt("예정 예산의 한도(오타 수정). 시작일·주기·통화는 바꿀 수 없습니다.");
-        if (v == null || !v.trim()) return true;
-        window.MCPApi.request("/team-budgets/" + encodeURIComponent(btn.getAttribute("data-budget-id")), { method: "PATCH", body: { limit_amount: v.trim() } })
-          .then(function () { toast("한도를 수정했습니다."); return reloadBudgetTab(); })
-          .catch(function (e) { setFeedback("budget-feedback", serverErrorText(e), true); });
+        if (btn.disabled) return true;
+        var limitEl = document.getElementById("budget-edit-limit"), endEl = document.getElementById("budget-edit-end");
+        var body = {};
+        if (limitEl) {
+          if (!(Number(limitEl.value) > 0)) { setFeedback("budget-edit-feedback", "한도는 0보다 큰 금액이어야 합니다.", true); return true; }
+          body.limit_amount = String(limitEl.value).trim();
+        }
+        if (endEl && endEl.value) body.end_date = addDaysISO(endEl.value, 1); // 화면 포함 → API 제외 경계
+        btn.disabled = true; btn.textContent = "저장 중…";
+        window.MCPApi.request("/team-budgets/" + encodeURIComponent(btn.getAttribute("data-budget-id")), { method: "PATCH", body: body })
+          .then(function () { toast("예정 예산을 수정했습니다."); if (window.MCPModal) window.MCPModal.close("#cost-dialog"); return reloadBudgetTab(); })
+          .catch(function (e) { btn.disabled = false; btn.textContent = "저장"; setFeedback("budget-edit-feedback", serverErrorText(e), true); });
         return true;
       }
       case "budget-delete": {
-        if (!window.confirm("이 예산 행을 삭제할까요? 이력에서 사라집니다.")) return true;
+        if (btn.disabled) return true;
+        btn.disabled = true; btn.textContent = "삭제 중…";
         window.MCPApi.request("/team-budgets/" + encodeURIComponent(btn.getAttribute("data-budget-id")), { method: "DELETE", headers: { "X-Action-Confirmed": "true" } })
-          .then(function () { toast("예산을 삭제했습니다."); return reloadBudgetTab(); })
-          .catch(function (e) { setFeedback("budget-feedback", serverErrorText(e), true); });
+          .then(function () { toast("예산을 삭제했습니다."); if (window.MCPModal) window.MCPModal.close("#cost-dialog"); return reloadBudgetTab(); })
+          .catch(function (e) { btn.disabled = false; btn.textContent = "삭제 확인"; setFeedback("budget-edit-feedback", serverErrorText(e), true); });
         return true;
       }
       case "open-threshold-dialog":
         openDialog("알림 조건", thresholdDialogHtml());
+        return true;
+      case "open-rule-dialog":
+        if (lastAnomalyRule) openDialog("급증 탐지 규칙 상세", ruleDialogHtml(lastAnomalyRule));
         return true;
       case "open-anomaly-dialog": {
         var it = anomalyByKey(btn.getAttribute("data-source-key"));
@@ -1772,9 +2029,18 @@ window.MCPCost = (function () {
         return true;
       }
       case "anomaly-add-queue": {
-        window.MCPApi.request("/cost-review-items", { method: "POST", body: { source_type: "cost_anomaly", source_key: btn.getAttribute("data-source-key"), note: null } })
-          .then(function () { toast("검토 큐에 추가했습니다."); if (window.MCPModal) window.MCPModal.close("#cost-dialog"); return load(); })
-          .catch(function (e) { setFeedback("anomaly-feedback", serverErrorText(e), true); });
+        if (btn.disabled) return true;                        // 등록 중 중복 클릭 방지
+        var key = btn.getAttribute("data-source-key");
+        var known = anomalyByKey(key);
+        btn.disabled = true; btn.textContent = "등록 중…";
+        window.MCPApi.request("/cost-review-items", { method: "POST", body: { source_type: "cost_anomaly", source_key: key, note: null } })
+          .then(function () {
+            // POST는 멱등(있으면 그대로 200)이라 응답만으로 신규/중복을 구분할 수 없다 — 누르기 전 화면 상태로 안내한다.
+            toast(known && known.review ? "이미 등록된 항목입니다 — ① 비용 개요 탭의 비용 작업 큐에서 확인하세요." : "검토 항목으로 등록했습니다. 상태 변경은 ① 비용 개요 탭의 비용 작업 큐에서 합니다.");
+            if (window.MCPModal) window.MCPModal.close("#cost-dialog");
+            return load();
+          })
+          .catch(function (e) { btn.disabled = false; btn.textContent = "검토 등록"; setFeedback("anomaly-feedback", serverErrorText(e), true); });
         return true;
       }
       case "open-review-dialog": {
@@ -2036,11 +2302,19 @@ window.MCPCost = (function () {
       if (e.target && e.target.id === "team-select") {
         selectedTeamId = e.target.value || null;
         syncUrl();
+        ctx.budgetStatus = null; ctx.budgets = null; teamLoading = true;
+        renderAll();                       // "조회 중…"을 먼저 보여준다(이전 팀 값이 새 팀 값처럼 남지 않게)
         loadTeamScoped().then(renderAll);
       } else if (e.target && e.target.name === "budget-period-type") {
         var wrap = document.getElementById("budget-end-wrap");
         if (wrap) wrap.hidden = e.target.value !== "custom";
+        captureBudgetDraft();
+      } else if (e.target && e.target.closest && e.target.closest("#CF-025 details.budget-form")) {
+        captureBudgetDraft();
       }
+    });
+    document.addEventListener("input", function (e) {
+      if (e.target && e.target.closest && e.target.closest("#CF-025 details.budget-form")) captureBudgetDraft();
     });
 
     // CSP·계정 드롭다운 — 열기/닫기는 여기서, 바깥 클릭·Esc로 닫기는 dropdown.js의 전역
