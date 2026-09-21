@@ -286,7 +286,7 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 
 /* 증가액 표 — 서비스명 열은 줄바꿈, 숫자 열은 오른쪽 정렬·고정폭 숫자 */
 .changes-table td.num, .changes-table th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.changes-table td:first-child { overflow-wrap: anywhere; }
+.changes-table td:first-child { min-width: 9rem; overflow-wrap: normal; word-break: keep-all; }  /* 좁은 화면에서 이름이 한 글자씩 세로로 찌그러지지 않게 — 넘치면 .table-wrap 안에서 가로 스크롤 */
 .sub-amount { display: block; font-size: 11px; color: var(--muted-foreground); }
 
 /* 집계 단위 토글 — 눌린 버튼 */
@@ -316,3 +316,11 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 .status-list .status-tag { justify-content: flex-end; }
 /* 배지 여러 개를 나란히 — 붙지 않게 gap, 좁으면 줄바꿈 */
 .status-row { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 8px; }
+
+/* 조회 중: 이전 조건의 숫자가 새 조건 결과처럼 읽히지 않게 흐리게 + 블록마다 표시. 값은 지우지 않는다(04 §3-2). */
+.block-content[aria-busy="true"] { opacity: .55; position: relative; }
+.block-content[aria-busy="true"]::after { content: "조회 중…"; position: absolute; top: 0; right: 0; font-size: 11px; color: var(--muted-foreground); background: var(--surface); padding: 1px 6px; border-radius: 4px; }
+/* CF-018 통화별 묶음 머리줄 */
+.account-table tr.group-head td { background: var(--muted); font-weight: 600; font-size: 12px; }
+.account-table td .bar-track { max-width: 120px; margin-top: 4px; }
+
