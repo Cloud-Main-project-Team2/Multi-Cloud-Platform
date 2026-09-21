@@ -529,6 +529,7 @@ def get_cost_changes(
     provider: list[str] = Query(default=[]),
     cloud_account_id: list[str] = Query(default=[]),
     team_id: list[str] = Query(default=[]),
+    currency: str | None = None,
     charge_category: list[str] = Query(default=[]),
     compare: str = "previous_period",
     dimension: str = "service",
@@ -539,20 +540,26 @@ def get_cost_changes(
     if compare not in ("previous_period", "previous_month"):
         raise validation_error("compare는 previous_period|previous_month 중 하나여야 합니다.")
     top_n = max(1, min(top_n, 50))
-    q = _build_query(period_start, period_end, provider, cloud_account_id, None, charge_category, team_id=team_id, db=db, user_id=current_user.id)
-    data = changes(db, current_user.id, q, compare, dimension, top_n)
+    # currency는 공통 query(05 §4 · 08 §5-2)다 — 이전엔 None 고정이라 '청구 통화' 필터가 비교에만 안 먹었다.
+    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, charge_category, team_id=team_id, db=db, user_id=current_user.id)
+    data = changes(db, current_user.id, q, compare, dimension, top_n, currency_param=currency)
     return CostChangesResponse(data=data)
 
 
 @router.get("/costs/collection-status", response_model=CostCollectionStatusResponse)
 def get_cost_collection_status(
+    period_start: str | None = None,
+    period_end: str | None = None,
     provider: list[str] = Query(default=[]),
     cloud_account_id: list[str] = Query(default=[]),
     team_id: list[str] = Query(default=[]),
+    currency: str | None = None,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> CostCollectionStatusResponse:
-    q = _build_query(None, None, provider, cloud_account_id, None, [], team_id=team_id, db=db, user_id=current_user.id)
+    # 공통 query 7개를 받는다(05 §4 "6종 모두 같다"). period·currency는 계정별 coverage(조회 기간 기준
+    # 결측일)를 내는 데 쓰인다 — 안 넘기면 이번 달·전체 통화 기준이다.
+    q = _build_query(period_start, period_end, provider, cloud_account_id, currency, [], team_id=team_id, db=db, user_id=current_user.id)
     raw_items = collection_status(db, current_user.id, q)
     items = [
         CostCollectionStatusItem(
@@ -561,6 +568,7 @@ def get_cost_collection_status(
             last_success_at=iso_z(item["last_success_at"]), last_attempt_at=iso_z(item["last_attempt_at"]),
             last_error_code=item["last_error_code"], next_manual_allowed_at=iso_z(item["next_manual_allowed_at"]),
             covered_through=item["covered_through"], missing_days=item["missing_days"],
+            missing_count=item["missing_count"], coverage=item["coverage"],
         )
         for item in raw_items
     ]
