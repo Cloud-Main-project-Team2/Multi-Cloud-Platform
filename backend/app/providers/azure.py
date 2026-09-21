@@ -11,6 +11,7 @@ from azure.mgmt.resource import ResourceManagementClient
 from azure.mgmt.resource.subscriptions import SubscriptionClient
 from azure.monitor.query import MetricAggregationType, MetricsQueryClient
 
+from app.logging_config import log_business_event
 from app.providers import VerificationResult
 
 # 리소스는 Azure ARM 리소스 ID 전체(subscription/resourceGroup 포함)를 external_resource_id로
@@ -158,7 +159,11 @@ def get_cpu_utilization(secret_payload: dict, resource_ids: list[str]) -> dict[s
             client_secret=secret_payload["client_secret"],
         )
         client = MetricsQueryClient(credential)
-    except KeyError:
+    except KeyError as exc:
+        log_business_event(
+            "azure.cpu_utilization_auth_failed", level="WARNING",
+            missing_field=str(exc),
+        )
         return {resource_id: None for resource_id in resource_ids}
 
     out: dict[str, float | None] = {}
@@ -180,7 +185,14 @@ def get_cpu_utilization(secret_payload: dict, resource_ids: list[str]) -> dict[s
             ]
             points.sort(key=lambda p: p[0], reverse=True)
             out[resource_id] = round(points[0][1], 1) if points else None
-        except (ClientAuthenticationError, HttpResponseError, AzureError):
+        except (ClientAuthenticationError, HttpResponseError, AzureError) as exc:
+            # 이전까지는 여기가 완전히 조용했다 — 리소스 하나가 권한/형식 문제로 막혀도
+            # 로그 한 줄 없이 그냥 None으로 사라져서, "권한을 줬는데 왜 안 되냐"를 서버
+            # 쪽에서 확인할 방법이 없었다(2026-09-21 실사용 중 확인).
+            log_business_event(
+                "azure.cpu_utilization_query_failed", level="WARNING",
+                resource_id=resource_id, error_type=type(exc).__name__, error=str(exc)[:300],
+            )
             out[resource_id] = None
     return out
 
