@@ -243,3 +243,39 @@ def test_cost_snapshot_uses_real_cost_query_functions_end_to_end(client, make_us
     assert snapshot["breakdown_provider"]["items"] == [
         {"key": "aws", "label": "aws", "amount": "150.000000", "share_pct": "100.0"}
     ]
+
+
+def test_cost_snapshot_category_uses_real_aws_service_names(client, make_user, auth_header, db_session):
+    """cost/query.py::_AWS_SERVICE_TO_CATEGORY는 "AmazonEC2" 같은 짧은 코드를 키로 쓰는데
+    실제 AWS Cost Explorer는 "Amazon Elastic Compute Cloud - Compute" 같은 정식 명칭을 준다
+    (2026-09-21 실 화면에서 재현·확인). 그 버그 자체는 이승현 소유 파일(cost/query.py)이라
+    고치지 않았고, 대신 app/report_cost.py::_category_breakdown_from_service()가 자체적으로
+    실제 서비스명을 매핑한다 — 이 테스트는 그 매핑이 실제로 동작하는지, 그리고 cost/query.py
+    쪽 코드는 전혀 안 건드렸는지(다른 화면엔 영향 없음)를 함께 확인한다."""
+    user = make_user()
+    account = _make_account(db_session, user)
+    _add_cost_row(db_session, account, dt.date(2026, 9, 15), "40.00", service="Amazon Elastic Compute Cloud - Compute")
+    _add_cost_row(db_session, account, dt.date(2026, 9, 16), "5.00", service="EC2 - Other")
+    _add_cost_row(db_session, account, dt.date(2026, 9, 17), "10.00", service="Amazon Simple Storage Service")
+    _add_cost_row(db_session, account, dt.date(2026, 9, 18), "3.00", service="Amazon Virtual Private Cloud")  # 매핑표에 없는 서비스
+
+    payload = dict(_PAYLOAD, clouds=["aws"])
+    resp = client.post("/api/v1/reports", json=payload, headers=auth_header(user))
+    assert resp.status_code == 200
+    category = resp.json()["data"]["cost_snapshot"]["breakdown_category"]
+
+    by_key = {item["key"]: item["amount"] for item in category["items"]}
+    assert by_key == {"compute": "45.000000", "storage_object": "10.000000"}
+    # 매핑표에 없는 서비스(VPC)는 지어내지 않고 그대로 미분류로 남는다.
+    assert category["unallocated"]["amount"] == "3.000000"
+    assert category["unallocated"]["reason"] == "no_category_mapping"
+    assert category["total"] == "58.000000"
+
+    # cost/query.py::breakdown(dimension="category")는 여전히 원래 버그 그대로다 — 이 수정이
+    # 그 파일을 안 건드렸다는 증거(대시보드 등 다른 화면에 영향 없음).
+    from app.cost.query import CostQuery, breakdown
+
+    q = CostQuery(period_start=dt.date(2026, 9, 13), period_end=dt.date(2026, 9, 20), providers=["aws"])
+    untouched = breakdown(db_session, user.id, q, "category", 6, None)
+    assert untouched["items"] == []
+    assert untouched["unallocated"]["amount"] == "58.000000"
