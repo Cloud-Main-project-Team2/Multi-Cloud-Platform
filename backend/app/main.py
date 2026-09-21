@@ -15,6 +15,7 @@ from app.error_catalog import explain
 from app.error_patterns import translate_reason
 from app.errors import ApiError
 from app.logging_config import log_access, log_business_event
+from app.report_scheduler import start_report_scheduler, stop_report_scheduler
 from app.routers import (
     agent,
     auth,
@@ -25,6 +26,7 @@ from app.routers import (
     notifications,
     price_comparisons,
     provisioning,
+    reports,
     resources,
     security_groups,
     sync_jobs,
@@ -38,7 +40,9 @@ async def lifespan(_app: FastAPI):
     # 판단할 수 있는 기준선이다.
     log_business_event("service.started")
     start_cost_scheduler()
+    start_report_scheduler()
     yield
+    stop_report_scheduler()
     stop_cost_scheduler()
     log_business_event("service.stopping")
 
@@ -54,6 +58,7 @@ app.include_router(client_logs.router)
 app.include_router(notifications.router)
 app.include_router(security_groups.router)
 app.include_router(costs.router)
+app.include_router(reports.router)
 app.include_router(teams.router)  # PR 7 — 팀·예산 9종
 app.include_router(cost_review.router)  # PR 8 — 급증 탐지·검토 큐
 app.include_router(price_comparisons.router)  # PR 8 — /provisioning/price-comparisons (routers/provisioning.py 미수정)

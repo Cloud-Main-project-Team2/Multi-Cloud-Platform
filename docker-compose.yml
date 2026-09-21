@@ -48,6 +48,10 @@ services:
       # 않으므로 코드 쪽 기본값(false)이 적용돼 테스트 중에는 돌지 않는다.
       COST_SCHEDULER_ENABLED: ${COST_SCHEDULER_ENABLED:-true}
       COST_INGEST_HOUR_UTC: ${COST_INGEST_HOUR_UTC:-6}
+      # 보고서 정기 메일 발송(app/report_scheduler.py, 2026-09-19). 테스트는 이 env를 세팅하지
+      # 않으므로 코드 쪽 기본값(false)이 적용돼 테스트 중에는 돌지 않는다.
+      REPORT_SCHEDULER_ENABLED: ${REPORT_SCHEDULER_ENABLED:-true}
+      REPORT_SEND_HOUR_UTC: ${REPORT_SEND_HOUR_UTC:-7}
       COST_STALE_AFTER_HOURS: ${COST_STALE_AFTER_HOURS:-36}
       TERRAFORM_WORKSPACES_DIR: /app/terraform_workspaces
       TERRAFORM_PLUGIN_CACHE_DIR: /app/terraform_plugin_cache
