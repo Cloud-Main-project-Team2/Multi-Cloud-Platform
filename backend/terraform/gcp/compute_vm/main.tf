@@ -11,9 +11,15 @@
 # 기대지 않고, 이 VM에만 적용되는 전용 규칙(google_compute_firewall)을 job마다 함께 만든다
 # (2026-09-11 결정, CLAUDE.md 참고).
 #
-# 이미지는 debian-12를 쓴다(2026-09-11 실사용 테스트에서 발견·수정): 원래 debian-11이었는데
+# 이미지는 기본값이 debian-12다(2026-09-11 실사용 테스트에서 발견·수정): 원래 debian-11이었는데
 # GCP가 해당 이미지 패밀리를 단종시켜 `debian-cloud` 프로젝트에서 내려갔다 — 실제 계정으로
 # 끝까지(apply) 테스트해본 게 이번이 처음이라 아무도 못 보고 지나갔던 문제다.
+#
+# var.image로 다른 공개 이미지(예: ubuntu-os-cloud/ubuntu-2204-lts-amd64)도 고를 수 있다
+# (2026-09-21 추가) — AWS(ami_id 직접 지정 또는 IMAGE_FAMILIES)·Azure(IMAGE_REFERENCES)와
+# 마찬가지로 큐레이티드 목록은 app/gcp_provisioning.py의 IMAGE_FAMILIES에서 관리하고, 이
+# 모듈은 그 결과 문자열을 그대로 받기만 한다(GCP 이미지 개념 자체가 넓어서 이 모듈에서
+# 목록을 만들지 않는다).
 #
 # ## 인바운드 규칙은 var.inbound_rules를 실제로 반영한다(2026-09-16 결정 — 이전엔 죽은 UI였음)
 #
@@ -92,7 +98,7 @@ resource "google_compute_instance" "vm" {
 
   boot_disk {
     initialize_params {
-      image = "debian-cloud/debian-12"
+      image = var.image
       size  = 10
       type  = "pd-balanced"
     }

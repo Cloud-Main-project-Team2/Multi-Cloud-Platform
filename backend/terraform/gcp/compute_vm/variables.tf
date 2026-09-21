@@ -49,3 +49,9 @@ variable "subnetwork" {
   type        = string
   default     = null
 }
+
+variable "image" {
+  description = "부팅 이미지(project/family 형식). app/gcp_provisioning.py의 IMAGE_FAMILIES가 채운다. 기본값은 Debian 12."
+  type        = string
+  default     = "debian-cloud/debian-12"
+}
