@@ -19,6 +19,12 @@ asia-northeast3/us-central1)과 동일한 값만 허용한다 — 프론트가 �
 공유 모델 `app/compute_specs.py`의 `ComputeCommonSpec`으로 검증한 뒤 그대로 넘긴다 — 비어
 있으면(기본값) 방화벽은 관리용 SSH(IAP 전용) 하나만 남고 서비스 포트는 아무것도 안 열린다,
 AWS/Azure와 동일한 "호출자가 명시한 규칙만 신뢰" 정책.
+
+**이미지 선택지 추가(2026-09-21)**: AWS/Azure는 이미지(OS) 선택지가 있는데 GCP만 없어서(이미지
+개념이 구조적으로 더 넓다는 이유로 처음부터 범위에서 뺐음, `Multicloud_Provider_Feature_Mapping`
+1절) 3사 동일 옵션 요구에 맞춰 `IMAGE_FAMILIES`로 "Debian 12"(기본값)/"Ubuntu 22.04" 중 고를 수
+있게 추가한다. GCP 커스텀 이미지·전체 카탈로그까지 열어주는 건 아니고, Azure의
+`IMAGE_REFERENCES`와 동일한 폭(공개 OS 이미지 2종)으로만 좁혀서 큐레이션한다.
 """
 
 from __future__ import annotations
@@ -43,6 +49,17 @@ ALLOWED_MACHINE_TYPES = ("e2-micro", "e2-medium", "e2-standard-4")
 ALLOWED_REGIONS = ("asia-northeast3", "us-central1")
 _ZONE_SUFFIX = "-a"
 
+# provider_spec.image 큐레이티드 목록 → 실제 GCP 이미지(project/family). Ubuntu는 Canonical의
+# 공식 GCP 프로젝트(ubuntu-os-cloud)의 Jammy(22.04) 계열 — "ubuntu-2204-lts"가 x86_64(기본)
+# 이고, ARM64는 별도로 "ubuntu-2204-lts-arm64"라는 다른 family로 분리돼 있어(2026-09-21 실제
+# `ImagesClient.list()`로 확인) 이 이름만으로는 ARM64를 잘못 고를 위험이 없다(e2-* 머신 타입도
+# 전부 x86_64라 애초에 ARM64가 필요 없음, Azure의 B2pts_v2 ARM64 제외와 같은 이유).
+IMAGE_FAMILIES: dict[str, str] = {
+    "Debian 12": "debian-cloud/debian-12",
+    "Ubuntu 22.04": "ubuntu-os-cloud/ubuntu-2204-lts",
+}
+_DEFAULT_IMAGE_FAMILY = "Debian 12"
+
 _NAME_RE = re.compile(r"^[a-z][a-z0-9-]{0,38}[a-z0-9]$")
 
 
@@ -65,9 +82,9 @@ def _optional_network_name(provider_spec: dict, field: str) -> str | None:
 
 def _derive(
     common_spec: dict, provider_spec: dict
-) -> tuple[str, str, str, list[InboundRule], str | None, str | None]:
-    """`(instance_name, region, machine_type, inbound_rules, network, subnetwork)`를 반환한다.
-    실패 시 422 `ApiError`를 raise한다."""
+) -> tuple[str, str, str, list[InboundRule], str | None, str | None, str]:
+    """`(instance_name, region, machine_type, inbound_rules, network, subnetwork, image)`를
+    반환한다. 실패 시 422 `ApiError`를 raise한다."""
     name = common_spec.get("name")
     if not isinstance(name, str) or not _NAME_RE.fullmatch(name):
         raise validation_error(
@@ -103,7 +120,15 @@ def _derive(
     network = _optional_network_name(provider_spec, "network")
     subnetwork = _optional_network_name(provider_spec, "subnetwork")
 
-    return f"mcp-{name}", region, machine_type, common.inbound_rules, network, subnetwork
+    image_family_name = provider_spec.get("image") or _DEFAULT_IMAGE_FAMILY
+    image = IMAGE_FAMILIES.get(image_family_name)
+    if image is None:
+        raise validation_error(
+            f"provider_spec.image은 {', '.join(IMAGE_FAMILIES)} 중 하나여야 합니다.",
+            details=[{"field": "provider_spec.image", "reason": "invalid"}],
+        )
+
+    return f"mcp-{name}", region, machine_type, common.inbound_rules, network, subnetwork, image
 
 
 def validate_spec(common_spec: dict, provider_spec: dict) -> None:
@@ -120,6 +145,7 @@ def build_tfvars(
     inbound_rules: list[InboundRule] | None = None,
     network: str | None = None,
     subnetwork: str | None = None,
+    image: str = "debian-cloud/debian-12",
 ) -> dict:
     return {
         "project_id": project_id,
@@ -131,6 +157,7 @@ def build_tfvars(
         "inbound_rules": [rule.model_dump() for rule in (inbound_rules or [])],
         "network": network,
         "subnetwork": subnetwork,
+        "image": image,
     }
 
 
@@ -147,11 +174,15 @@ def run(
     """백그라운드 job에서 호출된다 — 이미 `validate_spec()`을 통과한 입력이지만, raise 대신
     `TerraformResult`로 실패를 표현해 백그라운드 태스크 밖으로 예외가 새 나가지 않게 한다."""
     try:
-        instance_name, region, machine_type, inbound_rules, network, subnetwork = _derive(common_spec, provider_spec)
+        instance_name, region, machine_type, inbound_rules, network, subnetwork, image = _derive(
+            common_spec, provider_spec
+        )
     except ApiError as exc:
         return TerraformResult(success=False, error_code=exc.code, error_message=exc.message)
 
-    tfvars = build_tfvars(job_id, project_id, instance_name, region, machine_type, inbound_rules, network, subnetwork)
+    tfvars = build_tfvars(
+        job_id, project_id, instance_name, region, machine_type, inbound_rules, network, subnetwork, image
+    )
     # GCP는 secret_payload(서비스 계정 키 JSON)를 환경변수가 아니라 파일로 넘긴다 —
     # terraform_runner가 0600 임시 파일로 써서 GOOGLE_APPLICATION_CREDENTIALS로만 노출한다.
     return run_apply(

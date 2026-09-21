@@ -203,6 +203,65 @@ def test_run_passes_existing_resource_ids_through_to_run_apply(monkeypatch, tmp_
     assert captured["tfvars"]["security_group_id"] == "sg-0123456789abcdef0"
 
 
+def test_validate_spec_accepts_curated_image_family():
+    aws_provisioning.validate_spec(VALID_COMMON, {**VALID_PROVIDER, "image": "Ubuntu 22.04"})
+
+
+def test_validate_spec_rejects_unknown_image_family():
+    with pytest.raises(ApiError) as exc_info:
+        aws_provisioning.validate_spec(VALID_COMMON, {**VALID_PROVIDER, "image": "Windows Server 2022"})
+    assert exc_info.value.code == "VALIDATION_ERROR"
+    assert exc_info.value.details[0]["field"] == "provider_spec.image"
+
+
+def test_build_tfvars_defaults_image_to_amazon_linux_2023():
+    tfvars = aws_provisioning.build_tfvars(42, "mcp-web-01", "ap-northeast-2", "t3.micro", None)
+    assert tfvars["image_owner"] == "amazon"
+    assert tfvars["image_name_filter"] == "al2023-ami-2023.*-x86_64"
+
+
+def test_run_resolves_ubuntu_image_family_to_ami_filter(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run_apply(workspace_dir, module_dir, tfvars, credential_env, *, cancel_check=None):
+        captured["tfvars"] = tfvars
+        return TerraformResult(success=True, outputs={"instance_id": "i-123"})
+
+    monkeypatch.setattr(aws_provisioning, "run_apply", fake_run_apply)
+
+    aws_provisioning.run(
+        job_id=1,
+        workspace_dir=tmp_path,
+        common_spec=VALID_COMMON,
+        provider_spec={**VALID_PROVIDER, "image": "Ubuntu 22.04"},
+        secret_payload={"access_key_id": "AKIAFAKE", "secret_access_key": "shh"},
+    )
+
+    assert captured["tfvars"]["ami_id"] is None
+    assert captured["tfvars"]["image_owner"] == "099720109477"
+    assert captured["tfvars"]["image_name_filter"] == "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
+
+
+def test_run_prefers_explicit_ami_id_over_image_family(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_run_apply(workspace_dir, module_dir, tfvars, credential_env, *, cancel_check=None):
+        captured["tfvars"] = tfvars
+        return TerraformResult(success=True, outputs={"instance_id": "i-123"})
+
+    monkeypatch.setattr(aws_provisioning, "run_apply", fake_run_apply)
+
+    aws_provisioning.run(
+        job_id=1,
+        workspace_dir=tmp_path,
+        common_spec=VALID_COMMON,
+        provider_spec={**VALID_PROVIDER, "image": "Ubuntu 22.04", "ami_id": "ami-0123456789abcdef0"},
+        secret_payload={"access_key_id": "AKIAFAKE", "secret_access_key": "shh"},
+    )
+
+    assert captured["tfvars"]["ami_id"] == "ami-0123456789abcdef0"
+
+
 def test_run_returns_failed_result_on_invalid_spec(tmp_path):
     result = aws_provisioning.run(
         job_id=1,

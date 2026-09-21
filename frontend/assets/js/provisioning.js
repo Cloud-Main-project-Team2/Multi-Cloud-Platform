@@ -142,7 +142,9 @@
   var COMPUTE_IMAGES = {
     aws: ["Amazon Linux 2023", "Ubuntu 22.04", AMI_CUSTOM],
     azure: ["Ubuntu 22.04", "Windows Server 2022"],
-    // gcp: 이미지 필드는 구조가 달라 노출하지 않음(맵핑 문서 "제외").
+    // GCP도 3사 동일 옵션 요구에 맞춰 큐레이티드 이미지 2종을 노출한다(2026-09-21,
+    // app/gcp_provisioning.py의 IMAGE_FAMILIES와 값이 같아야 함). 기본값(Debian 12)을 먼저 둔다.
+    gcp: ["Debian 12", "Ubuntu 22.04"],
   };
   var STORAGE_CLASSES = ["Standard", "Nearline", "Coldline", "Archive"]; // GCP 전용
 
@@ -1290,7 +1292,7 @@
 
     if (kind === "compute") {
       platforms.forEach(function (p) {
-        if (!COMPUTE_IMAGES[p]) return; // GCP 등 이미지 필드 미노출
+        if (!COMPUTE_IMAGES[p]) return;
         var box = el("div", { class: "rounded-xl bg-muted p-3" });
         var opts = '<option value="">선택하세요</option>' +
           COMPUTE_IMAGES[p].map(function (o) { return "<option>" + o + "</option>"; }).join("");
@@ -1304,10 +1306,6 @@
         box.innerHTML = html;
         container.appendChild(box);
       });
-      if (platforms.indexOf("gcp") >= 0) {
-        container.appendChild(el("div", { class: "text-xs text-muted-foreground" },
-          "GCP는 이미지 설정이 별도 입력 없이 기본값으로 처리됩니다."));
-      }
       // 인바운드 규칙(공통에서 이동) + 인증(플랫폼별)
       container.appendChild(inboundFieldEl());
       platforms.forEach(function (p) { container.appendChild(computeAuthEl(p)); });
@@ -1704,7 +1702,11 @@
     // compute
     if (p === "aws") {
       var aws = { region: ps.region, instance_type: ps.instanceType };
-      if (ps.image === AMI_CUSTOM && ps.amiId) aws.ami_id = ps.amiId; // 직접 입력한 AMI만 전송
+      if (ps.image === AMI_CUSTOM && ps.amiId) {
+        aws.ami_id = ps.amiId; // 직접 입력한 AMI만 전송(image는 안 보냄 — 서버가 ami_id를 우선함)
+      } else if (ps.image) {
+        aws.image = ps.image; // "Amazon Linux 2023"/"Ubuntu 22.04" — app/aws_provisioning.py의 IMAGE_FAMILIES가 실제 AMI로 변환
+      }
       addIfFilled(aws, "vpc_id", ps.vpcId);
       addIfFilled(aws, "subnet_id", ps.subnetId);
       addIfFilled(aws, "security_group_id", ps.securityGroupId);
@@ -1712,6 +1714,7 @@
     }
     if (p === "gcp") {
       var gcp = { region: ps.region, instance_type: ps.instanceType };
+      if (ps.image) gcp.image = ps.image; // "Debian 12"/"Ubuntu 22.04" — app/gcp_provisioning.py의 IMAGE_FAMILIES가 실제 이미지로 변환
       addIfFilled(gcp, "network", ps.network);
       return gcp;
     }

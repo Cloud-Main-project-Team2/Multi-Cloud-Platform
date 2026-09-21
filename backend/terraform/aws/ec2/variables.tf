@@ -16,7 +16,19 @@ variable "instance_name" {
 variable "ami_id" {
   type        = string
   default     = null
-  description = "사용할 AMI ID. null이면 최신 Amazon Linux 2023 AMI를 자동으로 찾는다"
+  description = "사용할 AMI ID. null이면 image_owner/image_name_filter로 최신 AMI를 자동으로 찾는다"
+}
+
+variable "image_owner" {
+  type        = string
+  default     = "amazon"
+  description = "AMI 소유자 계정 ID/별칭. var.ami_id가 없을 때만 쓰인다(app/aws_provisioning.py의 IMAGE_FAMILIES가 채운다)."
+}
+
+variable "image_name_filter" {
+  type        = string
+  default     = "al2023-ami-2023.*-x86_64"
+  description = "AMI 이름 필터 패턴. var.ami_id가 없을 때만 쓰인다 — owner와 짝을 이뤄 특정 OS 계열(Amazon Linux 2023/Ubuntu 22.04 등)을 고른다."
 }
 
 variable "tags" {
