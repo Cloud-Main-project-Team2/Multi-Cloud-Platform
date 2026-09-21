@@ -396,7 +396,9 @@ def forecast_month_end(
     상태**다(통화별이 아니다): 계정 하나가 부족하면 모든 통화의 전망을 내지 않는다."""
     today = utc_today()
     this_month_start = today.replace(day=1)
-    is_current_month = q.period_start == this_month_start and q.period_end == today + dt.timedelta(days=1)
+    # 전망 창은 어차피 이달 1일~어제(UTC)다. period_end가 '오늘'(어제까지 포함)이든 '오늘+1'(오늘 포함)이든
+    # 근거 데이터가 같으므로 둘 다 받는다(2026-09-21 결정). 더 이르면 not_current_month, 미래면 내지 않는다.
+    is_current_month = q.period_start == this_month_start and q.period_end in (today, today + dt.timedelta(days=1))
     status = {"state": "computed", "based_through": None, "required_accounts": 0, "incomplete_accounts": []}
     if not is_current_month:
         status["state"] = "not_current_month"

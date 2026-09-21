@@ -292,7 +292,7 @@ window.MCPCostChart = (function () {
       slices.push({ key: "__rest", label: "기타 " + (opts.rest.count != null ? "(" + opts.rest.count + "종)" : ""), amount: opts.rest.amount, share_pct: opts.rest.share_pct });
     }
     if (opts.unallocated && opts.unallocated.amount != null && num(opts.unallocated.amount) !== 0) {
-      slices.push({ key: "__unallocated", label: "미배분(분류 규칙 없음)", amount: opts.unallocated.amount, share_pct: opts.unallocated.share_pct });
+      slices.push({ key: "__unallocated", label: "미분류(서비스 미지정)", amount: opts.unallocated.amount, share_pct: opts.unallocated.share_pct });
     }
     if (!slices.length || !(num(opts.total) !== 0)) {
       return '<p class="note">이 조건에 실측 항목이 없습니다' + (num(opts.total) === 0 && slices.length ? " (합계 0)" : "") + ".</p>";
@@ -328,7 +328,7 @@ window.MCPCostChart = (function () {
     var slices = (opts.items || []).slice();
     if (opts.rest && opts.rest.amount != null) slices.push(opts.rest);
     if (opts.unallocated && opts.unallocated.amount != null && num(opts.unallocated.amount) !== 0) {
-      slices.push({ key: "__unallocated", label: "미배분", amount: opts.unallocated.amount,
+      slices.push({ key: "__unallocated", label: "미분류", amount: opts.unallocated.amount,
                     share_pct: opts.unallocated.share_pct });
     }
 
