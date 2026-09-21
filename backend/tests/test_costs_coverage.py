@@ -359,3 +359,27 @@ def test_collection_status_reports_period_coverage(client, make_user, auth_heade
     assert item["missing_count"] == 6
     assert item["missing_days"] == [f"2026-09-{d}" for d in range(15, 21)]
     assert item["coverage"]["days"] == 20 and item["coverage"]["covered"] == 14 and item["coverage"]["pending_days"] == 1
+
+
+# --- 전망 창: period_end=오늘(어제까지)과 오늘+1(오늘 포함)은 같은 전망 ---------------------------
+
+
+def test_forecast_window_accepts_period_end_today_or_tomorrow(client, make_user, auth_header, db_session):
+    """전망 근거는 이달 1일~UTC 어제뿐이라 period_end가 9/21(어제까지)이든 9/22(오늘 포함)이든 같은 값·같은
+    based_through여야 한다. 9/20(어제 전)까지면 진행 중 구간 조회가 아니므로 not_current_month, 미래(9/23)면 내지 않는다."""
+    user = make_user()
+    a = _account(db_session, user)
+    _rows_every_day(db_session, a, dt.date(2026, 9, 1), dt.date(2026, 9, 21), amount="3.000000")
+
+    yesterday_incl = _summary(client, user, auth_header, period_start="2026-09-01", period_end="2026-09-21")
+    today_incl = _summary(client, user, auth_header, period_start="2026-09-01", period_end="2026-09-22")
+    assert yesterday_incl["kpis"]["forecast_status"]["state"] == today_incl["kpis"]["forecast_status"]["state"] == "computed"
+    assert yesterday_incl["kpis"]["forecast_month_end"] == today_incl["kpis"]["forecast_month_end"]
+    assert today_incl["kpis"]["forecast_month_end"][0]["amount"] == "90.000000"      # $60 ÷ 20일 × 30일
+    assert today_incl["kpis"]["forecast_month_end"][0]["based_through"] == "2026-09-20"
+
+    earlier = _summary(client, user, auth_header, period_start="2026-09-01", period_end="2026-09-20")
+    assert earlier["kpis"]["forecast_status"]["state"] == "not_current_month"
+    future = _summary(client, user, auth_header, period_start="2026-09-01", period_end="2026-09-23")
+    assert future["kpis"]["forecast_status"]["state"] == "not_current_month" and future["kpis"]["forecast_month_end"] == []
+
