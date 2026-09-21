@@ -99,6 +99,28 @@ class UtilizationResponse(BaseModel):
     data: UtilizationData
 
 
+class UnusedResourceItem(BaseModel):
+    resource_id: str
+    provider: str
+    name: str | None
+    original_resource_type: str
+    reason: Literal["unattached_disk", "idle_compute"]
+    # 실제로 아는 경우에만 채운다 — 모르면 None("0일"로 보이면 방금 풀렸다는 뜻이 되어 사실과
+    # 달라진다). idle_compute는 항상 None(app/metrics.py::get_unused_resources 참고).
+    idle_days: int | None
+    estimated_monthly_cost: float | None  # 정가표에 없으면 None — 단가를 지어내지 않는다.
+
+
+class UnusedResourcesData(BaseModel):
+    items: list[UnusedResourceItem]
+    # "그 보고서 기간의 값"이 아니라 "이 응답을 만든 시점의 값" — app/metrics.py 참고.
+    as_of: str
+
+
+class UnusedResourcesResponse(BaseModel):
+    data: UnusedResourcesData
+
+
 class ResourceActionRequest(BaseModel):
     action: Literal["start", "stop", "delete"]
     resource_ids: list[str] = Field(min_length=1)

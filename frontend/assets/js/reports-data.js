@@ -1,20 +1,26 @@
-/* 보고서 작성 기능의 목업 데이터 저장소 (순수 프론트엔드, 서버 통신 없음 — 보고서_구현명세_v5.md
-   §0/§9 기준: 비용 대시보드 연동 전까지 이 목업으로 화면만 먼저 완성한다).
+/* 보고서 작성 기능의 데이터 계층.
+   "생성 이력"(언제 무슨 조건으로 생성했는가)은 2026-09-19부터 실 API
+   (GET/POST/DELETE /api/v1/reports, app/routers/reports.py)로 저장된다 — MCReports.list/
+   getById/createReport/remove가 전부 Promise를 반환하는 이유다.
 
-   실제 백엔드가 붙으면 이 파일을 지우고 GET /api/v1/reports·/reports/{id}(§5.2/5.3) 응답으로
-   MCReports.list/getById를 교체하면 된다 — reports.js/report-view.js는 이미 그 응답 모양
-   (payload 구조)을 기대하도록 짜여 있다.
-
-   로컬 프로토타입 전용 파일 — git 커밋 대상 아님. */
+   비용 요약(mapCostSnapshot)은 서버가 생성 시점에 비용 파트(app/cost/query.py)의 공통 함수로
+   계산해 `cost_snapshot`에 고정 저장한 값을 그대로 옮겨 담는다 — 여기서 다시 계산하지 않는다.
+   AI 분석 요약·인수인계는 아직 재사용할 API가 없어 BASE 목업 그대로다. 사용률·미사용 리소스는
+   report-view.js가 실 API로 실시간 조회해 덮어쓴다(비용과 달리 "지금 이 순간" 값이 맞는
+   섹션이라 스냅샷 저장 대상이 아니다). */
 (function () {
   "use strict";
 
   var PERIOD_LABEL = { DAILY: "일간", WEEKLY: "주간", MONTHLY: "월간", HALF_YEARLY: "반기" };
   var PERIOD_DAYS = { DAILY: 1, WEEKLY: 7, MONTHLY: 30, HALF_YEARLY: 182 };
   var COMPARE_LABEL = { DAILY: "전일", WEEKLY: "전주", MONTHLY: "전월", HALF_YEARLY: "전반기" };
+  // AI 분석 요약 문단이 "이번 주"/"전주"를 하드코딩해서 일간/월간/반기 보고서에서도 그대로
+  // 나오던 문제(2026-09-19 확인) — periodType에 맞는 명사로 치환한다.
+  var PERIOD_NOUN = { DAILY: "오늘", WEEKLY: "이번 주", MONTHLY: "이번 달", HALF_YEARLY: "이번 반기" };
 
-  // 최신 보고서(2026-09-07~09-13, 3사 전체) — 명세서 §3 프롬프트 입력 JSON 예시값 그대로.
-  // 나머지 이력은 이 값을 clouds/factor로 스케일링해서 만든다(아래 buildReport).
+  // AI 분석 요약·인수인계는 비용 API처럼 재사용할 공통 계산 함수가 없어 여전히 목업이다
+  // (2026-09-19 기준). 비용(cost)은 더 이상 여기 없다 — report_generations.cost_snapshot을
+  // mapCostSnapshot()으로 그대로 옮겨 쓴다.
   var BASE = {
     title: "멀티클라우드 운영 보고서",
     owner: "안권형",
@@ -25,35 +31,6 @@
         "Azure 비용이 12.7% 증가했습니다. 신규 VM 2대의 필요성을 확인하세요",
         "미사용 리소스 4건을 정리하면 월 $125를 절감할 수 있습니다",
         "GCP 서비스 계정 키 3건이 10월 만료 예정입니다",
-      ],
-    },
-    cost: {
-      byCsp: {
-        aws: { amount: 526, changePct: 5.1 },
-        azure: { amount: 384, changePct: 12.7 },
-        gcp: { amount: 294, changePct: -2.4 },
-      },
-      changePct: 8.3,
-      changeAmount: 92,
-      trend: [
-        { label: "8월 2주", aws: 471, azure: 318, gcp: 289 },
-        { label: "8월 3주", aws: 489, azure: 330, gcp: 298 },
-        { label: "8월 4주", aws: 502, azure: 341, gcp: 301 },
-        { label: "9월 1주", aws: 500, azure: 341, gcp: 301 },
-        { label: "9월 2주", aws: 526, azure: 384, gcp: 294 },
-      ],
-      byCategory: [
-        { name: "Compute", amount: 506, color: "#3d6fa8" },
-        { name: "Database", amount: 289, color: "#5c94c9" },
-        { name: "Storage", amount: 205, color: "#8fb9dd" },
-        { name: "Network", amount: 132, color: "#b9d4e9" },
-        { name: "기타", amount: 72, color: "#d9e5ef" },
-      ],
-      drivers: [
-        { csp: "azure", reason: "VM 2대 신규 생성", amount: 43 },
-        { csp: "aws", reason: "S3 데이터 전송량 증가", amount: 26 },
-        { csp: "azure", reason: "MySQL 스토리지 확장", amount: 19 },
-        { csp: "gcp", reason: "미사용 인스턴스 정리", amount: -7 },
       ],
     },
     utilization: [
@@ -76,55 +53,69 @@
     ],
   };
 
-  // 생성 이력 메타 — 보고서 작성 페이지 프로토타입 스크린샷 5건 그대로.
-  var HISTORY_META = [
-    { id: "rpt-1", from: "2026-09-07", to: "2026-09-13", periodType: "WEEKLY", clouds: ["aws", "azure", "gcp"], factor: 1, createdAt: "2026-09-14T09:00:00Z" },
-    { id: "rpt-2", from: "2026-08-31", to: "2026-09-06", periodType: "WEEKLY", clouds: ["aws", "azure", "gcp"], factor: 0.93, createdAt: "2026-09-07T09:00:00Z" },
-    { id: "rpt-3", from: "2026-08-01", to: "2026-08-31", periodType: "MONTHLY", clouds: ["aws", "azure", "gcp"], factor: 4.15, createdAt: "2026-09-01T09:00:00Z" },
-    { id: "rpt-4", from: "2026-08-24", to: "2026-08-30", periodType: "WEEKLY", clouds: ["aws", "azure"], factor: 0.89, createdAt: "2026-08-31T09:00:00Z" },
-    { id: "rpt-5", from: "2026-08-17", to: "2026-08-23", periodType: "WEEKLY", clouds: ["azure"], factor: 0.34, createdAt: "2026-08-24T09:00:00Z" },
-  ];
-
-  function round(n) { return Math.round(n); }
   function shortDate(iso) { return iso.slice(5); } // "2026-09-13" → "09-13"
 
-  // BASE + 이력 메타를 조합해 완전한 보고서 payload를 만든다(실 API의 GET /reports/{id} 대용).
+  // 비용 요약 실 API 연동(2026-09-19, `kwonhyeong/be-next`) — 비용 파트(이승현)의 공통 계산
+  // 함수 결과(app/report_cost.py::build_cost_snapshot(), cost/query.py를 그대로 재사용)를
+  // 옮겨 담을 뿐, 새 합계·비율·기여율을 여기서 다시 계산하지 않는다(권형님_보고서_비용연동_
+  // 개발프롬프트_20260919.md §1 — "보고서에서 별도 공식으로 다시 계산하지 마세요"). 필드
+  // 이름만 이 화면 관례(camelCase)에 맞춘다.
+  //
+  // **생성 시점 값이 고정**이다 — `report_generations.cost_snapshot`에 저장된 그대로이고, 이
+  // 함수는 조회 때마다 다시 계산하지 않는다(사용률/미사용 리소스와는 다른 정책 — §9. "같은
+  // 보고서를 다시 열 때 현재 비용을 재조회해서 덮어쓰지 마세요"). snapshot이 null이면 생성
+  // 시점에 계산 자체가 실패한 것 — 0원이나 목업으로 채우지 않고 그대로 null을 돌려준다.
+  function mapBreakdown(b) {
+    if (!b || !b.currency) return null; // 통화 자체가 없음(계정 없음 등, §7 "null은 0이 아니다")
+    return {
+      currency: b.currency,
+      excluded: (b.currency_selection && b.currency_selection.excluded) || [],
+      total: b.total,
+      items: b.items || [],
+      rest: b.rest,
+      unallocated: b.unallocated,
+    };
+  }
+
+  function mapCostSnapshot(snapshot) {
+    if (!snapshot) return null;
+    var summary = snapshot.summary || {};
+    var trendProvider = snapshot.trend_provider;
+    var changes = snapshot.changes;
+    return {
+      periodDisplay: summary.period && summary.period.display,
+      asOf: summary.as_of || null,
+      warnings: summary.warnings || [],
+      totalsByCurrency: (summary.kpis && summary.kpis.mtd_actual) || [],
+      byProvider: mapBreakdown(snapshot.breakdown_provider),
+      byCategory: mapBreakdown(snapshot.breakdown_category),
+      trend: trendProvider && trendProvider.currency ? { currency: trendProvider.currency, series: trendProvider.series || [] } : null,
+      changes: changes ? {
+        comparable: changes.comparable, currency: changes.currency,
+        current: changes.current, previous: changes.previous, totals: changes.totals,
+        increases: changes.increases || [], decreases: changes.decreases || [], newItems: changes.new_items || [],
+      } : null,
+    };
+  }
+
+  // BASE + 이력 메타를 조합해 완전한 보고서 payload를 만든다.
   // clouds에 없는 CSP는 모든 섹션에서 제외한다 — "선택한 클라우드만 포함해 생성" 규칙(§1).
   function buildReport(m) {
     var clouds = m.clouds;
     var order = ["aws", "azure", "gcp"].filter(function (c) { return clouds.indexOf(c) !== -1; });
 
-    var byCsp = {};
-    var total = 0;
-    order.forEach(function (csp) {
-      var amount = round(BASE.cost.byCsp[csp].amount * m.factor);
-      byCsp[csp] = { amount: amount, changePct: BASE.cost.byCsp[csp].changePct };
-      total += amount;
-    });
-
-    var trend = BASE.cost.trend.map(function (pt) {
-      var out = { label: pt.label };
-      order.forEach(function (csp) { out[csp] = round(pt[csp] * m.factor); });
-      return out;
-    });
-
-    var categoryTotal = 0;
-    var byCategory = BASE.cost.byCategory.map(function (c) {
-      var amount = round(c.amount * m.factor * (order.length / 3));
-      categoryTotal += amount;
-      return { name: c.name, amount: amount, color: c.color };
-    });
-    byCategory.forEach(function (c) { c.pct = categoryTotal ? Math.round((c.amount / categoryTotal) * 100) : 0; });
-
-    var changeAmount = round(BASE.cost.changeAmount * m.factor);
-    var drivers = BASE.cost.drivers
-      .filter(function (d) { return order.indexOf(d.csp) !== -1; })
-      .map(function (d) { return { csp: d.csp, reason: d.reason, amount: round(d.amount * m.factor) }; });
-    if (!drivers.length) drivers = [{ csp: order[0], reason: "사용량 변동", amount: changeAmount }];
-
     var utilization = BASE.utilization.filter(function (r) { return order.indexOf(r.csp) !== -1; });
     var unusedItems = BASE.unused.filter(function (r) { return order.indexOf(r.csp) !== -1; });
     var unusedSaving = unusedItems.reduce(function (s, r) { return s + r.cost; }, 0);
+
+    // BASE.summary.paragraph는 "이번 주"/"전주"로 고정 작성돼 있다 — periodType에 맞는
+    // 명사로 바꿔서 일간/월간/반기 보고서에서도 어색하지 않게 한다(2026-09-19 확인).
+    var summary = {
+      paragraph: BASE.summary.paragraph
+        .replace("이번 주", PERIOD_NOUN[m.periodType] || "이번 주")
+        .replace("전주", COMPARE_LABEL[m.periodType] || "전주"),
+      actions: BASE.summary.actions,
+    };
 
     return {
       id: m.id,
@@ -138,81 +129,85 @@
       createdAt: m.createdAt,
       title: BASE.title,
       owner: BASE.owner,
-      summary: BASE.summary,
-      cost: {
-        total: total,
-        changePct: BASE.cost.changePct,
-        changeAmount: changeAmount,
-        byCsp: byCsp,
-        trend: trend,
-        byCategory: byCategory,
-        drivers: drivers,
-      },
+      summary: summary,
+      cost: mapCostSnapshot(m.costSnapshot),
       utilization: utilization,
       unused: { items: unusedItems, totalSaving: unusedSaving },
       handover: BASE.handover,
     };
   }
 
-  var REPORTS = HISTORY_META.map(buildReport);
-
-  // "보고서 생성"이 새 탭(report-view.html)에서 결과를 연다 — 탭마다 이 스크립트가 처음부터
-  // 다시 실행되는 별개 JS 컨텍스트라, REPORTS 배열(메모리)만으로는 방금 생성한 탭 밖에서
-  // 새 보고서를 찾을 수 없다("보고서를 찾을 수 없습니다" 오류의 원인). localStorage로 공유한다.
-  var CREATED_KEY = "mcp_created_reports";
-
-  function loadCreatedReports() {
-    try {
-      var raw = JSON.parse(localStorage.getItem(CREATED_KEY) || "[]");
-      return Array.isArray(raw) ? raw : [];
-    } catch (e) { return []; }
+  // "생성 이력"은 실제로 "생성하기"를 눌러 만든 보고서만 담는다 — `GET/POST/DELETE
+  // /api/v1/reports`(2026-09-19)가 실 저장소다. 예전엔 브라우저 localStorage에 담아서
+  // 팀원끼리 공유가 안 되고, 같은 조건으로 다시 생성할 때마다 새 행이 계속 쌓여 지저분해지는
+  // 문제가 있었다(사용자 실사용 중 확인 — 8월/3월 등 뒤죽박죽 날짜가 중복으로 쌓임). 서버가
+  // `(user_id, period_type, period_from, period_to, providers)` UNIQUE로 같은 조건을 병합하고
+  // `ON CONFLICT DO UPDATE`로 갱신하므로, 프론트는 그냥 매번 생성 요청만 보내면 된다.
+  //
+  // 비용은 서버가 생성 시점에 계산해 `cost_snapshot`에 고정 저장한다(app/report_cost.py) —
+  // 조회할 때마다 값이 바뀌던 예전 문제(매번 랜덤 factor)는 스냅샷 저장으로 근본적으로
+  // 해결됐다(같은 id는 항상 같은 값).
+  function toReport(row) {
+    return buildReport({
+      id: row.id,
+      from: row.period_from,
+      to: row.period_to,
+      periodType: row.period_type,
+      clouds: row.clouds,
+      createdAt: row.generated_at,
+      costSnapshot: row.cost_snapshot,
+    });
   }
 
-  function saveCreatedReports(list) {
-    try { localStorage.setItem(CREATED_KEY, JSON.stringify(list.slice(0, 20))); } catch (e) {}
-  }
-
-  // 최신순으로 저장돼 있으므로 역순으로 unshift해 REPORTS 순서를 그대로 복원한다.
-  var createdOnLoad = loadCreatedReports();
-  for (var i = createdOnLoad.length - 1; i >= 0; i--) {
-    REPORTS.unshift(createdOnLoad[i]);
+  function list() {
+    if (!window.MCPApi) return Promise.resolve([]);
+    return MCPApi.request("/reports?limit=50")
+      .then(function (res) { return ((res && res.items) || []).map(toReport); })
+      .catch(function () { return []; });
   }
 
   function getById(id) {
-    for (var i = 0; i < REPORTS.length; i++) if (REPORTS[i].id === id) return REPORTS[i];
-    return null;
+    if (!window.MCPApi) return Promise.resolve(null);
+    return MCPApi.request("/reports/" + encodeURIComponent(id))
+      .then(toReport)
+      .catch(function () { return null; });
   }
 
-  function latest() { return REPORTS[0]; }
+  function latest() {
+    return list().then(function (items) { return items[0] || null; });
+  }
 
-  // 새 보고서 생성 시뮬레이션 — 실제로는 POST /api/v1/reports(§5.1)가 대신한다.
   function createReport(periodType, clouds) {
+    if (!window.MCPApi) return Promise.reject(new Error("MCPApi not loaded"));
     var days = PERIOD_DAYS[periodType] || 7;
     var to = new Date();
     var from = new Date(to.getTime() - (days - 1) * 86400000);
-    var report = buildReport({
-      id: "rpt-" + Date.now(),
-      from: from.toISOString().slice(0, 10),
-      to: to.toISOString().slice(0, 10),
-      periodType: periodType,
-      clouds: clouds,
-      factor: 0.85 + Math.random() * 0.3,
-      createdAt: to.toISOString(),
-    });
-    REPORTS.unshift(report);
-    var createdList = loadCreatedReports();
-    createdList.unshift(report);
-    saveCreatedReports(createdList);
-    return report;
+    return MCPApi.request("/reports", {
+      method: "POST",
+      body: {
+        period_type: periodType,
+        period_from: from.toISOString().slice(0, 10),
+        period_to: to.toISOString().slice(0, 10),
+        clouds: clouds,
+      },
+    }).then(toReport);
+  }
+
+  function remove(id) {
+    if (!window.MCPApi) return Promise.resolve(false);
+    return MCPApi.request("/reports/" + encodeURIComponent(id), { method: "DELETE" })
+      .then(function () { return true; })
+      .catch(function () { return false; });
   }
 
   window.MCReports = {
     PERIOD_LABEL: PERIOD_LABEL,
     PERIOD_DAYS: PERIOD_DAYS,
-    list: REPORTS,
+    list: list,
     getById: getById,
     latest: latest,
     createReport: createReport,
+    remove: remove,
     shortDate: shortDate,
   };
 })();

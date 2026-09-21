@@ -76,6 +76,10 @@ class Settings(BaseSettings):
     # 비용 자동 수집이 매일 도는 시각(UTC, 0-23). PR 4의 스케줄러가 읽는다.
     cost_ingest_hour_utc: int = Field(default=6, alias="COST_INGEST_HOUR_UTC")
 
+    # app/report_scheduler.py — 보고서 정기 메일 발송 체크가 매일 도는 시각(UTC, 0-23).
+    # "일간" 주기까지만 지원하므로 하루 1회 체크로 충분하다(cost 스케줄러와 동일 패턴).
+    report_send_hour_utc: int = Field(default=7, alias="REPORT_SEND_HOUR_UTC")
+
 
 @lru_cache
 def get_settings() -> Settings:

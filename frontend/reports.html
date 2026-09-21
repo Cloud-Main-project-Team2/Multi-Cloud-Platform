@@ -72,12 +72,6 @@
           <p class="mt-1 text-sm text-muted-foreground">리소스·비용 현황을 보고서로 정리해 내려받습니다</p>
         </div>
 
-        <!-- 비용 대시보드 연동 전 프로토타입 안내 (보고서_구현명세_v5.md §0) -->
-        <div class="mt-4 flex items-start gap-2 rounded-xl border border-yellow bg-surface px-4 py-2.5 text-sm">
-          <span>⚠️</span>
-          <span class="text-muted-foreground">비용 데이터 연동 전 화면입니다. 지금 보이는 수치는 샘플 데이터이며, 실제 API 연동 전까지는 서버에 저장되지 않습니다.</span>
-        </div>
-
         <!-- 보고서 생성 -->
         <div class="mt-4 rounded-2xl border border-border bg-surface p-5">
           <div class="flex flex-wrap items-end justify-between gap-4">
@@ -125,12 +119,12 @@
           </div>
           <div class="mt-3 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div class="rounded-xl bg-muted p-4">
-              <p class="flex items-center gap-1.5 text-sm text-muted-foreground">전체 비용 <span class="rounded border border-yellow px-1 text-[10px] text-yellow">샘플</span></p>
+              <p class="text-sm text-muted-foreground">전체 비용</p>
               <p class="mt-1 text-2xl font-bold" id="report-sum-cost">—</p>
               <p class="mt-1 text-xs text-muted-foreground" id="report-sum-cost-delta">—</p>
             </div>
             <div class="rounded-xl bg-muted p-4">
-              <p class="flex items-center gap-1.5 text-sm text-muted-foreground">미사용 리소스 <span class="rounded border border-yellow px-1 text-[10px] text-yellow">샘플</span></p>
+              <p class="text-sm text-muted-foreground">미사용 리소스</p>
               <p class="mt-1 text-2xl font-bold" id="report-sum-unused">—</p>
               <p class="mt-1 text-xs text-muted-foreground" id="report-sum-unused-sub">—</p>
             </div>
@@ -176,6 +170,9 @@
           <!-- 정기 발송 (§4.3 마이페이지 연동 설정) -->
           <div id="report-panel-schedule" class="mt-4 hidden max-w-md">
             <div class="space-y-4">
+              <!-- 지금 메일 정기 발송이 켜져 있는지 한눈에 보여준다 — 저장 버튼을 눌렀던 그 순간이
+                   지나면 켜져 있는지 알 방법이 없다는 문제(2026-09-19 확인)를 고치기 위함. -->
+              <div id="report-email-status" class="hidden rounded-lg border border-sky bg-muted px-3 py-2 text-xs"></div>
               <div>
                 <p class="text-sm font-semibold">다운로드 방식</p>
                 <div class="mt-2 flex gap-2">
@@ -187,22 +184,33 @@
                   </label>
                 </div>
               </div>
-              <div id="report-email-field" class="hidden">
-                <p class="text-sm font-semibold">수신 메일 주소</p>
-                <input type="email" id="report-email-input" placeholder="name@company.com" class="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+              <!-- 웹 다운로드: 주기 개념 없음 — 정기 발송이 아니라 그 자리에서 즉시 받는다. -->
+              <div id="report-web-download-field">
+                <button type="button" id="report-web-download-btn" class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">최신 보고서 다운로드</button>
               </div>
-              <div>
-                <p class="text-sm font-semibold">다운로드 주기</p>
-                <select id="report-schedule-period" class="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
-                  <option value="DAILY">일간</option>
-                  <option value="WEEKLY" selected>주간</option>
-                  <option value="MONTHLY">월간</option>
-                  <option value="HALF_YEARLY">반기</option>
-                </select>
-              </div>
-              <div class="flex items-center gap-3">
-                <button type="button" id="report-settings-save" class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">저장</button>
-                <span id="report-settings-saved" class="text-xs text-muted-foreground"></span>
+              <!-- 메일 전송: 주기적으로 보내야 하므로 수신 주소·주기 설정이 필요하다. -->
+              <div id="report-email-schedule-fields" class="hidden space-y-4">
+                <div>
+                  <p class="text-sm font-semibold">수신 메일 주소</p>
+                  <input type="email" id="report-email-input" placeholder="name@company.com" class="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <p class="text-sm font-semibold">발송 주기</p>
+                  <select id="report-schedule-period" class="mt-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm">
+                    <option value="DAILY">일간</option>
+                    <option value="WEEKLY" selected>주간</option>
+                    <option value="MONTHLY">월간</option>
+                    <option value="HALF_YEARLY">반기</option>
+                  </select>
+                  <!-- 저장 즉시 보내는 게 아니라 매일 정해진 시각에만 발송 대상을 확인한다는 걸
+                       안내한다 — 안 그러면 "저장했는데 왜 안 오지"로 오해하기 쉽다(2026-09-19 확인). -->
+                  <p id="report-send-timing" class="mt-1 text-xs text-muted-foreground"></p>
+                </div>
+                <div class="flex items-center gap-3">
+                  <button type="button" id="report-settings-save" class="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">저장</button>
+                  <button type="button" id="report-settings-disable" class="hidden rounded-xl border border-border px-4 py-2 text-sm font-semibold text-muted-foreground hover:bg-muted">발송 해제</button>
+                  <span id="report-settings-saved" class="text-xs text-muted-foreground"></span>
+                </div>
               </div>
             </div>
           </div>
