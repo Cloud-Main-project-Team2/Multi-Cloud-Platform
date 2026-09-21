@@ -64,21 +64,47 @@ window.MCPCostChart = (function () {
       var y = geo.y(max * f);
       out += '<line x1="' + geo.left + '" y1="' + y + '" x2="' + geo.right + '" y2="' + y +
              '" stroke="var(--border)" stroke-dasharray="4 4"/>';
-      out += '<text x="2" y="' + (y + 4) + '" fill="currentColor" font-size="11">' +
+      out += '<text x="' + (geo.left - 6) + '" y="' + (y + 4) + '" text-anchor="end" fill="currentColor" font-size="' + AXIS_FONT + '">' +
              esc(F.money(String(max * f), currency)) + '</text>';
     });
-    // x 라벨은 겹치지 않을 만큼만 찍는다(최대 8개).
-    var stride = Math.max(1, Math.ceil(labels.length / 8));
+    // x 라벨: 너비에 맞춰 개수를 정한다(라벨 하나에 약 64px). 좁으면 글자를 줄이지 않고 눈금을 줄인다.
+    var slots = Math.max(2, Math.floor((geo.right - geo.left) / 64));
+    var stride = Math.max(1, Math.ceil(labels.length / slots));
+    var short = shortLabels(labels);
     labels.forEach(function (label, i) {
-      if (i % stride !== 0) return;
-      out += '<text x="' + geo.x(i) + '" y="' + (geo.bottom + 18) + '" text-anchor="middle" ' +
-             'fill="currentColor" font-size="11">' + esc(label) + '</text>';
+      if (i % stride !== 0 && i !== labels.length - 1) return;
+      if (i % stride !== 0 && (labels.length - 1) % stride < stride / 2) return; // 마지막 라벨이 직전 눈금과 붙으면 생략
+      out += '<text x="' + geo.x(i) + '" y="' + (geo.bottom + 20) + '" text-anchor="middle" ' +
+             'fill="currentColor" font-size="' + AXIS_FONT + '"><title>' + esc(label) + '</title>' + esc(short[i]) + '</text>';
     });
     return out;
   }
 
-  function geometry(labelCount) {
-    var W = 720, H = 280, left = 64, right = 700, top = 16, bottom = 228;
+  /* 축 라벨 압축: "2026-09-04" → "9/4", "2026-09" → "9월". 연도가 바뀌는 지점(또는 첫 라벨이 다른 해)엔
+     "'27 1/1" 처럼 연도를 붙인다. 상세(<title>)와 표에는 전체 날짜를 그대로 둔다. */
+  function shortLabels(labels) {
+    var years = {};
+    labels.forEach(function (l) { years[String(l).slice(0, 4)] = true; });
+    var multiYear = Object.keys(years).length > 1;
+    var prevYear = null;
+    return labels.map(function (l) {
+      var s = String(l);
+      var y = s.slice(0, 4), m = s.slice(5, 7), d = s.slice(8, 10);
+      var core = d ? String(Number(m)) + "/" + String(Number(d)) : (m ? String(Number(m)) + "월" : s);
+      var withYear = multiYear && y !== prevYear;
+      prevYear = y;
+      return withYear ? "'" + y.slice(2) + " " + core : core;
+    });
+  }
+
+  /* 실제 표시 너비(px)를 viewBox 너비로 쓴다 — 예전엔 720 고정이라 1,300px 칸에서 1.8배로 확대돼
+     축 글자(11)가 20px로 보였다. 이제 1 user unit = 1 CSS px: 글자 12px는 어디서나 12px, 높이는
+     너비에 따라 200~260px로 고정하고 비율을 왜곡하지 않는다(preserveAspectRatio 기본값 유지). */
+  var AXIS_FONT = 12;
+  function geometry(labelCount, width) {
+    var W = Math.max(320, Math.round(width || 720));
+    var H = W < 480 ? 200 : 260;
+    var left = 60, right = W - 12, top = 14, bottom = H - 34;
     return {
       W: W, H: H, left: left, right: right, top: top, bottom: bottom, max: 1,
       x: function (i) {
@@ -94,6 +120,11 @@ window.MCPCostChart = (function () {
   function slotColor(i, key) {
     if (key === "__rest" || key === "__unallocated") return RESIDUAL_COLOR;
     return i < SERIES_COLOR.length ? SERIES_COLOR[i] : RESIDUAL_COLOR;
+  }
+
+  /* 잠정치 표시 — API의 points[].is_estimated 를 series.estimated[label] 로 받는다. 없으면 빈 문자열. */
+  function estMark(s, label) {
+    return s.estimated && s.estimated[label] ? " · 잠정" : "";
   }
 
   function legend(series, note) {
@@ -126,7 +157,7 @@ window.MCPCostChart = (function () {
 
     var labels = opts.labels || [];
     var series = opts.series || [];
-    var geo = geometry(labels.length);
+    var geo = geometry(labels.length, opts.width);
 
     var peak = 0;
     series.forEach(function (s) {
@@ -169,7 +200,7 @@ window.MCPCostChart = (function () {
         seg.forEach(function (p) {
           svg += '<circle cx="' + geo.x(p.i) + '" cy="' + geo.y(p.v) + '" r="3.5" fill="' + color + '">' +
                  '<title>' + esc(p.label + " · " + (s.label || s.key) + " · " +
-                                 F.money(p.raw, opts.currency)) + '</title></circle>';
+                                 F.money(p.raw, opts.currency) + estMark(s, p.label)) + '</title></circle>';
         });
       });
     });
@@ -179,14 +210,14 @@ window.MCPCostChart = (function () {
       svg += '<line x1="' + geo.left + '" y1="' + ty + '" x2="' + geo.right + '" y2="' + ty +
              '" stroke="var(--muted-foreground)" stroke-dasharray="3 5"/>';
       svg += '<text x="' + (geo.right - 4) + '" y="' + (ty - 6) + '" text-anchor="end" ' +
-             'fill="currentColor" font-size="11">' + esc(opts.thresholdLine.label) + '</text>';
+             'fill="currentColor" font-size="' + AXIS_FONT + '">' + esc(opts.thresholdLine.label) + '</text>';
     }
     svg += "</svg>";
 
     var note = (opts.missingLabels && opts.missingLabels.length)
       ? "수집되지 않은 구간 " + opts.missingLabels.length + "개 — 선을 끊었습니다(0으로 채우지 않음)"
       : null;
-    return svg + legend(series, note) + dataTable(labels, series, opts.currency, opts.missingLabels);
+    return svg + legend(series, note) + dataTable(labels, series, opts.currency, opts.missingLabels, opts.tableLabel);
   }
 
   /* ── ② 누적 막대 — CF-013 일별 모드 ─────────────────────────────────────── */
@@ -196,7 +227,7 @@ window.MCPCostChart = (function () {
 
     var labels = opts.labels || [];
     var series = opts.series || [];
-    var geo = geometry(labels.length);
+    var geo = geometry(labels.length, opts.width);
 
     var peak = 0;
     labels.forEach(function (l) {
@@ -206,7 +237,7 @@ window.MCPCostChart = (function () {
     });
     geo.max = niceMax(peak);
 
-    var bw = Math.max(6, Math.min(28, (geo.right - geo.left) / Math.max(labels.length, 1) * 0.6));
+    var bw = Math.max(4, Math.min(36, (geo.right - geo.left) / Math.max(labels.length, 1) * 0.62));
     var svg = '<svg class="chart" viewBox="0 0 ' + geo.W + ' ' + geo.H + '" role="img" aria-label="' +
               esc((opts.title || "일별 비용") + ". 같은 값을 표로도 제공합니다.") + '">';
     svg += axes(geo, labels, geo.max, opts.currency);
@@ -223,7 +254,7 @@ window.MCPCostChart = (function () {
                '" width="' + bw + '" height="' + Math.max(h, 0) +
                '" fill="' + slotColor(si, s.key) + '">' +
                '<title>' + esc(l + " · " + (s.label || s.key) + " · " +
-                               F.money(s.points[l], opts.currency)) + '</title></rect>';
+                               F.money(s.points[l], opts.currency) + estMark(s, l)) + '</title></rect>';
         base += h;
       });
       // 그 라벨에 계열이 하나도 없으면 막대를 0 높이로 그리지 않고, 바닥에 표시만 남긴다.
@@ -238,7 +269,53 @@ window.MCPCostChart = (function () {
     var note = (opts.missingLabels && opts.missingLabels.length)
       ? "수집되지 않은 구간 " + opts.missingLabels.length + "개 — 막대를 비웠습니다"
       : null;
-    return svg + legend(series, note) + dataTable(labels, series, opts.currency, opts.missingLabels);
+    return svg + legend(series, note) + dataTable(labels, series, opts.currency, opts.missingLabels, opts.tableLabel);
+  }
+
+  /* ── ③-2 가로 막대 목록 — CF-016 (2026-09-21) ──────────────────────────────
+     도넛은 작은 칸에서 범례가 길어져 읽기 어렵다. 이름·금액·비중을 한 줄에 두고 막대 폭 = share_pct.
+     서버 비중을 그대로 쓴다(재계산 없음). 음수 항목(크레딧·환불 등)이 하나라도 있으면 막대를 그리지
+     않고 표만 보여준다 — 음수 비중은 뜻이 없다. */
+  /* 소액 — 통화 표시 단위(USD 2자리)로 반올림하면 0으로 보이는 값. 정확한 값은 title로 남긴다. */
+  function moneyCell(amount, currency) {
+    var shown = F.money(amount, currency);
+    var raw = Number(amount);
+    var looksZero = raw !== 0 && /^[^0-9]*0(\.0+)?(\s|$)/.test(shown.replace(/,/g, ""));
+    return '<span title="' + esc(String(amount) + " " + (currency || "")) + '">' + esc(shown) + (looksZero ? ' <span class="tiny muted">(표시 단위 미만)</span>' : "") + "</span>";
+  }
+
+  function barList(opts) {
+    var blocked = guard(opts.state, opts.blockName, opts.lastSuccessAt);
+    if (blocked) return blocked;
+    var slices = (opts.items || []).slice();
+    if (opts.rest && opts.rest.amount != null && num(opts.rest.amount) !== 0) {
+      slices.push({ key: "__rest", label: "기타 " + (opts.rest.count != null ? "(" + opts.rest.count + "종)" : ""), amount: opts.rest.amount, share_pct: opts.rest.share_pct });
+    }
+    if (opts.unallocated && opts.unallocated.amount != null && num(opts.unallocated.amount) !== 0) {
+      slices.push({ key: "__unallocated", label: "미배분(분류 규칙 없음)", amount: opts.unallocated.amount, share_pct: opts.unallocated.share_pct });
+    }
+    if (!slices.length || !(num(opts.total) !== 0)) {
+      return '<p class="note">이 조건에 실측 항목이 없습니다' + (num(opts.total) === 0 && slices.length ? " (합계 0)" : "") + ".</p>";
+    }
+    var negative = slices.some(function (x) { return num(x.amount) < 0; });
+    if (negative) {
+      return '<p class="note">음수 항목(크레딧·환불 등)이 있어 비중 막대를 그리지 않고 표로 보여줍니다.</p>' + shareTable(slices, opts.total, opts.currency, true);
+    }
+    var out = '<div class="share-list" role="list">';
+    slices.forEach(function (x, i) {
+      var pct = x.share_pct != null ? Number(x.share_pct) : null;
+      var residual = x.key === "__rest" || x.key === "__unallocated";
+      out += '<div class="share-row' + (residual ? " residual" : "") + '" role="listitem">' +
+        '<span class="sr-name">' + esc(x.label || x.key) + "</span>" +
+        '<span class="sr-amount">' + moneyCell(x.amount, opts.currency) + "</span>" +
+        '<span class="sr-pct">' + (pct != null ? esc(pct.toFixed(1)) + "%" : "—") + "</span>" +
+        '<div class="bar-track" aria-hidden="true"><div class="bar-fill" style="width:' + (pct != null ? Math.max(0, Math.min(100, pct)) : 0) + "%;background:" + slotColor(i, x.key) + '"></div></div>' +
+        "</div>";
+    });
+    out += "</div>";
+    out += '<p class="note">합계 ' + esc(F.money(opts.total, opts.currency)) + " · 비중 = 각 항목 ÷ 이 합계(같은 통화·같은 조회 조건)" +
+      (opts.estimate_unavailable_count ? " · 정가를 알 수 없어 제외된 리소스 " + opts.estimate_unavailable_count + "개" : "") + "</p>";
+    return out;
   }
 
   /* ── ③ 도넛 — CF-016 ────────────────────────────────────────────────────
@@ -303,7 +380,7 @@ window.MCPCostChart = (function () {
   }
 
   /* ── 동일 값 표 — 차트를 못 읽는 사용자를 위한 대안이자 대조용 ────────────── */
-  function dataTable(labels, series, currency, missingLabels) {
+  function dataTable(labels, series, currency, missingLabels, tableLabel) {
     var missing = {};
     (missingLabels || []).forEach(function (l) { missing[l] = true; });
 
@@ -314,24 +391,26 @@ window.MCPCostChart = (function () {
     var rows = labels.map(function (l) {
       var cells = series.map(function (s) {
         var has = s.points && s.points[l] != null;
-        return "<td>" + (has ? esc(F.money(s.points[l], currency))
+        // 값 있음 → 금액(+잠정) · 결측일 → "미수집" · 그 외(수집은 됐지만 이 계열 행 없음) → "—"
+        return "<td>" + (has ? esc(F.money(s.points[l], currency)) + (s.estimated && s.estimated[l] ? ' <span class="muted">잠정</span>' : "")
                              : (missing[l] ? "<span class=\"muted\">미수집</span>" : "—")) + "</td>";
       }).join("");
       return "<tr><th scope=\"row\">" + esc(l) + "</th>" + cells + "</tr>";
     }).join("");
 
-    return '<details class="no-print"><summary class="tiny muted">동일 값 표 보기</summary>' +
+    return '<details class="no-print"><summary class="tiny muted">' + esc(tableLabel || "같은 값 표로 보기") + "</summary>" +
+           '<p class="tiny muted">미수집 = 그 날 수집이 없음(0원 아님) · — = 수집됐으나 이 항목의 행 없음</p>' +
            '<div class="table-wrap"><table><thead>' + head + "</thead><tbody>" + rows +
            "</tbody></table></div></details>";
   }
 
-  function shareTable(slices, total, currency) {
+  function shareTable(slices, total, currency, open) {
     var rows = slices.map(function (s) {
       return "<tr><th scope=\"row\">" + esc(s.label || s.key) + "</th><td>" +
              esc(F.money(s.amount, currency)) + "</td><td>" +
              (s.share_pct != null ? esc(Number(s.share_pct).toFixed(1)) + "%" : "—") + "</td></tr>";
     }).join("");
-    return '<details class="no-print"><summary class="tiny muted">동일 값 표 보기</summary>' +
+    return '<details class="no-print"' + (open ? " open" : "") + '><summary class="tiny muted">항목별 금액·비중 표</summary>' +
            '<div class="table-wrap"><table><thead><tr><th scope="col">항목</th>' +
            '<th scope="col">금액</th><th scope="col">비중</th></tr></thead><tbody>' + rows +
            '<tr><th scope="row">합계</th><td>' + esc(F.money(total, currency)) +
@@ -342,6 +421,9 @@ window.MCPCostChart = (function () {
     lineChart: lineChart,
     stackedBar: stackedBar,
     donut: donut,
+    barList: barList,
+    moneyCell: moneyCell,
+    shortLabels: shortLabels,
     dataTable: dataTable,
     niceMax: niceMax,
     BLANK_STATES: BLANK_STATES

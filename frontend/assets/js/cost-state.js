@@ -32,5 +32,34 @@ window.MCPCostState = (function () {
     return fn(blockName, lastSuccessAt);
   }
 
-  return { TEXT: TEXT, text: text, stalenessText: stalenessText };
+  /* 짧은 라벨(표·배지용, 2026-09-20). TEXT와 같은 9종 키만 갖고 뜻도 TEXT를 따른다 — 여기 말고
+     다른 곳에 한국어 상태 매핑을 또 쓰지 않는다. 라벨은 "무슨 상태인가"만 말하고 원인(설정·권한·
+     미지원)에 맞는 행동은 호출부가 붙인다.
+     - CONNECTED_EMPTY: 마지막 수집이 성공했고 행이 0건 — "이 조회 기간이 0원"이라는 뜻은 아니다
+       (기간 결측은 summary.warnings가 따로 말한다). 그래서 "0원"이라 하지 않고 "수집 0건"이라 한다.
+     - PENDING: 종료된 수집 실행이 아직 없다(첫 수집 대기·진행 중·취소됨 포함). */
+  var LABEL = {
+    CONNECTED_OK: "정상",
+    CONNECTED_EMPTY: "수집 0건",
+    CONNECTED_PARTIAL: "부분 수집",
+    NOT_CONNECTED: "미연결",
+    PENDING: "첫 수집 대기",
+    SETUP_REQUIRED: "설정 필요",
+    PERMISSION_DENIED: "권한 부족",
+    COLLECT_FAILED: "수집 실패",
+    UNSUPPORTED: "미지원"
+  };
+  function label(state) { return LABEL[state] || null; }
+
+  /* 상태의 성격 — 화면이 색·행동을 고를 때 쓴다(03 §6-1 그룹 그대로).
+     data: 합계에 들어갈 수 있는 상태 / attention: 사용자가 손봐야 하는 상태 / unsupported: 설정으로
+     해결되지 않는 상태 / waiting: 기다리면 되는 상태 */
+  var KIND = {
+    CONNECTED_OK: "data", CONNECTED_EMPTY: "data", CONNECTED_PARTIAL: "data",
+    NOT_CONNECTED: "attention", SETUP_REQUIRED: "attention", PERMISSION_DENIED: "attention", COLLECT_FAILED: "attention",
+    UNSUPPORTED: "unsupported", PENDING: "waiting"
+  };
+  function kind(state) { return KIND[state] || null; }
+
+  return { TEXT: TEXT, text: text, stalenessText: stalenessText, LABEL: LABEL, label: label, kind: kind };
 })();
