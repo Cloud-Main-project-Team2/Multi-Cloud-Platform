@@ -25,6 +25,13 @@
 }
 
 *{ box-sizing:border-box; }
+/* Tailwind의 display 유틸리티(grid/flex 등)가 브라우저 기본 [hidden] 스타일보다 우선순위가
+   높아서, hidden 속성과 grid/flex 클래스를 같이 쓴 요소는 hidden이어도 계속 보이는 문제가
+   있었다(2026-09-22, provisioning.js의 GCP CDN "기존 버킷 연결" 입력칸에서 실사용 중 발견 —
+   class="grid ..."/"flex ..."가 붙은 wrap만 재현되고, class="mt-2"뿐인 AWS AMI wrap은
+   문제없었음). cost.css에는 이미 같은 규칙이 있었지만 이 페이지들엔 로드되지 않아 전 화면
+   공유 파일(theme.css)로 옮긴다. */
+[hidden]{ display:none !important; }
 html,body{ margin:0; padding:0; }
 body{
   font-family: "Pretendard Variable", Pretendard, -apple-system, BlinkMacSystemFont,

@@ -220,6 +220,19 @@ _RESOURCE_DISCOVERY_TYPES: dict[str, tuple[str, str, bool, str]] = {
     "microsoft.cdn/profiles": ("cdn", "Microsoft.Cdn/profiles", True, "DEPLOYED"),
 }
 
+# ARM 리소스 타입 → app/pricing.py의 정가표 엔진 키("MySQL"/"PostgreSQL"/"SQL Server", VM과
+# 마찬가지로 azure_database_provisioning.py가 이미 쓰는 이름과 동일). VM은 discover_resources()가
+# spec={"instance_type":...,"region":...}을 채워서 정가 추정이 되는데, SQL Database만 spec을
+# 안 채워서 동기화로 새로 발견한 Azure DB는 항상 비용 추정이 "—"로 나오는 문제가 있었다
+# (2026-09-22 실사용 중 발견 — GCP Cloud SQL은 discover_resources()가 databaseVersion에서
+# engine을 바로 뽑아서 이 문제가 없었다). ARM 리소스 타입 자체가 엔진을 구분해 주므로
+# (`_RESOURCE_DISCOVERY_TYPES`에 엔진별로 이미 갈라져 있음) 별도 API 호출 없이 매핑만 추가한다.
+_SQL_ENGINE_BY_ARM_TYPE: dict[str, str] = {
+    "microsoft.dbformysql/flexibleservers": "MySQL",
+    "microsoft.dbforpostgresql/flexibleservers": "PostgreSQL",
+    "microsoft.sql/servers": "SQL Server",
+}
+
 
 def discover_resources(secret_payload: dict, subscription_id: str) -> list:
     """VM·Storage Account·SQL Database·CDN(Front Door)을 동기화한다.
@@ -276,10 +289,15 @@ def discover_resources(secret_payload: dict, subscription_id: str) -> list:
     try:
         resource_client = ResourceManagementClient(credential, subscription_id)
         for res in resource_client.resources.list():
-            mapping = _RESOURCE_DISCOVERY_TYPES.get((res.type or "").lower())
+            arm_type = (res.type or "").lower()
+            mapping = _RESOURCE_DISCOVERY_TYPES.get(arm_type)
             if mapping is None:
                 continue
             service_code, resource_type, is_global, status = mapping
+            spec = {}
+            engine = _SQL_ENGINE_BY_ARM_TYPE.get(arm_type)
+            if engine and res.location:
+                spec = {"engine": engine, "region": res.location}
             results.append(
                 DiscoveredResource(
                     service_code=service_code,
@@ -292,6 +310,7 @@ def discover_resources(secret_payload: dict, subscription_id: str) -> list:
                     region=None if is_global else res.location,
                     status=status,
                     tags=dict(res.tags or {}),
+                    spec=spec,
                 )
             )
     except (ClientAuthenticationError, HttpResponseError, AzureError):
