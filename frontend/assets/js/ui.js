@@ -168,10 +168,7 @@
     pop.setAttribute("aria-label", "알림");
     utils.appendChild(pop);
 
-    var unread = 0;
-
     function setBadge(count) {
-      unread = count;
       if (!badge) return;
       if (count > 0) { badge.textContent = count > 99 ? "99+" : count; badge.style.display = ""; }
       else { badge.style.display = "none"; }
@@ -210,17 +207,23 @@
     // 초기 배지: 정적 마크업의 하드코딩 값 대신 실제 미확인 개수 반영 전까지 숨긴다.
     setBadge(0);
     load();
+    // 페이지를 열어 둔 채로 프로비저닝/동기화/비용 새로고침/보고서가 끝나는 경우가 있어
+    // (item 2) 최초 1회 로드만으로는 완료 안내를 놓친다 — 가볍게 주기적으로 다시 불러온다.
+    setInterval(load, 20000);
 
     bell.style.cursor = "pointer";
     bell.addEventListener("click", function (e) {
       e.stopPropagation();
       var opening = pop.classList.contains("hidden");
       pop.classList.toggle("hidden");
-      // 열 때: 미확인이 있으면 읽음 처리해 배지를 0으로.
-      if (opening && unread > 0 && api && api.request) {
-        api.request("/notifications/read-all", { method: "POST" })
-          .then(function () { setBadge(0); })
-          .catch(function () {});
+      if (opening) {
+        // 열 때마다 최신 목록을 다시 불러온 뒤(주기적 폴링 사이에 새로 생겼을 수 있음) 읽음 처리한다.
+        load();
+        if (api && api.request) {
+          api.request("/notifications/read-all", { method: "POST" })
+            .then(function () { setBadge(0); })
+            .catch(function () {});
+        }
       }
     });
     document.addEventListener("click", function (e) {
