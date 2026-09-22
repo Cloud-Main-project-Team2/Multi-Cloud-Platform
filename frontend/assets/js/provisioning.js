@@ -687,16 +687,26 @@
   // 필드 하나(래퍼 div)를 select 모드로 바꾼다. 원본 <input data-ps-platform/data-ps>는 남겨두고
   // (collect()가 계속 그 값을 읽는다) select는 그 값을 받아쓰기만 하는 보조 컨트롤로 둔다 —
   // "직접 입력…"을 고르면 원본 input이 다시 드러나서 자유 입력으로 돌아간다.
+  //
+  // 원본 <label>도 select 모드에서는 같이 숨긴다(2026-09-22 수정) — 이전엔 input만 숨기고
+  // label은 그대로 둬서, select 쪽이 새로 만드는 "…목록" 라벨과 겹쳐 같은 라벨이 두 번 보였다
+  // (GCP CDN "기존 버킷 연결"에서 실사용 중 발견 — 이 함수를 공유하는 AWS VPC/Azure 리소스
+  // 그룹 등 다른 필드에도 있던 잠재 버그였다). rebuildExistingFieldSelect가 재호출될 때도
+  // 원본 label을 삭제하지 않고 hidden 클래스만 토글하므로, 재호출 시에도 label.textContent로
+  // 원래 라벨 문구를 계속 읽어올 수 있다.
   function wireExistingFieldSelect(wrap, key, label, options, onPicked) {
     var input = wrap.querySelector('input[data-ps="' + key + '"]');
+    var originalLabel = wrap.querySelector("label");
     var selectWrap = el("div", { class: "mt-1" });
     selectWrap.innerHTML = existingFieldSelectHtml(label + " 목록", options);
     var select = selectWrap.querySelector("select");
     wrap.appendChild(selectWrap);
     input.classList.add("hidden");
+    if (originalLabel) originalLabel.classList.add("hidden");
     select.addEventListener("change", function () {
       if (select.value === "__manual__") {
         input.classList.remove("hidden");
+        if (originalLabel) originalLabel.classList.remove("hidden");
         selectWrap.remove();
         input.focus();
         collect();
