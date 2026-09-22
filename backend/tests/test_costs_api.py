@@ -245,7 +245,9 @@ def test_trend_does_not_fill_missing_day_with_zero(client, make_user, auth_heade
 
 
 def test_changes_previous_period_is_always_same_length(client, make_user, auth_header, db_session):
-    """`compare=previous_period`는 구조상 항상 같은 길이로 자른다 — comparable이 True다."""
+    """`compare=previous_period`는 구조상 항상 같은 길이로 자른다 — `comparability.same_length`가 True다.
+    (1단계 정정) 같은 길이라고 comparable은 아니다: 여기서는 8/1 행 하나뿐이라 현재·이전 기간 모두
+    수집 확인이 없으므로 comparable=false이고 사유에 LENGTH_MISMATCH는 없어야 한다."""
     user = make_user()
     account = _make_account(db_session, user)
     _make_credential(db_session, account)
@@ -259,8 +261,12 @@ def test_changes_previous_period_is_always_same_length(client, make_user, auth_h
 
     assert resp.status_code == 200
     body = resp.json()["data"]
-    assert body["comparable"] is True
     assert body["current"]["days"] == body["previous"]["days"]
+    assert body["comparability"]["same_length"] is True
+    assert "LENGTH_MISMATCH" not in body["comparability"]["reasons"]
+    assert body["comparable"] is False
+    assert {"CURRENT_COVERAGE", "PREVIOUS_COVERAGE"} <= set(body["comparability"]["reasons"])
+    assert body["totals"]["delta"] is None and body["totals"]["delta_pct"] is None
 
 
 def test_changes_previous_month_not_comparable_when_month_lengths_differ(client, make_user, auth_header, db_session):
@@ -281,7 +287,8 @@ def test_changes_previous_month_not_comparable_when_month_lengths_differ(client,
     assert body["current"]["days"] == 31
     assert body["previous"]["days"] == 28
     assert body["comparable"] is False
-    assert body["totals"]["previous"] is None
+    assert "LENGTH_MISMATCH" in body["comparability"]["reasons"]
+    assert body["totals"]["previous"] is None  # 행이 없어 통화가 없다 — 있었다면 "확인된 금액"으로 실린다
     assert body["totals"]["delta"] is None
     assert body["increases"] == []
     assert body["new_items"] == []

@@ -17,6 +17,7 @@ CPU 사용률 조회에 대해 한다 — 라우터는 이 모듈 하나만 호�
 
 from __future__ import annotations
 
+import datetime as dt
 from typing import TYPE_CHECKING
 
 from app.models import CloudAccount, Credential, Resource, ServiceCatalog
@@ -39,6 +40,104 @@ def get_top_utilization(db: "Session", user: "User", limit: int = 5) -> list[dic
 
     자격 증명이 없거나(미등록) 검증 실패했거나 CSP 호출이 실패한 리소스는 `cpu_percent=None`으로
     담아 반환한다(항목 자체를 빼지 않는다 — 사용률 계산 실패와 "0%"를 구분하기 위해)."""
+    items = _compute_items(db, user)
+    # cpu_percent가 None인 항목(조회 실패)은 뒤로 — 정렬 자체가 실패를 "0%"로 오인하지 않게 한다.
+    items.sort(key=lambda it: (it["cpu_percent"] is None, -(it["cpu_percent"] or 0)))
+    return items[:limit]
+
+
+# "미연결 디스크" 대상 원본 리소스 유형 — AWS만(providers/{azure,gcp}.py는 디스크를 별도
+# 인벤토리 리소스로 추적하지 않는다, 2026-09-19 확인).
+_UNATTACHED_DISK_TYPE = "EBS Volume"
+_UNATTACHED_DISK_STATUS = "AVAILABLE"
+
+# 이 값 미만이면 "유휴"로 본다 — get_top_utilization()과 같은 실시간 CPU 스냅샷 기준이라
+# "며칠째 유휴"가 아니라 "지금 이 순간 낮다"는 뜻이다(모듈 docstring 참고, 시계열 저장이 없다).
+_IDLE_CPU_PERCENT_THRESHOLD = 10.0
+
+
+def get_unused_resources(db: "Session", user: "User", limit: int = 10) -> list[dict]:
+    """보고서 §3.3 "미사용 리소스" 섹션의 실데이터 소스(2026-09-19, `kwonhyeong/be-next`).
+
+    감지 범위는 딱 두 가지뿐이다 — 범위를 넓히지 않는다:
+
+    - **미연결 디스크(AWS EBS Volume만)**: 이미 수집된 `resources.status`("AVAILABLE"=미연결,
+      AWS `Volume.State` 그대로)를 그대로 읽을 뿐 추가 CSP 호출이 없다. "미연결 공인 IP"는 이번에
+      넣지 않았다 — 어떤 provider adapter도 아직 Elastic IP/Public IP를 리소스로 수집하지 않는다
+      (2026-09-19 grep 확인, `describe_addresses`류 호출 자체가 없음). "바로 구현 가능"은 디스크에만
+      해당하고, IP는 `discover_resources()` 확장이 먼저 필요한 별도 작업이다.
+    - **유휴 컴퓨트 인스턴스**: `get_top_utilization()`과 같은 실시간 CPU 조회를 재사용해 낮은
+      순으로 담는다. 과거 이력이 아니라 "지금 이 순간 CPU가 threshold 미만"이라는 뜻이다.
+
+    **유휴/미연결 기간**: EBS Volume은 `status_changed_at`(상태가 실제로 바뀐 시각, 비용 확장에서
+    추가됨)이 있으면 그 값으로 실제 경과일을 계산한다. 필드 도입 이전부터 있던 행은 NULL이라
+    추정하지 않고 그대로 None을 반환한다("0일"로 보이면 방금 풀렸다는 뜻이 되어 사실과 달라진다).
+    컴퓨트 인스턴스는 `status_changed_at`이 "몇 시간째 idle인가"가 아니라 "몇 시간째 RUNNING인가"를
+    뜻해 답이 다른 질문이므로(고성능 인스턴스가 몇 달간 고부하로 돌다가 방금 유휴해진 경우에도
+    "몇 달째 유휴"로 잘못 보이게 된다) 여기서는 쓰지 않고 항상 None이다 — 지금 이 순간의 스냅샷일
+    뿐임을 캡션에서 밝힌다.
+
+    **월 예상 비용**: `resources.estimated_monthly_cost`(정가표 추정, 프로비저닝·동기화 시점에
+    이미 계산돼 있음)를 그대로 쓴다. EBS Volume은 현재 정가표에 없어 대부분 None이다 — 단가를
+    지어내지 않고 그대로 "정보 없음"으로 보여준다.
+    """
+    now = dt.datetime.now(dt.timezone.utc)
+    items: list[dict] = []
+
+    volume_rows = (
+        db.query(Resource, CloudAccount)
+        .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
+        .filter(
+            CloudAccount.user_id == user.id,
+            Resource.is_stale.is_(False),
+            Resource.deleted_at.is_(None),
+            CloudAccount.provider == "aws",
+            Resource.original_resource_type == _UNATTACHED_DISK_TYPE,
+            Resource.status == _UNATTACHED_DISK_STATUS,
+        )
+        .all()
+    )
+    for resource, account in volume_rows:
+        idle_days = (now - resource.status_changed_at).days if resource.status_changed_at else None
+        items.append(
+            {
+                "resource_id": str(resource.id),
+                "provider": account.provider,
+                "name": resource.name or resource.external_resource_id,
+                "original_resource_type": resource.original_resource_type,
+                "reason": "unattached_disk",
+                "idle_days": idle_days,
+                "estimated_monthly_cost": (
+                    float(resource.estimated_monthly_cost) if resource.estimated_monthly_cost is not None else None
+                ),
+            }
+        )
+
+    for it in _compute_items(db, user):
+        if it["cpu_percent"] is None or it["cpu_percent"] >= _IDLE_CPU_PERCENT_THRESHOLD:
+            continue
+        resource = db.get(Resource, int(it["resource_id"]))
+        cost = resource.estimated_monthly_cost if resource is not None else None
+        items.append(
+            {
+                "resource_id": it["resource_id"],
+                "provider": it["provider"],
+                "name": it["name"],
+                "original_resource_type": it["original_resource_type"],
+                "reason": "idle_compute",
+                "idle_days": None,
+                "estimated_monthly_cost": float(cost) if cost is not None else None,
+            }
+        )
+
+    # 비용을 아는 항목(절감액이 확실한 항목)을 먼저 보여준다 — None은 뒤로.
+    items.sort(key=lambda it: (it["estimated_monthly_cost"] is None, -(it["estimated_monthly_cost"] or 0)))
+    return items[:limit]
+
+
+def _compute_items(db: "Session", user: "User") -> list[dict]:
+    """컴퓨트 리소스별 CPU 사용률을 조회한다(정렬·상한 없음) — `get_top_utilization()`과
+    `get_unused_resources()`가 같은 조회를 공유한다."""
     rows = (
         db.query(Resource, CloudAccount, ServiceCatalog)
         .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
@@ -62,25 +161,32 @@ def get_top_utilization(db: "Session", user: "User", limit: int = 5) -> list[dic
     for row in rows:
         grouped.setdefault(row[1].id, []).append(row)
 
-    items: list[dict] = []
+    # 같은 실제 리소스가 서로 다른 cloud_account에 중복 등록돼 있을 수 있다(같은 AWS 계정을
+    # credential 여러 개로 등록하는 경우 등, 2026-09-19 실사용 중 발견 — DB에서 같은
+    # external_resource_id를 가진 Resource 행 2개가 서로 다른 cloud_account_id로 존재함을
+    # 직접 확인함). "인벤토리 조회"(resources 테이블)와 "메트릭 조회"(CSP 호출)를 합치는
+    # 지점 자체의 키 불일치는 아니었다 — cpu_map은 external_resource_id로 정확히 조회된다.
+    # 문제는 그 앞 단계, 같은 external_resource_id를 가진 Resource 행이 애초에 여러 개
+    # 나온다는 것이었다. 그래서 최종 결과를 (provider, external_resource_id) 기준 dict에
+    # 넣었다 빼서 자연스럽게 한 번만 남게 한다.
+    items_by_key: dict[tuple[str, str], dict] = {}
     for account_id, group in grouped.items():
         account = group[0][1]
         cpu_map = _cpu_map_for_account(db, account, group)
         for resource, _account, service in group:
-            items.append(
-                {
-                    "resource_id": str(resource.id),
-                    "provider": account.provider,
-                    "name": resource.name or resource.external_resource_id,
-                    "original_resource_type": resource.original_resource_type,
-                    "cpu_percent": cpu_map.get(resource.external_resource_id),
-                    "mem_percent": None,
-                }
-            )
+            key = (account.provider, resource.external_resource_id)
+            if key in items_by_key:
+                continue  # 이미 다른 cloud_account에서 같은 실제 리소스를 담았다
+            items_by_key[key] = {
+                "resource_id": str(resource.id),
+                "provider": account.provider,
+                "name": resource.name or resource.external_resource_id,
+                "original_resource_type": resource.original_resource_type,
+                "cpu_percent": cpu_map.get(resource.external_resource_id),
+                "mem_percent": None,
+            }
 
-    # cpu_percent가 None인 항목(조회 실패)은 뒤로 — 정렬 자체가 실패를 "0%"로 오인하지 않게 한다.
-    items.sort(key=lambda it: (it["cpu_percent"] is None, -(it["cpu_percent"] or 0)))
-    return items[:limit]
+    return list(items_by_key.values())
 
 
 def _cpu_map_for_account(

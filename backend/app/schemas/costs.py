@@ -146,6 +146,9 @@ class CostChangesData(BaseModel):
     current: dict[str, Any]
     previous: dict[str, Any]
     comparable: bool
+    # 1단계(2026-09-21): comparable=false의 이유·계정별 결측 수. 프론트는 이 구조로 사유를 말한다.
+    comparability: dict[str, Any] | None = None
+    charge_category: str = "usage"
     currency: str | None
     totals: dict[str, Any]
     increases: list[dict[str, Any]]
@@ -168,7 +171,9 @@ class CostCollectionStatusItem(BaseModel):
     last_error_code: str | None
     next_manual_allowed_at: str | None
     covered_through: str | None
-    missing_days: list[str] = Field(default_factory=list)
+    missing_days: list[str] = Field(default_factory=list)   # 조회 기간 기준 결측일, 앞 31개까지
+    missing_count: int = 0                                   # 전체 결측 수(잘림과 무관)
+    coverage: dict[str, Any] | None = None                   # 지원·통화 필터 안 계정만, 미지원은 None
 
 
 class CostCollectionStatusData(BaseModel):

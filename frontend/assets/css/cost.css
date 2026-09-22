@@ -172,10 +172,8 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
   padding: 12px 20px; border-radius: 9px; z-index: 100; font-size: 13px; max-width: 85vw;
 }
 
-@media (min-width: 1120px) {
-  #CF-013 { grid-column: span 3; }
-  #CF-016 { grid-column: span 1; }
-}
+/* (2026-09-21) 예전엔 넓은 화면에서 추이 3/4 + 분포 1/4로 나눠 도넛이 작았다. 이제 추이는 전체폭,
+   분포·증가액이 반폭씩 나란히 — 빈 오른쪽 칸이 생기지 않는다(cost.html 블록 순서 참고). */
 @media (max-width: 1050px) {
   .block.kpi { grid-column: span 2; }
   .meta-grid { grid-template-columns: repeat(3, 1fr); }
@@ -189,3 +187,140 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
   .cta-row { display: block; }
   .paired { grid-template-columns: 1fr; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   2026-09-20 비용 개요 다듬기(seunghyun/fe-cost-polish) — 기존 토큰·컴포넌트만 쓴다.
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+/* 기능 ID(CF-001 등)는 개발 추적용 — DOM엔 남기고 화면에서만 숨긴다 */
+.block-id { display: none; }
+
+/* 공통 영역(조회 기준 + 조회 조건)은 카드 두 장이 아니라 한 덩어리처럼 붙여 세로 공간을 줄인다 */
+.common-stack { gap: 8px; }
+.common-stack .block { padding: 12px 18px; }
+.common-stack .block-head { margin-bottom: 8px; }
+.common-stack .block-head h2 { font-size: 13px; }
+#CF-001 .block-head { display: none; }          /* 조회 기준은 제목 없이 한 줄 요약이 곧 제목이다 */
+
+/* 조회 기준 한 줄 요약 */
+.summary-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 12px; }
+.summary-bar .sb-item { display: inline-flex; align-items: center; gap: 5px; }
+.summary-bar .sb-label { color: var(--muted-foreground); }
+.summary-bar .sb-value { font-weight: 650; font-variant-numeric: tabular-nums; }
+.summary-bar .button-row { margin: 0 0 0 auto; }
+.summary-bar .btn { padding: 6px 10px; }
+.summary-bar .busy { color: var(--muted-foreground); }
+
+/* 원인별 경고 — 경고는 최대 2줄, 나머지는 "상세 보기" */
+.warning-list { display: grid; gap: 6px; margin-top: 8px; }
+.warning-list .warning { margin-top: 0; }
+.warning.info { border-left-color: var(--sky); }
+
+/* 접이식 조회 조건 — 접혀 있어도 적용된 조건·오류는 항상 보인다 */
+.filter-panel > summary { list-style: none; cursor: pointer; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.filter-panel > summary::-webkit-details-marker { display: none; }
+.filter-panel > summary .chip { max-width: 100%; white-space: normal; }
+.filter-panel > summary .toggle { margin-left: auto; }
+.filter-panel[open] > summary .toggle::after { content: " ▴"; }
+.filter-panel:not([open]) > summary .toggle::after { content: " ▾"; }
+.filter-panel .filter-grid { margin-top: 12px; }
+.filter-dirty { color: var(--cost-warn); font-weight: 600; }
+.filter-error { color: var(--cost-up); }
+.filter-grid .input-error { border-color: var(--cost-up) !important; }
+
+/* KPI 카드 — 제목/금액/배지/근거/보조 행동의 세로 순서를 고정한다 */
+.kpi .value { margin: 8px 0 4px; }
+.kpi .kpi-basis { font-size: 11px; color: var(--muted-foreground); margin-top: 6px; line-height: 1.5; }
+.kpi .kpi-note { font-size: 11px; margin-top: 6px; }
+.kpi .button-row { margin-top: 10px; }
+.kpi .badge.est { color: var(--cost-warn); }
+
+/* 계정별 비용 및 수집 상태 — 데스크톱 표 */
+.account-table th, .account-table td { padding: 9px 8px; vertical-align: middle; }
+.account-table td.num { font-weight: 650; }
+.provider-cell { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; vertical-align: middle; }
+.provider-logo { height: 14px; width: auto; flex: none; }
+.account-table .status-cell { display: flex; flex-direction: column; gap: 2px; }
+.account-table .status-cell .tiny { line-height: 1.4; }
+.account-table td .btn { padding: 5px 9px; font-size: 11px; }
+.status-tag { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 600; }
+.status-tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--muted-foreground); flex: 0 0 auto; }
+.status-tag.data::before { background: var(--cost-down); }
+.status-tag.attention::before { background: var(--cost-up); }
+.status-tag.unsupported::before { background: var(--muted-foreground); }
+.status-tag.waiting::before { background: var(--cost-warn); }
+
+/* 준비 중 블록은 KPI와 같은 덩치로 반복하지 않는다 */
+.pending-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-foreground); padding: 6px 0; }
+
+/* 모바일: 표를 세로 카드로 */
+@media (max-width: 720px) {
+  .summary-bar .button-row { margin-left: 0; width: 100%; }
+  .account-table thead { display: none; }
+  .account-table tr { display: block; border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; margin-bottom: 8px; }
+  .account-table td { display: flex; justify-content: space-between; gap: 10px; border: 0; padding: 4px 0; text-align: left; }
+  .account-table td.num { text-align: right; }
+  .account-table td::before { content: attr(data-label); color: var(--muted-foreground); font-size: 11px; flex: 0 0 auto; }
+  .account-table td.actions { justify-content: flex-start; padding-top: 8px; }
+  .account-table td.actions::before { content: none; }
+  .filter-grid .filter-box { flex: 1 1 140px; }
+}
+
+/* ═══ ② 비용 분석 탭 (2026-09-21) ═══ */
+/* 기간 비교 — 압축 스트립: 이전 / 현재 / 증감 세 칸 */
+.compare-strip { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; align-items: end; }
+.compare-strip .cs-label { font-size: 11px; color: var(--muted-foreground); }
+.compare-strip .value { margin: 4px 0 0; font-size: 22px; }
+.compare-strip .cs-delta .value { font-size: 20px; }
+.compare-compact { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font-size: 12px; }
+
+/* 서비스별 분포 — 가로 막대 목록(이름·금액·비중을 한 줄에서 읽는다) */
+.share-list { display: grid; gap: 8px; }
+.share-row { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 4px 10px; align-items: center; font-size: 12px; }
+.share-row .sr-name { min-width: 0; overflow-wrap: anywhere; }
+.share-row .sr-amount { font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+.share-row .sr-pct { width: 52px; text-align: right; font-variant-numeric: tabular-nums; color: var(--muted-foreground); }
+.share-row .bar-track { grid-column: 1 / -1; margin-top: 0; height: 8px; }
+.share-row.residual .bar-fill { background: var(--muted-foreground); }
+.share-row.residual .sr-name { color: var(--muted-foreground); }
+
+/* 증가액 표 — 서비스명 열은 줄바꿈, 숫자 열은 오른쪽 정렬·고정폭 숫자 */
+.changes-table td.num, .changes-table th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.changes-table td:first-child { min-width: 9rem; overflow-wrap: normal; word-break: keep-all; }  /* 좁은 화면에서 이름이 한 글자씩 세로로 찌그러지지 않게 — 넘치면 .table-wrap 안에서 가로 스크롤 */
+.sub-amount { display: block; font-size: 11px; color: var(--muted-foreground); }
+
+/* 집계 단위 토글 — 눌린 버튼 */
+.btn[aria-pressed="true"] { background: var(--primary); color: var(--surface); border-color: var(--primary); }
+
+@media (max-width: 720px) {
+  .compare-strip { grid-template-columns: 1fr; }
+}
+
+/* (2026-09-21 마무리) 분석 탭 카드는 옆 카드 높이에 맞춰 늘리지 않는다 — 빈 표 아래 큰 여백 방지 */
+#panel-analysis.grid { align-items: start; }
+/* 차트: viewBox 너비 = 실제 픽셀 너비라 height:auto가 곧 설계 높이(200~260px)다. 비율은 왜곡하지 않는다 */
+.chart { max-width: 100%; }
+
+/* ═══ ③ 예산·검토 탭 (2026-09-21) ═══ */
+.start-guide { display: grid; gap: 10px; }
+.start-steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; font-size: 12px; }
+.start-steps li::marker { color: var(--primary); font-weight: 700; }
+.budget-form > summary { list-style: none; }
+.budget-form > summary::-webkit-details-marker { display: none; }
+.budget-form > summary::after { content: " ▾"; color: var(--muted-foreground); }
+.budget-form[open] > summary::after { content: " ▴"; }
+.budget-form .filter-grid { margin-top: 10px; }
+.budget-form .filter-grid .filter-box { flex: 1 1 120px; }
+/* ③ 마무리(2026-09-21): 팀 삭제 확인 박스·상태 태그가 status-list 안에서도 정렬되게 */
+#team-delete-confirm { margin-top: 10px; }
+.status-list .status-tag { justify-content: flex-end; }
+/* 배지 여러 개를 나란히 — 붙지 않게 gap, 좁으면 줄바꿈 */
+.status-row { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-bottom: 8px; }
+
+/* 조회 중: 이전 조건의 숫자가 새 조건 결과처럼 읽히지 않게 흐리게 + 블록마다 표시. 값은 지우지 않는다(04 §3-2). */
+.block-content[aria-busy="true"] { opacity: .55; position: relative; }
+.block-content[aria-busy="true"]::after { content: "조회 중…"; position: absolute; top: 0; right: 0; font-size: 11px; color: var(--muted-foreground); background: var(--surface); padding: 1px 6px; border-radius: 4px; }
+/* CF-018 통화별 묶음 머리줄 */
+.account-table tr.group-head td { background: var(--muted); font-weight: 600; font-size: 12px; }
+.account-table td .bar-track { max-width: 120px; margin-top: 4px; }
+

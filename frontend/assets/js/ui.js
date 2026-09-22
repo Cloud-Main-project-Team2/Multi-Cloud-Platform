@@ -120,6 +120,14 @@
       var reason = p.reason ? " · " + p.reason : "";
       return { icon: bad, title: "프로비저닝 실패", desc: (resource ? resource + " " : "") + "생성에 실패했습니다." + reason, href: href };
     }
+    // 비용 파트 알림 2종(PR 7·8) — 문구는 message_params로 만들고 비용 화면으로 보낸다.
+    if (n.type === "budget_threshold") {
+      return { icon: bad, title: "예산 " + (p.percent || "") + "% 도달", desc: (p.team_name || "팀") + " · 한도 " + (p.limit_amount || "") + " " + (p.currency || "") + " · " + (p.period_start || "") + " 시작 구간", href: "cost.html?team=" + encodeURIComponent(p.team_id || "") + "#CF-026" };
+    }
+    if (n.type === "cost_anomaly") {
+      var pct = p.delta_pct == null ? "신규 비용 발생" : "+" + p.delta_pct + "%";
+      return { icon: bad, title: "비용 급증 · 원인 확인 필요", desc: (p.service || "") + " " + (p.date || "") + " · +" + (p.delta || "") + " " + (p.currency || "") + " (" + pct + ")", href: "cost.html#CF-034" };
+    }
     return { icon: ok, title: n.type || "알림", desc: n.message_key || "", href: href };
   }
 

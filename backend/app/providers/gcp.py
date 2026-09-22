@@ -11,6 +11,7 @@ from google.auth.transport.requests import AuthorizedSession
 from google.cloud import compute_v1, resourcemanager_v3
 from google.oauth2 import service_account
 
+from app.logging_config import log_business_event
 from app.providers import VerificationResult
 
 _CLOUD_PLATFORM_SCOPE = ["https://www.googleapis.com/auth/cloud-platform"]
@@ -514,7 +515,11 @@ def get_cpu_utilization(secret_payload: dict, project_id: str, instance_names: l
 
     try:
         credentials = service_account.Credentials.from_service_account_info(secret_payload)
-    except (ValueError, KeyError):
+    except (ValueError, KeyError) as exc:
+        log_business_event(
+            "gcp.cpu_utilization_auth_failed", level="WARNING",
+            project_id=project_id, error_type=type(exc).__name__,
+        )
         return {name: None for name in instance_names}
 
     out: dict[str, float | None] = {name: None for name in instance_names}
@@ -526,7 +531,13 @@ def get_cpu_utilization(secret_payload: dict, project_id: str, instance_names: l
             for instance in scoped_list.instances or []:
                 if instance.name in wanted:
                     id_to_name[str(instance.id)] = instance.name
-    except (GoogleAuthError, GoogleAPICallError):
+    except (GoogleAuthError, GoogleAPICallError) as exc:
+        # 인스턴스 목록 자체를 못 가져오면(권한/인증) 어떤 인스턴스인지 몰라 시계열 조회 자체를
+        # 시작할 수 없다 — verify()의 inventory_read 프로빙과 같은 API라 보통은 여기서 안 막힘.
+        log_business_event(
+            "gcp.cpu_utilization_instance_list_failed", level="WARNING",
+            project_id=project_id, error_type=type(exc).__name__, error=str(exc)[:300],
+        )
         return out
     if not id_to_name:
         return out
@@ -553,6 +564,17 @@ def get_cpu_utilization(secret_payload: dict, project_id: str, instance_names: l
                 value = (points[0].get("value") or {}).get("doubleValue")
                 if value is not None:
                     out[name] = round(value * 100, 1)  # GCP는 0~1 비율로 반환 → %로 환산
-    except requests.RequestException:
-        pass
+        else:
+            # 이전까지는 여기가 완전히 조용했다 — 403(모니터링 권한 부족) 같은 실패가 로그에
+            # 한 줄도 안 남아서 "권한을 줬는데 왜 안 되냐"를 서버 쪽에서 확인할 방법이 없었다
+            # (2026-09-21 실사용 중 확인).
+            log_business_event(
+                "gcp.cpu_utilization_query_failed", level="WARNING",
+                project_id=project_id, status_code=resp.status_code, response_body=resp.text[:500],
+            )
+    except requests.RequestException as exc:
+        log_business_event(
+            "gcp.cpu_utilization_query_failed", level="WARNING",
+            project_id=project_id, error_type=type(exc).__name__, error=str(exc)[:300],
+        )
     return out

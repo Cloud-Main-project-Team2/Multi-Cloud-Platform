@@ -16,28 +16,32 @@ provider "aws" {
   region = var.region
 }
 
-# ami_id를 비워두면(null) 최신 Amazon Linux 2023 AMI를 자동으로 찾는다 — AMI ID는
-# 리전마다/시점마다 달라서 사람이 직접 입력하면 틀리기 쉽다.
+# ami_id를 비워두면(null) var.image_owner/var.image_name_filter로 최신 AMI를 자동으로 찾는다 —
+# AMI ID는 리전마다/시점마다 달라서 사람이 직접 입력하면 틀리기 쉽다. 두 변수는
+# app/aws_provisioning.py의 IMAGE_FAMILIES가 사용자가 고른 OS 계열(기본값 Amazon Linux 2023,
+# 2026-09-21부터 Ubuntu 22.04도 선택 가능)에 맞춰 채운다.
 #
-# 이름 패턴은 "al2023-ami-2023."으로 시작해야 한다 — "al2023-ami-*-x86_64"처럼 느슨하게
-# 두면 "al2023-ami-minimal-2023...-x86_64"(minimal 변형)도 매치되고, most_recent가 그걸
-# 고를 수 있다. minimal 변형엔 SSM Agent가 안 들어 있어서, SSM Session Manager로 붙는
-# 이 모듈의 전제(SSH 키 페어 대신 SSM 접속, 2026-09-15 결정)가 깨진다 — IAM 역할·보안그룹·
-# VPC 라우팅이 전부 정상인데도 인스턴스가 SSM에 영영 등록되지 않는 형태로 나타난다(실제로
-# 겪은 버그: 생성은 성공하지만 `aws ssm start-session`이 계속 TargetNotConnected로 실패).
-data "aws_ami" "al2023" {
+# Amazon Linux 2023 이름 패턴은 "al2023-ami-2023."으로 시작해야 한다(기본값) — "al2023-ami-*-x86_64"
+# 처럼 느슨하게 두면 "al2023-ami-minimal-2023...-x86_64"(minimal 변형)도 매치되고, most_recent가
+# 그걸 고를 수 있다. minimal 변형엔 SSM Agent가 안 들어 있어서, SSM Session Manager로 붙는 이
+# 모듈의 전제(SSH 키 페어 대신 SSM 접속, 2026-09-15 결정)가 깨진다 — IAM 역할·보안그룹·VPC
+# 라우팅이 전부 정상인데도 인스턴스가 SSM에 영영 등록되지 않는 형태로 나타난다(실제로 겪은 버그:
+# 생성은 성공하지만 `aws ssm start-session`이 계속 TargetNotConnected로 실패). Canonical의 공식
+# Ubuntu AMI(owner 099720109477)는 최신 릴리스부터 SSM Agent를 snap으로 기본 포함하므로 같은
+# 문제가 없다 — 다만 Canonical이 배포 방식을 바꾸면 재확인이 필요하다.
+data "aws_ami" "selected" {
   count       = var.ami_id == null ? 1 : 0
   most_recent = true
-  owners      = ["amazon"]
+  owners      = [var.image_owner]
 
   filter {
     name   = "name"
-    values = ["al2023-ami-2023.*-x86_64"]
+    values = [var.image_name_filter]
   }
 }
 
 locals {
-  resolved_ami_id = var.ami_id != null ? var.ami_id : data.aws_ami.al2023[0].id
+  resolved_ami_id = var.ami_id != null ? var.ami_id : data.aws_ami.selected[0].id
 }
 
 # var.vpc_id가 있으면 그 VPC를 그대로 쓰고(존재/소유 확인은 AWS API 자체가 해준다 — credential이

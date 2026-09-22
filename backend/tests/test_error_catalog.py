@@ -21,9 +21,11 @@ IN_SCOPE_CODES = [
     "CREDENTIAL_NOT_FOUND", "CREDENTIAL_VERIFICATION_FAILED", "CLOUD_PERMISSION_DENIED",
     "PROVIDER_API_ERROR", "CONFIRMATION_REQUIRED", "JOB_NOT_CANCELLABLE", "VALIDATION_ERROR",
     "AUTHENTICATION_REQUIRED", "CONFLICT", "INTERNAL_ERROR",
+    # 비용(2026-09-19 채택 — 05_API계약.md §2-5)
+    "TEAM_NOT_FOUND", "TEAM_BUDGET_NOT_FOUND", "COST_INGESTION_RUN_NOT_FOUND", "COST_REVIEW_ITEM_NOT_FOUND",
 ]
 
-_VALID_CATEGORIES = {"provisioning", "sync", "resource", "credential", "auth", "common", "unknown"}
+_VALID_CATEGORIES = {"provisioning", "sync", "resource", "credential", "auth", "cost", "common", "unknown"}
 
 
 @pytest.mark.parametrize("code", IN_SCOPE_CODES)

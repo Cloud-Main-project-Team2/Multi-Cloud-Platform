@@ -11,7 +11,9 @@
 (function () {
   "use strict";
 
-  var SUGGESTED_PROMPTS = [
+  // 비용 화면(cost.js)이 window.MCPAgentPrompts로 자기 질문 6개를 먼저 놓는다(확정 17). 그 값이 없는
+  // 화면(대시보드)은 아래 기본 3개 그대로다.
+  var SUGGESTED_PROMPTS = window.MCPAgentPrompts || [
     "비용을 줄일 수 있는 서비스를 추천해줘",
     "플랫폼별 비용을 비교해줘",
     "약정 없이 절약할 방법이 있을까?",
@@ -93,9 +95,12 @@
       addBubble("user", message);
       var typing = addTypingIndicator();
 
+      // 비용 화면은 window.MCPAgentConditions로 현재 필터(기간·CSP·계정·팀)만 넘긴다 — 금액은 서버가
+      // 계산한다(PR 8 선택 필드). 없는 화면(대시보드)은 이전과 같은 body다.
+      var conditions = window.MCPAgentConditions ? window.MCPAgentConditions() : undefined;
       MCPApi.request("/agent/chat", {
         method: "POST",
-        body: { message: message, history: history },
+        body: { message: message, history: history, conditions: conditions },
       })
         .then(function (data) {
           typing.remove();

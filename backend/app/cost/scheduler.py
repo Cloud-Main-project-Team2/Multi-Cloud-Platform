@@ -14,6 +14,8 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
 from app.cost.ingest import AccountLockedError, replace_cost_rows
+from app.cost.notify import evaluate_for_account
+from app.cost.review import evaluate_and_notify_for_account_safely
 from app.cost import COST_ADAPTERS, is_cost_supported
 from app.config import get_settings
 from app.db import SessionLocal
@@ -102,6 +104,10 @@ def _run_single_account(db: Session, account: CloudAccount, period_start: dt.dat
     run.status = "success"
     run.finished_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
+    # 수집이 커밋된 뒤 그 계정의 팀 예산 임계(80/100%)를 평가한다(PR 7). 실패는 로그만.
+    evaluate_for_account(db, account)
+    # 급증 탐지(PR 8) — 저장된 판정 대상 날 전부. 실패는 로그만.
+    evaluate_and_notify_for_account_safely(db, account)
 
 
 def run_daily_ingestion() -> None:
@@ -123,6 +129,12 @@ def run_daily_ingestion() -> None:
                 except Exception:  # noqa: BLE001 — 자동 수집 루프 전체가 멈추면 안 된다
                     db.rollback()
                     log_business_event("cost.daily_ingestion.account_failed", level="ERROR", cloud_account_id=account.id, exc_info=True)
+            # 안전망(PR 8): 오늘 수집이 안 돌았거나 실패한 계정(자격 증명 없음·만료 등)도 저장된
+            # 데이터로 새로 판정 가능해진 날을 따라잡는다 — 수집 성공에만 매달면 9/30이 10/4에
+            # 판정 가능해질 때 그 계정의 수집이 멈춰 있으면 영영 빠진다. 창을 두지 않고 매번 전부 본다.
+            for account in accounts:
+                if is_cost_supported(account.provider):
+                    evaluate_and_notify_for_account_safely(db, account)
         finally:
             db.close()
 

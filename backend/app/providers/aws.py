@@ -6,6 +6,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
+from app.logging_config import log_business_event
 from app.providers import VerificationResult
 
 _TIMEOUT_CONFIG = Config(connect_timeout=5, read_timeout=8, retries={"max_attempts": 1})
@@ -135,7 +136,13 @@ def get_cpu_utilization(secret_payload: dict, region: str, instance_ids: list[st
             StartTime=now - dt.timedelta(hours=1),
             EndTime=now,
         )
-    except (BotoCoreError, ClientError):
+    except (BotoCoreError, ClientError) as exc:
+        # 이전까지는 여기가 완전히 조용했다 — 권한/자격증명 문제로 전체가 실패해도 로그 한
+        # 줄 없이 None으로 사라졌다(2026-09-21, GCP/Azure와 형평성 맞춰 추가).
+        log_business_event(
+            "aws.cpu_utilization_query_failed", level="WARNING",
+            region=region, error_type=type(exc).__name__, error=str(exc)[:300],
+        )
         return {instance_id: None for instance_id in instance_ids}
 
     # GetMetricData는 기본적으로 최신 시각 순(내림차순)으로 Values를 돌려준다 — [0]이 가장 최근값.

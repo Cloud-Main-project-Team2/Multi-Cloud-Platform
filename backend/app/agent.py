@@ -19,6 +19,8 @@ from decimal import Decimal
 import httpx
 from sqlalchemy.orm import Session
 
+from app.logging_config import log_business_event
+
 from app.config import get_settings
 from app.models import CloudAccount, ProvisioningJob, Resource, ServiceCatalog
 
@@ -32,9 +34,12 @@ _SYSTEM_PROMPT_TEMPLATE = """당신은 이 멀티클라우드 운영 대시보�
 운영 관련 질문에 답합니다.
 
 중요한 제약:
-- 아래 "현재 계정 현황"의 비용 숫자는 실제 CSP 비용 API(Cost Explorer/Cost Management/Billing 등)
-  실측치가 아니라, 인스턴스 타입 등 스펙 기준 정가(list price) 추정치입니다. 비용을 언급할 때는
-  항상 "추정치"임을 밝히고, 실제 청구액과 다를 수 있다고 안내하세요.
+- 비용 숫자는 종류가 둘입니다. "현재 계정 현황"의 리소스별 비용은 스펙 기준 정가(list price)
+  추정치이고, "[비용 문맥 범위]" 아래의 실측 사용 비용은 CSP 비용 API에서 수집한 잠정치(usage 기준,
+  크레딧·환불 제외, 청구 확정 아님)입니다. 비용을 언급할 때는 항상 종류·기간·통화를 함께 말하고,
+  두 값을 더하지 마세요. 문맥 범위 밖의 기간·계정에 대해서는 데이터가 없다고 답하세요.
+- 급증 항목의 증가율이 "신규 비용 발생(기준선 0)"이면 0%나 계산 오류가 아니라 기준선이 0이라
+  비율을 낼 수 없는 것입니다. 예산이 "판정 불가"면 0%로 말하지 마세요.
 - 이 데이터에 없는 사실을 지어내지 마세요 — 모르면 모른다고 답하세요.
 - 당신은 실제로 리소스를 생성·삭제·변경할 수 없습니다. 그런 요청에는 프로비저닝/인벤토리 화면을
   안내하세요.
@@ -58,8 +63,11 @@ class AgentUpstreamError(Exception):
         super().__init__(f"openai upstream error {status_code}")
 
 
-def build_user_context(db: Session, user_id: int) -> str:
+def build_user_context(db: Session, user_id: int, cost_conditions: dict | None = None) -> str:
     """현재 사용자의 리소스/비용/최근 프로비저닝 현황을 LLM 프롬프트용 텍스트로 요약한다.
+
+    `cost_conditions`(기간·CSP·계정·팀 필터, 선택)는 비용 파트의 문맥(실측 MTD·예산·급증·결측)에만
+    쓰인다 — app/cost/ai_context.py(PR 8). 없으면 당월·전체 기준.
 
     `/resources`, `/resources/summary`, `/provisioning/jobs`가 이미 쓰는 것과 같은 쿼리 모양이다 —
     HTTP로 자기 자신을 호출하는 대신 같은 DB 세션으로 직접 조회한다.
@@ -123,6 +131,15 @@ def build_user_context(db: Session, user_id: int) -> str:
         "최근 프로비저닝 활동:",
         *(job_lines or ["(없음)"]),
     ]
+    # 비용 파트 문맥(PR 8) — 실측 MTD·예산 사용률·급증·결측. 실패해도 기존 문맥은 살린다.
+    try:
+        from app.cost.ai_context import build_cost_context
+
+        parts.append("")
+        parts.append(build_cost_context(db, user_id, **(cost_conditions or {})))
+    except Exception:  # noqa: BLE001
+        log_business_event("agent.cost_context.failed", level="ERROR", user_id=user_id, exc_info=True)
+        parts.append("[비용 문맥] 비용 요약을 만들지 못했다 — 실측·예산·급증 질문에는 데이터가 없다고 답할 것.")
     return "\n".join(parts)
 
 

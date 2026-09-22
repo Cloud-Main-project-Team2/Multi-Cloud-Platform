@@ -20,14 +20,17 @@ from app.routers import (
     agent,
     auth,
     client_logs,
+    cost_review,
     costs,
     credentials,
     notifications,
+    price_comparisons,
     provisioning,
     reports,
     resources,
     security_groups,
     sync_jobs,
+    teams,
 )
 
 
@@ -54,10 +57,12 @@ app.include_router(agent.router)
 app.include_router(client_logs.router)
 app.include_router(notifications.router)
 app.include_router(security_groups.router)
-# teams.router · cost_review.router · cost_reports.router는 PR 7·8(다음 라운드) 몫이라
-# 아직 없다 — 이번 라운드(PR 1~6)는 costs.router(수집 실행 3종)까지만 등록한다.
 app.include_router(costs.router)
 app.include_router(reports.router)
+app.include_router(teams.router)  # PR 7 — 팀·예산 9종
+app.include_router(cost_review.router)  # PR 8 — 급증 탐지·검토 큐
+app.include_router(price_comparisons.router)  # PR 8 — /provisioning/price-comparisons (routers/provisioning.py 미수정)
+# cost_reports.router(보고서 부품 3종)는 보고서 담당(안권형님)과 필요 계약을 맞춘 뒤 만든다 — 2026-09-19 결정.
 
 # 프론트(:8080, nginx 정적 서빙)와 API(:8000)가 서로 다른 오리진이라 브라우저 fetch에는
 # CORS 허용이 필요하다. Bearer 토큰만 쓰고 쿠키는 쓰지 않으므로 allow_credentials는 False로 둔다.

@@ -75,6 +75,11 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | AWS 인증 방식 전환 — Access Key 저장 → 역할 위임(AssumeRole) 임시 자격증명 | `solcho/be-assume-role` | 조은솔 | in progress |
 | 로깅 보강 Phase 1 — ts/level·예외 로깅·백그라운드 태스크·로그 영속화 | `solcho/be-logging-hardening` | 조은솔 | in progress |
 | 로깅 보강 Phase 2 — 도메인 이벤트·프론트 오류 수집(`/client-logs`)·nginx JSON 로그 | `solcho/be-logging-coverage` | 조은솔 | in progress |
+| 비용 관리 — PR 1~6(정가 추정·`cost.html`·스키마·AWS 실측 수집·조회 API 6종·화면 연동) | `seunghyun/be-cost-*`·`seunghyun/fe-cost-*` (`docs/비용_개발문서/14_개발_트래커.md`가 정본) | 이승현 | merged (#100, #109) |
+| 비용 관리 PR 7 — 팀·예산 API 9종 + 소진율 + 80/100% 임계 알림 (초과 차단은 ADR-042로 보류) | `seunghyun/be-cost-team-budget` | 이승현 | merged (#110) |
+| 비용 관리 PR 8 — 급증 탐지·검토 큐·AI 상담 문맥·`price-comparisons`·예산 기준일 분리 (보고서 부품 3종·반기는 안권형님 확인 후) | `seunghyun/be-cost-anomaly-report` | 이승현 | merged (#111) |
+| 비용 화면 ③탭 실 연동(팀·예산·급증·검토 큐·가격 비교) + CF-007/CF-030 복귀 + 알림 문구 | `seunghyun/fe-cost-budget-anomaly` | 이승현 | PR #112 |
+| 비용 백엔드 후속 — 반복 예산 부분 UNIQUE·팀별 락·예산 날짜 UTC | `seunghyun/be-cost-hardening` | 이승현 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -562,6 +567,77 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   - **검증**: backend 테스트 644개 통과(azure discover 5·aws discover 3 신규). 실제 Azure 계정으로
     라이브 discover→스토리지 발견 확인, 실동기화로 기존 stale 스토리지 행의 `is_stale`이 True→False로
     복구되는 것까지 end-to-end 확인.
+
+- **비용 팀·예산 PR 7 — 문서가 정하지 않아 세션에서 확정한 규칙(2026-09-19, `seunghyun/be-cost-team-budget`)**:
+  정본 설계는 `docs/비용_개발문서/05_API계약.md` §6 · `08` §6 · ADR-020/021/037/042. 그 문서들이 비워 둔
+  칸을 승현이 아래처럼 정했다(`app/cost/budget.py`·`notify.py` 머리 주석에도 있음).
+  - **반복 예산은 period_type과 무관하게 팀당 시간순 체인 하나**: 새 반복 행의 `start_date`는 기존 최신
+    반복 행보다 뒤여야 한다(같거나 이르면 `409 CONFLICT` + `existing_budget_id`). 각 행의 효력은 자기
+    `start_date`부터 다음 행 `start_date` 전까지. 계산 구간은 `period_start = max(달력 시작, 행 start_date)`,
+    `period_end = min(달력 종료, 다음 행 start_date)`.
+  - **이미 시작된 예산은 PATCH로 한도를 바꾸지 않는다** — 새 행을 POST한다(이력 보존, 확정 8). `start_date`·
+    `period_type`·`currency`는 어떤 상태에서도 변경 불가(보내면 409 `create_new_budget`). 예정(upcoming)
+    예산만 `limit_amount`(custom은 `end_date`도) 오타 수정 허용.
+  - **budget-status 선택 순서**: 진행 중 custom → 진행 중 반복 → 가장 가까운 예정 → 가장 최근 종료 →
+    `NO_BUDGET`. custom은 해당 기간의 임시 override다. `reason_code` 우선순위는 NO_BUDGET > NO_ACCOUNTS >
+    UNSUPPORTED > CURRENCY_MISMATCH > MISSING_DAYS. 결측일 판정은 **실측 행이 있거나 성공한 수집 run 범위에
+    든 날**을 수집됨으로 본다 — $0인 날은 행이 안 생기므로 행 유무만 보면 CONNECTED_EMPTY 계정이 영원히 결측이다.
+  - **알림 평가 시점**: 자동·수동 수집 성공 직후(`evaluate_for_account`, 실패는 로그만) · 예산 생성 · 계정
+    배정 변경 · 팀 통화 변경 · 예산 삭제 뒤. `GET budget-status`는 평가하지 않는다. in_progress이며 computable인
+    예산만 보고, 처음부터 100% 이상이면 80·100을 각각 한 번 만든다. 중복 방지는 기존
+    `team_budget_notifications` UNIQUE(SAVEPOINT로 IntegrityError 격리)이고 알림 행과 같은 트랜잭션이다.
+  - **오류 코드 채택(09 §14 #2 닫음)**: `TEAM_NOT_FOUND`·`TEAM_BUDGET_NOT_FOUND`·`COST_INGESTION_RUN_NOT_FOUND`
+    3개를 `error_catalog.py`(category `cost`)·`docs/Error_Catalog_Draft_2026-09-16.md`에 등록. `ACCOUNT_ALREADY_IN_TEAM`·
+    `BUDGET_PERIOD_OVERLAP`은 `409 CONFLICT` + `details.reason`, `BUDGET_PERIOD_TOO_LONG`은 `422 VALIDATION_ERROR`로
+    흡수. `BUDGET_EXCEEDED`·`COST_SETUP_REQUIRED`·`COST_REVIEW_ITEM_NOT_FOUND`는 미사용.
+  - **`/costs/*` 6종 `team_id` 필터**(05 §4 공통 query)를 이 PR에서 켰다 — `query.py`의 필터 지점 18곳을 고치지
+    않고 라우터 `_build_query`가 `resolve_team_scope()`로 계정 id 집합에 풀어 넣는다(`unassigned` 허용, 빈 집합은
+    `EMPTY_SCOPE_IDS=[-1]`로 "전체"와 구분).
+  - **로컬 환경 주의**: 호스트에 별도 Postgres(127.0.0.1:5432)가 떠 있어 docker `db`의 5432 포워딩을 가린다 —
+    `DATABASE_URL=...@localhost:5432`로 돌린 pytest는 **호스트 Postgres**의 `mcp_db_test`를 쓴다(스키마는
+    create_all이라 테스트엔 문제없음). 실 DB 스모크는 `docker compose run --rm -T --no-deps --entrypoint "" -v
+    $PWD/backend/app:/app/app api python - < script.py`로 컨테이너 안에서 한다. 현재 `api` 이미지는 PR 4 이전
+    빌드라(`apscheduler` 없음) main을 쓰려면 `docker compose build api` 재빌드가 필요하다.
+
+- **비용 급증 탐지·검토 큐·AI 문맥 PR 8 — 세션 확정 규칙(2026-09-19, `seunghyun/be-cost-anomaly-report`)**:
+  정본은 `docs/비용_개발문서/05_API계약.md` §7-1·§7-2·§8, `06` §4-2, `08` §7. 그 문서들이 비워 둔 칸을 승현이 정했다
+  (`app/cost/anomaly.py`·`review.py`·`coverage.py`·`ai_context.py` 머리 주석에도 있음).
+  - **보고서 부품 3종(`/cost-reports/sections|exports|fragment`)·반기 집계·보고서용 예산 조립은 만들지 않았다**:
+    보고서(비용 섹션 포함)는 안권형님이 작성하고 필요하면 기존 비용 API를 쓴다. 부품 3종은 문서에 남기되
+    실제 필요 계약(데이터·기간·집계 단위·응답 형태)을 그쪽과 맞춘 뒤 범위를 정한다. 반기는 `HALF_YEARLY=182일`
+    (권형님 코드)이고 `quarterly`로 대체할 수 없으며 4구간이면 366일 상한을 넘는다 — **규격 확인 전 미구현.**
+  - **수집 확인(coverage) 정의는 한 곳**(`app/cost/coverage.py`): 행이 있거나 성공 run 범위에 든 날. 예산 결측과
+    급증 판정이 같은 함수를 쓴다. 날짜 경계는 **UTC**(`utc_today`). 예산 쪽(`budget.py`)은 아직 `date.today()`를
+    받는 호출부가 남아 있다 — 후속 정리 대상.
+  - **급증 규칙의 빈칸**: 기준선 7일은 **7/7 전부 수집 확인**됐을 때만 판정(아니면 `held[]`에 사유) · 미수집일을 0으로
+    넣지 않음 · 이력 12일 = **판정일 이하** 누적 수집 확인 날 수 · **기준선 0 예외** = 비율식 미적용, `delta ≥ 최소
+    차액`만으로 탐지, `delta_pct:null`(0%·오류 아님, 화면·AI는 "신규 비용 발생") · 최근 3일 제외 = 판정일 ≤ 오늘−4.
+  - **자동 탐지는 "이번 수집 범위"가 아니라 저장된 판정 대상 날 전부**를 매번 본다(창 없음) — 9/30은 10/4에야
+    판정 가능한데 그때 자동 수집은 10/1부터라 범위만 보면 놓친다. 스케줄러는 수집 루프 뒤 전 계정을 한 번 더
+    평가한다(수집이 멈춘 계정도 따라잡음). 결과를 저장하지 않으므로 반복 평가는 무해하고 중복은
+    `cost_review_items` UNIQUE가 막는다.
+  - **큐 항목 생성 = 알림 1회**(자동·수동 공통, `review.create_item_with_notification`): 새로 만들 때만 같은
+    트랜잭션에 `notifications(type="cost_anomaly", message_key="notif.cost.anomaly", reference_type=
+    "cost_review_item")`. 수동 POST는 계정 소유권 검증 + 서버가 그 날 급증을 다시 계산해 금액을 채우며, 현재 규칙으로
+    급증이 아닌 키는 422(`not_current_anomaly`) — 금액 없는 항목이 0원·현재 급증으로 보이지 않게. 재수집 후 규칙을
+    못 넘게 된 날은 급증 목록에서 빠지고 큐 이력만 남는다.
+  - **통화**: 최소 차액은 통화별 상수(`MIN_DELTA_BY_CURRENCY`, USD 5만 있음). 값 없는 통화 계정은
+    `unsupported_currency[]`로 응답에 보인다 — **USD만 판정은 중간 상태, KRW 임계값·통화별 rule 응답은 미결.**
+  - **계약 추가 2개**(05 §7-1에 없음): `held[]`·`unsupported_currency[]`. `/agent/chat`에 선택 필드 `conditions`
+    (기간·CSP·계정·팀 필터만, 금액 없음 — 없으면 당월·전체·문맥 첫 줄에 범위 명시).
+  - **예산 기준일 분리**(`compute_budget_status(reference_date=)`, `GET budget-status?reference_date=`): 기준일은
+    예산·구간 선택, 사용액은 기준일 포함, 결측 검사는 기준일 포함·실제 오늘만 제외. 기준일 구간에 완료된 날이 없으면
+    이전 구간을 대신 쓰지 않고 `NO_COMPLETED_DAYS`(05 §6-2의 5종 밖 — 추가). 미래 기준일은 오늘로 내림. 전망은
+    기준일=오늘일 때만. "당시 스냅샷"이 아니라 지금 데이터로 다시 센 값이다.
+  - **`POST /provisioning/price-comparisons`는 별도 라우터 파일**(`routers/price_comparisons.py`)로 두어
+    `routers/provisioning.py`를 건드리지 않았지만 경로 소유(조은솔님) 공유는 필요하다. compute 카테고리만 정가표로
+    계산하고 나머지는 `null`+"견적 불가".
+  - **알림 UI**: `ui.js:notifMeta()`(조은솔님)에 `budget_threshold`·`cost_anomaly` 문구·이동 2분기를 프론트 라운드(#112)에서
+    추가했다(별도 커밋, 소유자 확인 필요).
+  - **예산 쓰기 동시성(2026-09-20, `seunghyun/be-cost-hardening`)**: "활성 반복 중복 409"·"custom 겹침 409"는 SELECT→INSERT라
+    동시 요청에 뚫렸다(프론트 스모크가 초기화를 두 번 해 실제 재현). `team_budgets`에 부분 UNIQUE
+    `(team_id, start_date) WHERE end_date IS NULL`(`b7c2d9e4f1a3`) + 예산 생성·수정 라우터가 `pg_advisory_xact_lock`으로
+    팀별 직렬화. IntegrityError는 같은 409로 통일. 예산 쪽 '오늘'도 `coverage.utc_today()`로 통일(급증과 같은 경계).
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 

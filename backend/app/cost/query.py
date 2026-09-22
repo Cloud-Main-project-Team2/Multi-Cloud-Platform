@@ -8,10 +8,12 @@ import datetime as dt
 from dataclasses import dataclass, field
 from decimal import Decimal
 
-from sqlalchemy import Date, cast, func
+from sqlalchemy import Date, cast, func, or_
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
+from app.cost import is_cost_supported
+from app.cost.coverage import covered_days, utc_today
 from app.errors import validation_error
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Resource
 
@@ -41,12 +43,45 @@ class CostQuery:
     cloud_account_ids: list[int] = field(default_factory=list)
     currency: str | None = None
     charge_categories: list[str] = field(default_factory=lambda: list(DEFAULT_CHARGE_CATEGORIES))
-    # team_id 필터는 파라미터로 받아 두되(§4 공통 query 7개 계약), 팀 배정 UI가 아직 없는
-    # 이번 라운드(PR 7 이전)에는 실제로 적용하지 않는다 — 모든 계정이 미배정이라 걸러도 무의미하다.
+    # team_id 필터(§4 공통 query 7개 계약)는 여기 두지 않는다 — 라우터가 resolve_team_scope()로
+    # cloud_account_ids에 풀어 넣는다(PR 7). 아래 필터 지점 18곳이 전부 cloud_account_ids만 본다.
+
+
+# 팀 필터 결과가 빈 집합일 때 넣는 값 — 빈 리스트는 "필터 없음"이라 구분이 필요하다. id는 1부터
+# 시작하므로 -1은 어떤 계정과도 일치하지 않는다.
+EMPTY_SCOPE_IDS = [-1]
+UNASSIGNED_TEAM = "unassigned"
+
+
+def resolve_team_scope(db: Session, user_id: int, team_ids: list[str], account_ids: list[int]) -> list[int]:
+    """`team_id` 필터를 그 사용자의 계정 id 목록으로 바꾼다. `unassigned`는 team_id IS NULL.
+    명시적 cloud_account_id가 함께 오면 교집합. 결과가 비면 EMPTY_SCOPE_IDS."""
+    ids: list[int] = []
+    include_unassigned = False
+    for raw in team_ids:
+        if raw == UNASSIGNED_TEAM:
+            include_unassigned = True
+            continue
+        try:
+            ids.append(int(raw))
+        except ValueError as exc:
+            raise validation_error(
+                "team_id는 숫자 ID 또는 unassigned여야 합니다.", details=[{"field": "team_id", "reason": "invalid"}]
+            ) from exc
+    conds = []
+    if ids:
+        conds.append(CloudAccount.team_id.in_(ids))
+    if include_unassigned:
+        conds.append(CloudAccount.team_id.is_(None))
+    query = db.query(CloudAccount.id).filter(CloudAccount.user_id == user_id, or_(*conds))
+    if account_ids:
+        query = query.filter(CloudAccount.id.in_(account_ids))
+    scoped = [row[0] for row in query.all()]
+    return scoped or list(EMPTY_SCOPE_IDS)
 
 
 def default_period() -> tuple[dt.date, dt.date]:
-    today = dt.date.today()
+    today = utc_today()  # 집계 날짜는 UTC(coverage.py 결정) — 컨테이너 TZ(KST)를 따르지 않는다
     return today.replace(day=1), today + dt.timedelta(days=1)
 
 
@@ -121,6 +156,8 @@ def sum_by_currency(
         query = query.filter(CloudAccount.provider.in_(q.providers))
     if q.cloud_account_ids:
         query = query.filter(CloudAccountCost.cloud_account_id.in_(q.cloud_account_ids))
+    if q.currency:  # '청구 통화' 필터(05 §4 공통 query · 08 §5-2 build_cost_filters)
+        query = query.filter(CloudAccountCost.currency == q.currency)
     cats = charge_categories if charge_categories is not None else q.charge_categories
     if cats:
         query = query.filter(CloudAccountCost.charge_category.in_(cats))
@@ -210,6 +247,8 @@ def sum_by_account_currency(
         query = query.filter(CloudAccount.provider.in_(q.providers))
     if q.cloud_account_ids:
         query = query.filter(CloudAccountCost.cloud_account_id.in_(q.cloud_account_ids))
+    if q.currency:
+        query = query.filter(CloudAccountCost.currency == q.currency)
     cats = charge_categories if charge_categories is not None else q.charge_categories
     if cats:
         query = query.filter(CloudAccountCost.charge_category.in_(cats))
@@ -231,38 +270,111 @@ def resource_counts_by_account(db: Session, user_id: int, q: CostQuery) -> dict[
     return {account_id: {"count": count, "synced_at": synced_at} for account_id, count, synced_at in rows}
 
 
-def days_with_data(db: Session, user_id: int, q: CostQuery, currency: str | None = None) -> set[dt.date]:
-    query = (
-        db.query(CloudAccountCost.period_start)
-        .join(CloudAccount, CloudAccount.id == CloudAccountCost.cloud_account_id)
-        .filter(
-            CloudAccount.user_id == user_id,
-            CloudAccountCost.period_start >= q.period_start,
-            CloudAccountCost.period_start < q.period_end,
-        )
-        .distinct()
-    )
-    if currency:
-        query = query.filter(CloudAccountCost.currency == currency)
-    if q.providers:
-        query = query.filter(CloudAccount.provider.in_(q.providers))
-    if q.cloud_account_ids:
-        query = query.filter(CloudAccountCost.cloud_account_id.in_(q.cloud_account_ids))
-    return {row[0] for row in query.all()}
+# --- 수집 확인(coverage) — 계정 단위, UTC ---------------------------------------------------
+#
+# 예전 days_with_data()는 "필터 안 어느 계정이든 그 날 비용 행이 하나라도 있으면 수집됨"으로
+# 봤다. 그러면 ① 계정 A만 수집되고 B는 안 된 날이 정상으로 보이고, ② 성공했지만 $0이라 행이
+# 없는 날이 결측으로 보이고, ③ 서버 로컬(KST) 날짜와 UTC 집계일이 섞였다. 지금은 예산·급증과
+# 같은 coverage.covered_days(행 OR success run 범위, UTC)를 계정마다 따로 본다.
+#
+# 한계(그대로 둔다): "그 날 행이 있다"는 그 run이 그 날을 저장했다는 뜻이지 서비스별 완전성의
+# 증명은 아니다 — 저장이 계정·기간 단위 범위 교체(08 §4-4, partial은 저장 안 함)라 실무상
+# 같은 뜻으로 본다. partial_success run은 행을 저장하지 않으므로 그 구간은 "미확인"이다.
+
+MISSING_DAYS_LIST_LIMIT = 31
+
+
+def account_coverage(
+    db: Session, cloud_account_id: int, start: dt.date, end: dt.date, *, today: dt.date | None = None
+) -> dict:
+    """[start, end) 중 **완료된 날**(UTC 오늘·미래 제외)의 수집 확인 결과.
+    days=완료된 날 수 · covered=확인된 날 수 · missing_count=전체 결측 수(판정은 이 값으로) ·
+    missing_days=앞에서 31개까지(표시용) · truncated=목록이 잘렸는가 · pending_days=오늘·미래라
+    아직 판정할 수 없는 날 수."""
+    today = today or utc_today()
+    end_done = min(end, today)
+    if end_done <= start:
+        return {
+            "start": start.isoformat(), "end": start.isoformat(), "days": 0, "covered": 0,
+            "missing_count": 0, "missing_days": [], "truncated": False,
+            "pending_days": max((end - max(start, today)).days, 0),
+        }
+    have = covered_days(db, cloud_account_id, start, end_done)
+    missing: list[str] = []
+    missing_count = 0
+    d = start
+    while d < end_done:
+        if d not in have:
+            missing_count += 1
+            if len(missing) < MISSING_DAYS_LIST_LIMIT:
+                missing.append(d.isoformat())
+        d += dt.timedelta(days=1)
+    days = (end_done - start).days
+    return {
+        "start": start.isoformat(), "end": end_done.isoformat(), "days": days,
+        "covered": days - missing_count, "missing_count": missing_count,
+        "missing_days": missing, "truncated": missing_count > len(missing),
+        "pending_days": max((end - end_done).days, 0),
+    }
+
+
+def classify_accounts(
+    db: Session, accounts: list[CloudAccount], q: CostQuery
+) -> tuple[dict[int, str | None], dict[int, str]]:
+    """필터 안 계정을 한 번에 분류한다. 반환: (filter_excluded{id: "currency"|None}, currency_map).
+    통화 필터 제외는 **통화가 확인된 계정만** 해당한다 — 아직 행이 없어 통화를 모르는 계정을
+    "통화 불일치"로 단정하지 않는다."""
+    currency_map = accounts_currency_map(db, accounts)
+    excluded: dict[int, str | None] = {}
+    for account in accounts:
+        known = currency_map.get(account.id)
+        excluded[account.id] = "currency" if (q.currency and known and known != q.currency) else None
+    return excluded, currency_map
+
+
+def evaluable_accounts(accounts: list[CloudAccount], filter_excluded: dict[int, str | None]) -> list[CloudAccount]:
+    """coverage·전망·비교 판정 대상 = 필터 안 + 실측 지원 + 통화 필터로 빠지지 않은 계정 **전부**.
+    마지막 run이 실패했거나 PENDING이어도 뺀다고 "완전"해지지 않으므로 포함한다."""
+    return [a for a in accounts if is_cost_supported(a.provider) and not filter_excluded.get(a.id)]
+
+
+def period_coverage(
+    db: Session, accounts: list[CloudAccount], start: dt.date, end: dt.date, *, today: dt.date | None = None
+) -> tuple[dict[int, dict], list[str], int]:
+    """대상 계정들의 coverage를 한 번씩만 계산한다. 반환: ({id: coverage}, 합집합 결측일(전체·정렬),
+    합집합 결측 개수). 합집합은 "하나라도 미확인인 날"이다."""
+    today = today or utc_today()
+    per: dict[int, dict] = {}
+    union: set[str] = set()
+    for a in accounts:
+        c = account_coverage(db, a.id, start, end, today=today)
+        per[a.id] = c
+        if c["missing_count"] and not c["truncated"]:
+            union.update(c["missing_days"])
+        elif c["missing_count"]:
+            # 잘린 목록으로 합집합을 만들면 안 된다 — 전체 결측일을 다시 읽는다(31일 초과는 드물다).
+            have = covered_days(db, a.id, start, min(end, today))
+            d = start
+            while d < min(end, today):
+                if d not in have:
+                    union.add(d.isoformat())
+                d += dt.timedelta(days=1)
+    return per, sorted(union), len(union)
 
 
 def missing_days(db: Session, user_id: int, q: CostQuery, currency: str | None = None) -> list[str]:
-    """기간 안에서 수집 행이 하나도 없는 날짜들. 오늘·미래는 "아직 수집될 수 없음"이라 결측으로
-    세지 않는다."""
-    have = days_with_data(db, user_id, q, currency)
-    today = dt.date.today()
-    out: list[str] = []
-    d = q.period_start
-    while d < q.period_end and d < today:
-        if d not in have:
-            out.append(d.isoformat())
-        d += dt.timedelta(days=1)
-    return out
+    """trend()가 쓰는 결측일 — 필터 안·지원·통화 필터 밖이 아닌 계정 중 하나라도 미확인인 날(UTC).
+    `currency`는 trend가 그리는 통화로, 그 통화가 아닌 계정은 대상에서 뺀다(그래프에 없는 계정의
+    결측을 그래프 결측으로 찍지 않는다)."""
+    accounts = owned_accounts(db, user_id, q)
+    scoped = CostQuery(
+        period_start=q.period_start, period_end=q.period_end, providers=q.providers,
+        cloud_account_ids=q.cloud_account_ids, currency=currency or q.currency, charge_categories=q.charge_categories,
+    )
+    filter_excluded, _ = classify_accounts(db, accounts, scoped)
+    targets = evaluable_accounts(accounts, filter_excluded)
+    _, union, _ = period_coverage(db, targets, q.period_start, q.period_end)
+    return union
 
 
 def _days_in_month(year: int, month: int) -> int:
@@ -273,19 +385,65 @@ def _days_in_month(year: int, month: int) -> int:
     return (next_month - dt.date(year, month, 1)).days
 
 
-def forecast_month_end(db: Session, user_id: int, q: CostQuery) -> list[dict]:
-    """CF-003 — 이번 달 진행 중일 때만 낸다(§4-2). MTD(어제까지) ÷ 경과일수 × 이번 달 총일수."""
-    today = dt.date.today()
+def forecast_month_end(
+    db: Session, user_id: int, q: CostQuery, *, accounts: list[CloudAccount] | None = None,
+    coverage_by_account: dict[int, dict] | None = None, currency_map: dict[int, str] | None = None,
+) -> tuple[list[dict], dict]:
+    """CF-003 — 이번 달 진행 중일 때만 낸다(§4-2). 계산식은 그대로(어제까지 실측 ÷ 경과일 × 총일수)
+    이고, **대상 계정 전부가 이달 1일~UTC 어제를 빠짐없이 수집 확인했을 때만** 계산한다(03 §5 ·
+    QA-08 ⑤ "미수집일을 0으로 평균 내지 않는다"). 수집된 날만 골라 평균 내지 않는다 — 하나라도
+    부족하면 계산 불가다. 반환: (forecast rows, forecast_status). forecast_status는 **응답 전체의
+    상태**다(통화별이 아니다): 계정 하나가 부족하면 모든 통화의 전망을 내지 않는다."""
+    today = utc_today()
     this_month_start = today.replace(day=1)
-    is_current_month = q.period_start == this_month_start and q.period_end == today + dt.timedelta(days=1)
-    if not is_current_month or today.day == 1:
-        return []
+    # 전망 창은 어차피 이달 1일~어제(UTC)다. period_end가 '오늘'(어제까지 포함)이든 '오늘+1'(오늘 포함)이든
+    # 근거 데이터가 같으므로 둘 다 받는다(2026-09-21 결정). 더 이르면 not_current_month, 미래면 내지 않는다.
+    is_current_month = q.period_start == this_month_start and q.period_end in (today, today + dt.timedelta(days=1))
+    status = {"state": "computed", "based_through": None, "required_accounts": 0, "incomplete_accounts": []}
+    if not is_current_month:
+        status["state"] = "not_current_month"
+        return [], status
+    if today.day == 1:
+        status["state"] = "first_day"
+        return [], status
 
-    days_elapsed = today.day - 1  # 어제까지
-    days_in_month = _days_in_month(today.year, today.month)
+    if accounts is None:
+        accounts = owned_accounts(db, user_id, q)
+        filter_excluded, currency_map = classify_accounts(db, accounts, q)
+        accounts = evaluable_accounts(accounts, filter_excluded)
+    if currency_map is None:
+        currency_map = accounts_currency_map(db, accounts)
+    status["required_accounts"] = len(accounts)
+    if not accounts:
+        status["state"] = "no_accounts"
+        return [], status
+
     based_through = today - dt.timedelta(days=1)
+    status["based_through"] = based_through.isoformat()
+    incomplete = []
+    for a in accounts:
+        c = (coverage_by_account or {}).get(a.id)
+        if c is None or c["start"] != this_month_start.isoformat() or c["end"] != today.isoformat():
+            c = account_coverage(db, a.id, this_month_start, today, today=today)
+        if c["missing_count"]:
+            incomplete.append({"cloud_account_id": str(a.id), "missing_count": c["missing_count"]})
+    if incomplete:
+        status["state"] = "insufficient_coverage"
+        status["incomplete_accounts"] = incomplete
+        return [], status
 
+    days_elapsed = today.day - 1  # 어제까지 — 오늘은 미완성 구간이라 근거에 넣지 않는다
+    days_in_month = _days_in_month(today.year, today.month)
     rows = sum_by_currency(db, user_id, q, period_end_override=today)
+    if not rows:
+        # 대상 계정 전부 수집 확인됐는데 행이 없다 = 확인된 0원. 통화를 아는 계정이 있으면 그 통화로 0을 낸다.
+        currencies = sorted({currency_map.get(a.id) for a in accounts if currency_map.get(a.id)})
+        if q.currency:
+            currencies = [q.currency] if q.currency in currencies or not currencies else []
+        if not currencies:
+            status["state"] = "currency_unknown"
+            return [], status
+        rows = [(cur, Decimal("0"), False) for cur in currencies]
     out = []
     for currency, total, _est in rows:
         forecast = (total / Decimal(days_elapsed) * Decimal(days_in_month)).quantize(Decimal("0.000001"))
@@ -298,7 +456,7 @@ def forecast_month_end(db: Session, user_id: int, q: CostQuery) -> list[dict]:
                 "based_through": based_through.isoformat(),
             }
         )
-    return out
+    return out, status
 
 
 def _category_for(provider: str, service: str | None) -> str | None:
@@ -411,10 +569,24 @@ def _shift_one_month_back(d: dt.date) -> dt.date:
     return dt.date(year, month, day)
 
 
-def changes(db: Session, user_id: int, q: CostQuery, compare: str, dimension: str, top_n: int) -> dict:
+UNALLOCATED_KEY = "__unallocated__"   # service IS NULL 행 — CSP 서비스 이름과 충돌하지 않는 내부 식별자
+UNALLOCATED_LABEL = "미분류"
+
+
+def changes(
+    db: Session, user_id: int, q: CostQuery, compare: str, dimension: str, top_n: int,
+    currency_param: str | None = None,
+) -> dict:
+    """EXT-F12·CF-024. `comparable`은 이제 "같은 길이"만이 아니라 **비교에 필요한 정합성 전부**다 —
+    같은 길이 · 완료된 기간(오늘·미래 미포함) · 두 기간 모두 대상 계정 전부 수집 확인 · 통화 하나 확정.
+    하나라도 어긋나면 comparable=false이고 delta/delta_pct는 null이다. 확인된 현재·이전 합계는
+    (구할 수 있으면) 그대로 준다 — 화면이 "불완전"을 붙여 따로 보여줄 수 있게. 기간을 조용히 잘라
+    다른 요청으로 바꾸지 않는다. 요금 분류는 usage 고정(05 §4-5 · 비중과 같은 이유)."""
     accounts = owned_accounts(db, user_id, q)
-    per_account_currency = accounts_currency_map(db, accounts)
-    chosen_currency, _reason, _excluded = pick_currency(per_account_currency, None)
+    filter_excluded, currency_map = classify_accounts(db, accounts, q)
+    targets = evaluable_accounts(accounts, filter_excluded)
+    per_account_currency = {a.id: currency_map[a.id] for a in targets if a.id in currency_map}
+    chosen_currency, _reason, _excluded = pick_currency(per_account_currency, currency_param or q.currency)
 
     days = (q.period_end - q.period_start).days
     if compare == "previous_month":
@@ -424,7 +596,41 @@ def changes(db: Session, user_id: int, q: CostQuery, compare: str, dimension: st
         prev_end = q.period_start
         prev_start = prev_end - dt.timedelta(days=days)
     prev_days = (prev_end - prev_start).days
-    comparable = prev_days == days
+
+    today = utc_today()
+    reasons: list[str] = []
+    same_length = prev_days == days
+    completed_period = q.period_end <= today   # 오늘(미완성)·미래가 들어 있으면 완료된 기간 비교가 아니다
+    if not same_length:
+        reasons.append("LENGTH_MISMATCH")
+    if not completed_period:
+        reasons.append("INCOMPLETE_PERIOD")
+    if not targets:
+        reasons.append("NO_ACCOUNTS")
+    cur_cov, _, _ = period_coverage(db, targets, q.period_start, q.period_end, today=today)
+    prev_cov, _, _ = period_coverage(db, targets, prev_start, prev_end, today=today)
+    current_covered = all(c["missing_count"] == 0 for c in cur_cov.values())
+    previous_covered = all(c["missing_count"] == 0 for c in prev_cov.values())
+    if targets and not current_covered:
+        reasons.append("CURRENT_COVERAGE")
+    if targets and not previous_covered:
+        reasons.append("PREVIOUS_COVERAGE")
+    if chosen_currency is None:
+        reasons.append("NO_CURRENCY")
+    comparable = not reasons
+    comparability = {
+        "same_length": same_length, "completed_period": completed_period,
+        "current_covered": current_covered, "previous_covered": previous_covered,
+        "currency": chosen_currency, "charge_category": "usage", "reasons": reasons,
+        "accounts": [
+            {
+                "cloud_account_id": str(a.id),
+                "current_missing_count": cur_cov[a.id]["missing_count"],
+                "previous_missing_count": prev_cov[a.id]["missing_count"],
+            }
+            for a in targets if cur_cov[a.id]["missing_count"] or prev_cov[a.id]["missing_count"]
+        ],
+    }
 
     def dim_sums(period_start: dt.date, period_end: dt.date) -> dict[str, Decimal]:
         col = _dimension_col(dimension)
@@ -444,22 +650,36 @@ def changes(db: Session, user_id: int, q: CostQuery, compare: str, dimension: st
             query = query.filter(CloudAccount.provider.in_(q.providers))
         if q.cloud_account_ids:
             query = query.filter(CloudAccountCost.cloud_account_id.in_(q.cloud_account_ids))
-        return {str(k): v for k, v in query.group_by(col).all() if k is not None}
+        # service IS NULL(계정 단위 금액)은 버리지 않고 미분류 키로 합계에 넣는다(QA-09) — summary의
+        # mtd_actual과 같은 범위여야 CF-024 총액이 CF-002와 어긋나지 않는다. account/provider 차원은 NULL이 없다.
+        return {(UNALLOCATED_KEY if k is None else str(k)): v for k, v in query.group_by(col).all()}
 
-    current_sums = dim_sums(q.period_start, q.period_end)
+    def label_of(key: str) -> str:
+        return UNALLOCATED_LABEL if key == UNALLOCATED_KEY else key
+
+    base = {
+        "current": {"start": q.period_start.isoformat(), "end": q.period_end.isoformat(), "days": days},
+        "previous": {"start": prev_start.isoformat(), "end": prev_end.isoformat(), "days": prev_days},
+        "comparable": comparable, "comparability": comparability, "currency": chosen_currency,
+        "charge_category": "usage",
+    }
+
+    current_sums = dim_sums(q.period_start, q.period_end) if chosen_currency else {}
     current_total = sum(current_sums.values(), Decimal("0"))
+    previous_sums = dim_sums(prev_start, prev_end) if chosen_currency else {}
+    previous_total = sum(previous_sums.values(), Decimal("0"))
 
     if not comparable:
-        return {
-            "current": {"start": q.period_start.isoformat(), "end": q.period_end.isoformat(), "days": days},
-            "previous": {"start": prev_start.isoformat(), "end": prev_end.isoformat(), "days": prev_days},
-            "comparable": False, "currency": chosen_currency,
-            "totals": {"current": money(current_total), "previous": None, "delta": None, "delta_pct": None},
+        base.update({
+            "totals": {
+                "current": money(current_total) if chosen_currency else None,
+                "previous": money(previous_total) if chosen_currency else None,
+                "delta": None, "delta_pct": None,
+            },
             "increases": [], "decreases": [], "new_items": [],
-        }
+        })
+        return base
 
-    previous_sums = dim_sums(prev_start, prev_end)
-    previous_total = sum(previous_sums.values(), Decimal("0"))
     delta = current_total - previous_total
     delta_pct = str((delta / previous_total * 100).quantize(Decimal("0.1"))) if previous_total > 0 else None
 
@@ -468,12 +688,12 @@ def changes(db: Session, user_id: int, q: CostQuery, compare: str, dimension: st
         cur = current_sums.get(key)
         prev = previous_sums.get(key)
         if prev is None:
-            new_items.append({"key": key, "label": key, "current": money(cur), "previous": None})
+            new_items.append({"key": key, "label": label_of(key), "current": money(cur), "previous": None})
             continue
         d_amount = (cur or Decimal("0")) - prev
         d_pct = str((d_amount / prev * 100).quantize(Decimal("0.1"))) if prev > 0 else None
         item = {
-            "key": key, "label": key, "current": money(cur or Decimal("0")), "previous": money(prev),
+            "key": key, "label": label_of(key), "current": money(cur or Decimal("0")), "previous": money(prev),
             "delta": money(d_amount), "delta_pct": d_pct, "is_new": False,
         }
         (increases if d_amount > 0 else decreases).append(item)
@@ -481,16 +701,14 @@ def changes(db: Session, user_id: int, q: CostQuery, compare: str, dimension: st
     increases.sort(key=lambda i: Decimal(i["delta"]), reverse=True)
     decreases.sort(key=lambda i: Decimal(i["delta"]))
 
-    return {
-        "current": {"start": q.period_start.isoformat(), "end": q.period_end.isoformat(), "days": days},
-        "previous": {"start": prev_start.isoformat(), "end": prev_end.isoformat(), "days": prev_days},
-        "comparable": True, "currency": chosen_currency,
+    base.update({
         "totals": {
             "current": money(current_total), "previous": money(previous_total),
             "delta": money(delta), "delta_pct": delta_pct,
         },
         "increases": increases[:top_n], "decreases": decreases[:top_n], "new_items": new_items[:top_n],
-    }
+    })
+    return base
 
 
 def trend(db: Session, user_id: int, q: CostQuery, granularity: str, group_by: str, currency_param: str | None) -> dict:
@@ -573,17 +791,40 @@ def _bucket_end(start: dt.date, granularity: str) -> dt.date:
     return start + dt.timedelta(days=1)  # daily
 
 
+DATA_STATUSES = ("CONNECTED_OK", "CONNECTED_EMPTY", "CONNECTED_PARTIAL")
+
+
+def _exclusion_reason(account: CloudAccount, cap_status: str, filter_excluded: str | None, coverage: dict | None, actual: Decimal | None) -> str | None:
+    """합계(mtd_actual)에 이 계정이 기여하지 못한 이유 — 계정당 하나. 우선순위: 미지원 > 통화 필터 >
+    (이 기간에 확인된 날도 행도 없을 때) capability 상태 또는 PERIOD_NOT_COVERED. 행이 있으면
+    마지막 run이 실패여도 합계에 들어 있으므로 제외가 아니다(부족분은 coverage가 말한다)."""
+    if not is_cost_supported(account.provider):
+        return "UNSUPPORTED"
+    if filter_excluded == "currency":
+        return "CURRENCY_FILTERED"
+    if actual is not None:
+        return None
+    if coverage and coverage["covered"] > 0:
+        return None  # 확인된 날이 있는데 행이 없다 = 확인된 0원(합계에 0으로 포함된 것과 같다)
+    return cap_status if cap_status not in DATA_STATUSES else "PERIOD_NOT_COVERED"
+
+
 def summary(db: Session, user_id: int, q: CostQuery) -> dict:
     from app.cost.capability import account_capability
 
     accounts = owned_accounts(db, user_id, q)
+    filter_excluded, currency_map = classify_accounts(db, accounts, q)
+    targets = evaluable_accounts(accounts, filter_excluded)
+    coverage_by_account, union_missing, union_missing_count = period_coverage(db, targets, q.period_start, q.period_end)
 
     mtd_actual_rows = sum_by_currency(db, user_id, q)
     mtd_net_rows = sum_by_currency(
         db, user_id, q, charge_categories=["usage", "credit", "refund", "tax", "other"]
     )
     list_price_rows, missing_count = list_price_monthly(db, user_id, q)
-    forecast_rows = forecast_month_end(db, user_id, q)
+    forecast_rows, forecast_status = forecast_month_end(
+        db, user_id, q, accounts=targets, coverage_by_account=coverage_by_account, currency_map=currency_map
+    )
 
     kpis = {
         "mtd_actual": [
@@ -605,6 +846,7 @@ def summary(db: Session, user_id: int, q: CostQuery) -> dict:
             for currency, total in list_price_rows
         ],
         "forecast_month_end": forecast_rows,
+        "forecast_status": forecast_status,
     }
 
     actual_by_account = sum_by_account_currency(db, user_id, q)
@@ -630,30 +872,38 @@ def summary(db: Session, user_id: int, q: CostQuery) -> dict:
         cap = account_capability(db, account)
         if cap["as_of"] is not None:
             as_of_values.append(cap["as_of"])
-        if cap["status"] not in ("CONNECTED_OK", "CONNECTED_EMPTY", "CONNECTED_PARTIAL"):
-            excluded_count += 1
-            excluded_reasons[cap["status"]] = excluded_reasons.get(cap["status"], 0) + 1
 
         actual_amount, actual_currency = actual_by_account.get(account.id, (None, None))
+        coverage = coverage_by_account.get(account.id)  # 미지원·통화 필터 제외 계정은 None
+        reason = _exclusion_reason(account, cap["status"], filter_excluded.get(account.id), coverage, actual_amount)
+        if reason:
+            excluded_count += 1
+            excluded_reasons[reason] = excluded_reasons.get(reason, 0) + 1
         rc = resource_counts.get(account.id, {"count": 0, "synced_at": None})
 
         accounts_out.append({
             "cloud_account_id": str(account.id), "provider": account.provider,
             "account_label": account.account_label, "team_id": str(account.team_id) if account.team_id else None,
             "status": cap["status"], "as_of": cap["as_of"], "ingestion_running": cap["ingestion_running"],
-            "currency": actual_currency or cap["currency"],
+            "currency": actual_currency or currency_map.get(account.id) or cap["currency"],
             "actual": money(actual_amount), "list_price_estimate": money(list_price_by_account.get(account.id)),
             "resource_count": rc["count"], "resources_synced_at": rc["synced_at"],
             "is_estimated": actual_amount is not None,
+            "filter_excluded": filter_excluded.get(account.id),
+            "coverage": coverage,
         })
 
     warnings = []
-    gaps = missing_days(db, user_id, q)
-    if gaps:
+    if union_missing:
         warnings.append({
             "code": "PARTIAL_PERIOD",
-            "message": f"{gaps[0]} ~ {gaps[-1]} 구간 중 일부가 수집되지 않았습니다.",
-            "missing_days": gaps,
+            "message": f"{union_missing[0]} ~ {union_missing[-1]} 구간 중 일부가 수집되지 않았습니다.",
+            "missing_days": union_missing,
+            "missing_count": union_missing_count,
+            "accounts": [
+                {"cloud_account_id": str(a.id), "missing_count": coverage_by_account[a.id]["missing_count"]}
+                for a in targets if coverage_by_account[a.id]["missing_count"]
+            ],
         })
 
     display_end = q.period_end - dt.timedelta(days=1)
@@ -675,6 +925,8 @@ def collection_status(db: Session, user_id: int, q: CostQuery) -> list[dict]:
     from app.cost.capability import account_capability
 
     accounts = owned_accounts(db, user_id, q)
+    filter_excluded, _ = classify_accounts(db, accounts, q)
+    coverage_by_account, _, _ = period_coverage(db, evaluable_accounts(accounts, filter_excluded), q.period_start, q.period_end)
     items = []
     for account in accounts:
         cap = account_capability(db, account)
@@ -699,6 +951,8 @@ def collection_status(db: Session, user_id: int, q: CostQuery) -> list[dict]:
         covered_through = None
         if last_success is not None:
             covered_through = (last_success.period_end - dt.timedelta(days=1)).isoformat()
+        # 조회 기간(요청 period_start/end) 기준 계정별 수집 확인 — 지원·통화 필터 안 계정만. 미지원은 None.
+        coverage = coverage_by_account.get(account.id)
 
         items.append({
             "cloud_account_id": account.id, "provider": account.provider,
@@ -708,8 +962,8 @@ def collection_status(db: Session, user_id: int, q: CostQuery) -> list[dict]:
             "last_error_code": cap["last_error_code"],
             "next_manual_allowed_at": next_allowed,
             "covered_through": covered_through,
-            # 계정별 결측일 상세는 이번 라운드에서 생략한다 — summary의 warnings가 같은 신호를
-            # 이미 전체 범위로 준다(중복 계산 대신 단순화).
-            "missing_days": [],
+            "missing_days": coverage["missing_days"] if coverage else [],
+            "missing_count": coverage["missing_count"] if coverage else 0,
+            "coverage": coverage,
         })
     return items
