@@ -186,10 +186,10 @@ window.MCPCost = (function () {
   function stateActionHtml(status) {
     switch (status) {
       case "NOT_CONNECTED": return '<div class="button-row no-print"><a class="btn" href="mypage.html">계정 연결</a></div>';
-      case "PENDING": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">CSP 재수집 요청</button></div>';
+      case "PENDING": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">현재 조건 계정 다시 수집</button></div>';
       case "SETUP_REQUIRED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="open-setup-dialog">설정 안내</button></div>';
       case "PERMISSION_DENIED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="open-permission-dialog">필요 권한 보기</button></div>';
-      case "COLLECT_FAILED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">CSP 재수집 요청</button></div>';
+      case "COLLECT_FAILED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">현재 조건 계정 다시 수집</button></div>';
       default: return "";
     }
   }
@@ -501,7 +501,7 @@ window.MCPCost = (function () {
     // 화면 값만 다시 읽는 것은 조건 '적용'이다.
     var targets = refreshTargets();
     var refreshDisabled = (nextAllowed != null && nextAllowed > Date.now()) || refreshPoll.active || running || !targets.length;
-    var refreshLabel = refreshPoll.active ? "수집 확인 중…" : (running ? "수집 진행 중…" : "CSP 재수집 (" + targets.length + "개 계정)");
+    var refreshLabel = refreshPoll.active ? "수집 확인 중…" : (running ? "수집 진행 중…" : "현재 조건 " + targets.length + "개 계정 다시 수집");
     var refreshHint = refreshPoll.active ? refreshPoll.text
       : (nextAllowed != null && nextAllowed > Date.now() ? "계정당 1시간 1회 · " + fmtWhen(new Date(nextAllowed).toISOString()).text.replace(/ \(.*\)$/, "") + " 이후 가능 · 대상 " + refreshScopeText(targets)
          : "재수집 대상: " + refreshScopeText(targets) + " · 조회 기간 " + esc(disp.start) + " ~ " + esc(disp.end) + " · CSP API 호출(과금 가능) · 화면 값만 다시 읽으려면 조건 '적용'");
@@ -631,7 +631,7 @@ window.MCPCost = (function () {
       "</span>" +
       "</div>" +
       '<p class="note filter-error" id="filter-period-note" role="alert" hidden></p>' +
-      '<p class="note">공통 조회 조건입니다. 예외 — 정가 추정(현재 구성 예상 월 비용·상위 리소스)은 기간·통화·요금 분류와 무관하고, 비용 작업 큐는 기간과 무관하며, 예산·검토 탭의 팀 예산은 팀 선택만 따릅니다.</p>' +
+      '<p class="note">공통 조회 조건입니다. 예외 — 정가 추정(현재 구성 예상 월 비용·상위 리소스)은 기간·통화·요금 분류와 무관하고, 비용 검토 목록은 기간과 무관하며, 예산·검토 탭의 팀 예산은 팀 선택만 따릅니다.</p>' +
       "</details>";
   }
 
@@ -862,7 +862,7 @@ window.MCPCost = (function () {
       '<p class="kpi-basis">' + esc(chargeCategoryLabel(filters.chargeCategory)) + " 기준 · 청구 확정 아님</p>" +
       coverageLineHtml(d) +
       deltaLineHtml(ctx.changes) +
-      '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="analysis" data-target="CF-024">기간 비교 보기</button></div>';
+      '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="analysis" data-target="CF-024">이전 기간과 비교 보기</button></div>';
     return { state: st, html: html };
   }
 
@@ -923,7 +923,7 @@ window.MCPCost = (function () {
     return { state: "CONNECTED_OK", html: html };
   }
 
-  // ── CF-009 계정별 비용 및 수집 상태 ─────────────────────────────────────────────────
+  // ── CF-009 계정 수집 상태 ─────────────────────────────────────────────────
   var PROVIDER_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
   var PROVIDER_DOT = { aws: "", azure: "azure", gcp: "gcp" };
   // dashboard.js·inventory.js의 PROVIDER_ICON과 같은 에셋 — 표의 플랫폼 이름 앞에 로고를 붙인다(차트 범례는 색 점 유지).
@@ -980,12 +980,12 @@ window.MCPCost = (function () {
   }
 
   function renderPlatforms() {
-    if (!ctx.capabilities || !ctx.capabilities.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.capabilities, "계정별 비용") };
+    if (!ctx.capabilities || !ctx.capabilities.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.capabilities, "계정 수집 상태") };
     var caps = ctx.capabilities.value.items || [];
     var threshold = ctx.capabilities.value.staleness_threshold_hours;
     var accountsById = {};
     if (ctx.summary && ctx.summary.ok) ctx.summary.value.accounts.forEach(function (a) { accountsById[a.cloud_account_id] = a; });
-    if (!caps.length) return { state: "NOT_CONNECTED", html: stateViewHtml("NOT_CONNECTED", "계정별 비용") };
+    if (!caps.length) return { state: "NOT_CONNECTED", html: stateViewHtml("NOT_CONNECTED", "계정 수집 상태") };
 
     var order = { aws: 0, azure: 1, gcp: 2 };
     var scopeApi = toApiRange(filters.periodStart, filters.periodEnd);
@@ -1061,11 +1061,11 @@ window.MCPCost = (function () {
     return items.filter(isOwnerUnassigned);
   }
 
-  // ── CF-007 미할당 비용 · Owner 미지정 (04 §4-4) ────────────────────────────────────
+  // ── CF-007 Owner 미지정 리소스의 정가 추정 (04 §4-4) ────────────────────────────────────
   // CF-004와 같은 정가 기준(현재 구성 × 730h)이라 기간 필터와 무관하다 — /resources가 period_*를
   // 받지 않으므로 구조적으로도 안 변한다. 금액은 CF-004의 부분집합이지 CF-004에서 뺀 값이 아니다.
   function renderUnallocated() {
-    if (!ctx.resources || !ctx.resources.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.resources, "미할당 비용") };
+    if (!ctx.resources || !ctx.resources.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.resources, "Owner 미지정 리소스의 정가 추정") };
     var unassigned = unassignedResources();
     if (!unassigned.length) {
       // $0.00이 아니다 — 0원이 아니라 셀 대상이 없는 것이다.
@@ -1079,7 +1079,7 @@ window.MCPCost = (function () {
     });
     var guarded = F.sumWithGuard(priced); // 통화가 다르면 합치지 않고 줄을 늘린다
     var lines = guarded.groups.map(function (g) { return { amount: g.total, currency: g.currency }; });
-    var html = lines.length ? moneyBadgeLines(lines, "Estimated 중 미할당") : '<div class="value">—</div>';
+    var html = lines.length ? moneyBadgeLines(lines, "정가 추정 중 Owner 미지정") : '<div class="value">—</div>';
     var totalEst = (ctx.summary && ctx.summary.ok && (ctx.summary.value.kpis.list_price_monthly || [])[0]) || null;
     html += '<p class="kpi-basis">전체 예상 월 비용' + (totalEst ? "(" + esc(F.money(totalEst.amount, totalEst.currency)) + ")" : "") + " 중 담당자(" + esc(OWNER_TAG_KEY) + " 태그) 미지정 리소스 " + unassigned.length + "개의 금액 · 조회 기간과 무관</p>" +
       (noPrice > 0 ? '<p class="kpi-note">' + noPrice + "개는 정가표에 없어 금액 제외(개수엔 포함)</p>" : "") +
@@ -1103,7 +1103,7 @@ window.MCPCost = (function () {
       var n = unassignedResources().length;
       if (n > 0) {
         warnings.push(esc(OWNER_TAG_KEY) + " 태그가 없는 리소스 " + n + "개 — 태그 기준 검토 후보입니다. 담당자를 정하면 정가 추정치를 나눠 볼 수 있습니다." +
-          ' <button type="button" class="btn no-print" data-action="nav-scroll" data-tab="overview" data-target="CF-007">미할당 비용 보기</button>');
+          ' <button type="button" class="btn no-print" data-action="nav-scroll" data-tab="overview" data-target="CF-007">Owner 미지정 정가 추정 보기</button>');
       }
     } else {
       notes.push("리소스 목록을 가져오지 못해 " + esc(OWNER_TAG_KEY) + " 미지정 개수를 판정하지 못했습니다.");
@@ -1326,9 +1326,9 @@ window.MCPCost = (function () {
     return { state: "CONNECTED_OK", html: html };
   }
 
-  // ── CF-024 같은 길이 기간 비교 ────────────────────────────────────────────────────
+  // ── CF-024 이전 기간과 비교(같은 길이) ────────────────────────────────────────────────────
   function renderPeriodCompare() {
-    if (!ctx.changes || !ctx.changes.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.changes, "기간 비교") };
+    if (!ctx.changes || !ctx.changes.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.changes, "이전 기간과 비교") };
     var d = ctx.changes.value;
     var basis = filters.compare === "previous_month" ? "전월 같은 구간" : "직전 동일 기간";
     var prevDisp = toDisplayRange(d.previous.start, d.previous.end);
@@ -1613,7 +1613,7 @@ window.MCPCost = (function () {
           '<li><strong>예산 설정</strong> — 월간·분기·연간·사용자 지정 중 하나로 한도를 둡니다</li>' +
         "</ol>" +
         '<div class="button-row no-print"><button type="button" class="btn primary" data-action="open-team-dialog">팀 만들기</button></div>' +
-        '<p class="note">팀은 조직 권한이나 구성원 초대가 아니라, 내가 연결한 클라우드 계정을 묶는 단위입니다. 아래 급증 탐지·AI 비용 상담은 팀 없이도 동작하고, 비용 작업 큐는 ① 비용 개요 탭에 있습니다.</p>' +
+        '<p class="note">팀은 조직 권한이나 구성원 초대가 아니라, 내가 연결한 클라우드 계정을 묶는 단위입니다. 아래 급증 탐지·AI 비용 상담은 팀 없이도 동작하고, 비용 검토 목록은 ① 비용 개요 탭에 있습니다.</p>' +
         "</div>";
     } else {
       setBlockTitle("CFL-03", "팀 선택");
@@ -2012,7 +2012,7 @@ window.MCPCost = (function () {
     (d.held || []).forEach(function (h) { reasons.push(esc(accountLabelOf(h.cloud_account_id)) + ": 기준선 " + d.rule.baseline_days + "일 중 미수집일이 있어 " + h.days.length + "일 보류"); });
     (d.unsupported_currency || []).forEach(function (u) { reasons.push(esc(accountLabelOf(u.cloud_account_id)) + ": " + esc(u.currency || "통화 미확인") + " 임계값 미정 — 보류"); });
     if (reasons.length) html += '<details class="note"><summary style="cursor:pointer">평가하지 못한 계정 사유 ' + reasons.length + "건</summary>" + reasons.join("<br>") + "</details>";
-    html += '<p class="note">적용 조건: 상단 기간·CSP·계정 필터 · 팀 선택은 이 블록에 적용되지 않음 · 통화 ' + esc(d.rule.currency) + " 계정만 판정 · 검토 등록 항목은 ① 비용 개요 탭의 비용 작업 큐에서 상태를 바꿉니다</p>";
+    html += '<p class="note">적용 조건: 상단 기간·CSP·계정 필터 · 팀 선택은 이 블록에 적용되지 않음 · 통화 ' + esc(d.rule.currency) + " 계정만 판정 · 검토 등록 항목은 ① 비용 개요 탭의 비용 검토 목록에서 상태를 바꿉니다</p>";
     return { state: "CONNECTED_OK", html: html };
   }
 
@@ -2041,14 +2041,14 @@ window.MCPCost = (function () {
         : '<p class="tiny muted">같은 날 프로비저닝 기록 없음</p>') +
       '<p class="note">원인을 단정하지 않습니다 — "원인 확인 필요"입니다. 태그 기준 검토 후보이며 조직 소유권을 뜻하지 않습니다.</p>' +
       (withActions ? '<div class="button-row">' +
-        (it.review ? '<span class="badge">이미 검토 등록됨 · ' + esc(REVIEW_STATUS_LABEL[it.review.status] || it.review.status) + '</span> <button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-034">작업 큐에서 보기</button>' : '<button type="button" class="btn primary" data-action="anomaly-add-queue" data-source-key="' + esc(it.source_key) + '">검토 등록</button>') +
+        (it.review ? '<span class="badge">이미 검토 등록됨 · ' + esc(REVIEW_STATUS_LABEL[it.review.status] || it.review.status) + '</span> <button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-034">검토 목록에서 보기</button>' : '<button type="button" class="btn primary" data-action="anomaly-add-queue" data-source-key="' + esc(it.source_key) + '">검토 등록</button>') +
         '<a class="btn" href="inventory.html?cloud_account_id=' + encodeURIComponent(it.cloud_account_id) + '" title="인벤토리는 아직 계정 파라미터를 읽지 않습니다 — 열린 뒤 계정 필터를 직접 고르세요">인벤토리 열기(계정 필터는 직접 선택)</a></div>' +
         '<p id="anomaly-feedback" class="note" role="status"></p>' : "");
   }
 
-  // ── CF-034 비용 작업 큐 ────────────────────────────────────────────────────────────
+  // ── CF-034 비용 검토 목록 ────────────────────────────────────────────────────────────
   function renderReviewQueue() {
-    if (!ctx.reviewItems || !ctx.reviewItems.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.reviewItems, "비용 작업 큐") };
+    if (!ctx.reviewItems || !ctx.reviewItems.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.reviewItems, "비용 검토 목록") };
     var items = ctx.reviewItems.value.items || [];
     var rows = items.map(function (r) {
       var an = anomalyByKey(r.source_key);
@@ -2059,7 +2059,7 @@ window.MCPCost = (function () {
         "<td>" + esc(r.note || "—") + "</td>" +
         '<td><span class="badge">' + esc(REVIEW_STATUS_LABEL[r.status] || r.status) + "</span>" + (r.resolution ? "<br><span class=\"tiny muted\">" + esc(RESOLUTION_LABEL[r.resolution] || r.resolution) + "</span>" : "") + "</td>" +
         '<td><button type="button" class="btn no-print" data-action="open-review-dialog" data-item-id="' + esc(r.id) + '">검토</button> ' +
-        '<button type="button" class="btn no-print" data-action="open-price-compare">비교하기</button></td></tr>';
+        '<button type="button" class="btn no-print" data-action="open-price-compare">유사 사양 정가 비교</button></td></tr>';
     });
     var html = '<div class="table-wrap"><table><thead><tr><th scope="col">문제 / 근거</th><th scope="col">증가액</th><th scope="col">메모</th><th scope="col">검토 상태</th><th scope="col">행동</th></tr></thead><tbody>' +
       (rows.length ? rows.join("") : '<tr><td colspan="5" class="tiny muted">확인이 필요한 항목이 없습니다</td></tr>') + "</tbody></table></div>" +
@@ -2251,7 +2251,7 @@ window.MCPCost = (function () {
         window.MCPApi.request("/cost-review-items", { method: "POST", body: { source_type: "cost_anomaly", source_key: key, note: null } })
           .then(function () {
             // POST는 멱등(있으면 그대로 200)이라 응답만으로 신규/중복을 구분할 수 없다 — 누르기 전 화면 상태로 안내한다.
-            toast(known && known.review ? "이미 등록된 항목입니다 — ① 비용 개요 탭의 비용 작업 큐에서 확인하세요." : "검토 항목으로 등록했습니다. 상태 변경은 ① 비용 개요 탭의 비용 작업 큐에서 합니다.");
+            toast(known && known.review ? "이미 등록된 항목입니다 — ① 비용 개요 탭의 비용 검토 목록에서 확인하세요." : "검토 항목으로 등록했습니다. 상태 변경은 ① 비용 개요 탭의 비용 검토 목록에서 합니다.");
             if (window.MCPModal) window.MCPModal.close("#cost-dialog");
             return load();
           })
