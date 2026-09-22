@@ -598,7 +598,7 @@
       var all = [];
       groups.forEach(function (g) { all = all.concat(g); });
       all.sort(function (a, b) { return new Date(b.job.created_at) - new Date(a.job.created_at); });
-      renderActivityRows(all.slice(0, 8));
+      renderActivityRows(all.slice(0, 5));
     });
   }
 
