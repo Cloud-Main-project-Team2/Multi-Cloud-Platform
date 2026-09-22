@@ -568,6 +568,11 @@
     storage_object: {
       azure: [["existingResourceGroupName", "리소스 그룹 이름", "my-existing-rg"]],
     },
+    // GCP CDN "기존 버킷 연결"(2026-09-22) — 자유 텍스트 입력이라 사용자가 버킷 이름을 직접
+    // 타이핑해야 했던 것을, compute/db/storage_object와 같은 "실제 목록 불러오기" 드롭다운으로 통일.
+    cdn: {
+      gcp: [["backendBucketName", "연결할 기존 버킷 이름", "my-existing-bucket"]],
+    },
   };
 
   // provider별로 "불러오기"가 채울 select의 원본 데이터(마지막으로 불러온 값) — 재조회 없이
@@ -635,6 +640,13 @@
         // regionFilter는 필요 없다 — 리스트 자체를 거를 대상이 없다.
         existingResourceGroupName: { source: "resource_groups", optionOf: function (r) {
           return { value: r.name, text: r.name + " (" + r.location + ")" };
+        } },
+      },
+    },
+    cdn: {
+      gcp: {
+        backendBucketName: { source: "buckets", optionOf: function (b) {
+          return { value: b.name, text: b.name + " (" + b.location + ")" };
         } },
       },
     },
@@ -1233,8 +1245,10 @@
           "유출\"이 아니라 \"생성 실패\"로 끝나도록, 기존 버킷의 권한 변경은 항상 사용자가 직접 " +
           "하도록 설계했습니다.</p>" +
           "</div>" +
+          // 2026-09-22: 자유 텍스트 대신 "실제 목록 불러오기"로 실제 보유 버킷 중에서 고르게 한다
+          // (compute/db/storage_object의 기존 리소스 선택과 같은 프레임워크, EXISTING_RESOURCE_FIELDS.cdn.gcp).
           '<div data-gcp-existing-bucket-wrap hidden class="grid gap-3 sm:grid-cols-2">' +
-          cdnText("gcp", "backendBucketName", "연결할 기존 버킷 이름", true, "my-existing-bucket") +
+          existingResourceFieldsHtml("cdn", ["gcp"]) +
           "</div>" +
           '<label data-gcp-existing-bucket-ack-wrap hidden class="flex items-start gap-2 rounded-lg border border-border bg-background px-3 py-2 text-sm">' +
           '<input type="checkbox" data-ps-platform="gcp" data-ps="existingBucketPublicAck" class="mt-0.5" />' +

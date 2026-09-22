@@ -184,6 +184,13 @@ class GcpNetworkOut(BaseModel):
     auto_create_subnetworks: bool = False
 
 
+class GcpBucketOut(BaseModel):
+    """CDN "기존 버킷 연결"이 자유 텍스트 대신 실제 목록에서 고르게 하려고 추가(2026-09-22)."""
+
+    name: str
+    location: str
+
+
 class NetworkResourcesData(BaseModel):
     """프로비저닝 폼 "기존 리소스 사용"이 실제 목록을 보여줄 때 쓰는 응답(2026-09-17) — provider마다
     유효한 필드만 채워지고 나머지는 빈 리스트다."""
@@ -197,6 +204,7 @@ class NetworkResourcesData(BaseModel):
     # AWS의 subnets(AwsSubnetOut)와 모양이 달라 이름을 분리한다.
     azure_subnets: list[AzureSubnetOut] = Field(default_factory=list)
     networks: list[GcpNetworkOut] = Field(default_factory=list)
+    buckets: list[GcpBucketOut] = Field(default_factory=list)
 
 
 class NetworkResourcesResponse(BaseModel):
