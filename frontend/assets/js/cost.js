@@ -869,22 +869,24 @@ window.MCPCost = (function () {
       if (!rows.length) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">전망 값이 없습니다(사유 미제공).</p>' + btn };
     } else if (fs.state !== "computed") {
       var why = S.forecastText(fs.state);
-      var detail = "";
-      if (fs.state === "insufficient_coverage") {
-        var inc = fs.incomplete_accounts || [];
-        var days = inc.reduce(function (n, a) { return n + (a.missing_count || 0); }, 0);
-        detail = '<p class="kpi-note">대상 ' + fs.required_accounts + "개 계정 중 " + inc.length + "개에서 이달 1일~" + esc(fs.based_through || "어제") + " 사이 " + days + "일이 수집되지 않았습니다" +
-          (inc.length ? " — " + esc(inc.slice(0, 3).map(function (a) { return accountLabelOf(a.cloud_account_id) + " " + a.missing_count + "일"; }).join(", ")) + (inc.length > 3 ? " 외" : "") : "") + "</p>" +
-          '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-009">수집 상태 보기</button></div>';
-      }
-      return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">' + esc(why) + "</p>" + detail + btn };
+      return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">' + esc(why) + "</p>" + btn };
     }
     if (!rows.length) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">전망 값이 없습니다.</p>' + btn };
-    // computed = 대상 계정 전부가 이달 1일~어제(UTC)를 빠짐없이 수집 확인한 상태. 근거 날짜는 based_through.
+    // computed = 계산됨. 2026-09-22부터 대상 계정 일부가 이달 수집을 못 마쳤어도 계산은 계속하고
+    // (수집 안 된 날은 0원으로 채우지 않고 합계에서만 뺀다), incomplete_accounts로 안내만 한다.
     var lastAsOf = d.as_of ? fmtWhen(d.as_of).text.replace(/ \(.*\)$/, "") : "없음";
+    var inc = (fs && fs.incomplete_accounts) || [];
+    var partialNote = "";
+    if (inc.length) {
+      var days = inc.reduce(function (n, a) { return n + (a.missing_count || 0); }, 0);
+      partialNote = '<p class="kpi-note">일부 날짜 데이터가 누락되어 추정치입니다 — 대상 ' + fs.required_accounts + "개 계정 중 " + inc.length + "개에서 이달 1일~" + esc(fs.based_through || "어제") + " 사이 " + days + "일이 수집되지 않았습니다" +
+        (" — " + esc(inc.slice(0, 3).map(function (a) { return accountLabelOf(a.cloud_account_id) + " " + a.missing_count + "일"; }).join(", ")) + (inc.length > 3 ? " 외" : "")) + "</p>" +
+        '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-009">수집 상태 보기</button></div>';
+    }
     var html = moneyBadgeLines(rows, "전망") +
-      '<p class="kpi-basis">이달 1일 ~ ' + esc(rows[0].based_through || (fs && fs.based_through) || "어제") + "까지 실측(수집 확인됨)을 남은 일수로 늘린 값 · 마지막 수집 " + esc(lastAsOf) + "</p>" +
-      (fs ? '<p class="tiny muted">대상 계정 ' + fs.required_accounts + "개 전부 수집 확인 · 실측·정가 추정과 합치지 않음</p>" : "") + btn;
+      '<p class="kpi-basis">이달 1일 ~ ' + esc(rows[0].based_through || (fs && fs.based_through) || "어제") + "까지 실측(수집된 날만 합산)을 남은 일수로 늘린 값 · 마지막 수집 " + esc(lastAsOf) + "</p>" +
+      partialNote +
+      (fs ? '<p class="tiny muted">대상 계정 ' + fs.required_accounts + "개" + (inc.length ? " 중 " + inc.length + "개 부분 수집" : " 전부 수집 확인") + " · 실측·정가 추정과 합치지 않음</p>" : "") + btn;
     return { state: "CONNECTED_OK", html: html };
   }
 
@@ -2547,8 +2549,8 @@ window.MCPCost = (function () {
             metaItem("날짜 경계", "날짜는 CSP 청구 기준(UTC)으로 집계됩니다. 화면의 시각 표시는 브라우저 시간대로 바꿔 보여줄 뿐 집계를 바꾸지 않습니다.") + "</dl>");
           break;
         case "open-forecast-dialog":
-          openDialog("예측 방법", '<p>방법: 이번 달 1일부터 어제(UTC)까지의 실측 비용 ÷ 경과일 × 이달 총일수(<code>mtd_prorated</code>).</p>' +
-            '<p class="note">대상 계정(실측 지원·현재 조건 안) 전부가 그 기간을 빠짐없이 수집 확인했을 때만 계산합니다. 하루라도 빠지면 0원으로 채우지 않고 전망을 내지 않습니다. 이번 달 1일부터 오늘까지를 조회할 때만 제공하며, 저장하지 않는 값입니다.</p>');
+          openDialog("예측 방법", '<p>방법: 이번 달 1일부터 어제(UTC)까지 실제로 수집된 날짜의 실측 비용 합계 ÷ 오늘까지의 경과일(달력 기준) × 이달 총일수(<code>mtd_prorated</code>).</p>' +
+            '<p class="note">수집되지 않은 날은 0원으로 채우지 않고 합계에서 그냥 뺍니다. 대상 계정 중 일부가 이달 수집을 빠짐없이 마치지 못했어도 계산 자체는 막지 않으며, 그 경우 어느 계정에서 며칠이 빠졌는지 안내가 함께 표시됩니다. 이번 달 1일부터 오늘까지를 조회할 때만 제공하며, 저장하지 않는 값입니다.</p>');
           break;
         case "open-setup-dialog": {
           var st = btn.getAttribute("data-status");

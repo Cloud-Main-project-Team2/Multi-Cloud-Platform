@@ -389,11 +389,14 @@ def forecast_month_end(
     db: Session, user_id: int, q: CostQuery, *, accounts: list[CloudAccount] | None = None,
     coverage_by_account: dict[int, dict] | None = None, currency_map: dict[int, str] | None = None,
 ) -> tuple[list[dict], dict]:
-    """CF-003 — 이번 달 진행 중일 때만 낸다(§4-2). 계산식은 그대로(어제까지 실측 ÷ 경과일 × 총일수)
-    이고, **대상 계정 전부가 이달 1일~UTC 어제를 빠짐없이 수집 확인했을 때만** 계산한다(03 §5 ·
-    QA-08 ⑤ "미수집일을 0으로 평균 내지 않는다"). 수집된 날만 골라 평균 내지 않는다 — 하나라도
-    부족하면 계산 불가다. 반환: (forecast rows, forecast_status). forecast_status는 **응답 전체의
-    상태**다(통화별이 아니다): 계정 하나가 부족하면 모든 통화의 전망을 내지 않는다."""
+    """CF-003 — 이번 달 진행 중일 때만 낸다(§4-2). 계산식: 이번 달 **실제로 수집된 날짜**의 누적
+    실측 ÷ **오늘까지의 달력 경과일수** × 이달 총일수(mtd_prorated). 수집이 안 된 날은 0원으로
+    채우지 않고 그냥 합계에서 빠진다(03 §5 · QA-08 ⑤ "미수집일을 0으로 평균 내지 않는다") — 다만
+    분모는 "수집된 날 수"가 아니라 "오늘이 이달 며칠째인가"다(2026-09-22 결정). 이전에는 대상
+    계정 중 하나라도 이달 1일~UTC 어제를 빠짐없이 수집하지 못하면 계산 자체를 하지 않았지만,
+    그러면 수집 지연이 흔한 상황에서 전망이 아예 안 뜨는 문제가 있었다 — 이제는 수집 누락이
+    있어도 항상 계산하고, 어느 계정이 얼마나 빠졌는지는 forecast_status.incomplete_accounts로
+    안내만 한다(계산을 막지 않는다). 반환: (forecast rows, forecast_status)."""
     today = utc_today()
     this_month_start = today.replace(day=1)
     # 전망 창은 어차피 이달 1일~어제(UTC)다. period_end가 '오늘'(어제까지 포함)이든 '오늘+1'(오늘 포함)이든
@@ -427,16 +430,13 @@ def forecast_month_end(
             c = account_coverage(db, a.id, this_month_start, today, today=today)
         if c["missing_count"]:
             incomplete.append({"cloud_account_id": str(a.id), "missing_count": c["missing_count"]})
-    if incomplete:
-        status["state"] = "insufficient_coverage"
-        status["incomplete_accounts"] = incomplete
-        return [], status
+    status["incomplete_accounts"] = incomplete  # 안내용 — 더 이상 계산을 막지 않는다
 
-    days_elapsed = today.day - 1  # 어제까지 — 오늘은 미완성 구간이라 근거에 넣지 않는다
+    days_elapsed = today.day - 1  # 달력 기준 경과일수 — 오늘은 미완성 구간이라 분모에 넣지 않는다
     days_in_month = _days_in_month(today.year, today.month)
     rows = sum_by_currency(db, user_id, q, period_end_override=today)
     if not rows:
-        # 대상 계정 전부 수집 확인됐는데 행이 없다 = 확인된 0원. 통화를 아는 계정이 있으면 그 통화로 0을 낸다.
+        # 이번 달 수집된 실측 행이 하나도 없다. 통화를 아는 계정이 있으면 그 통화로 0을 낸다(확인된 0원).
         currencies = sorted({currency_map.get(a.id) for a in accounts if currency_map.get(a.id)})
         if q.currency:
             currencies = [q.currency] if q.currency in currencies or not currencies else []

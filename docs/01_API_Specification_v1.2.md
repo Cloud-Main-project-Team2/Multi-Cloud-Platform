@@ -1186,6 +1186,10 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
 - `mtd_actual.basis`는 `usage_before_credits` 고정. `mtd_net`은 크레딧·환불까지 반영한 순액이며 참고용이다.
 - `list_price_monthly.missing_count`는 정가표에 없어 추정하지 못한 리소스 수다 — 0으로 세지 않고 개수로 보고한다.
 - `forecast_month_end.method`는 `mtd_prorated` 고정, `based_through`는 어제 날짜다(오늘은 미완성 구간).
+  계산식은 이번 달 실제로 수집된 날짜의 누적 실측 ÷ 오늘까지의 달력 경과일수 × 이달 총일수다.
+  수집되지 않은 날은 0원으로 채우지 않고 합계에서 뺀다. 대상 계정 일부가 이달 수집을 빠짐없이
+  마치지 못했어도 계산 자체는 막지 않는다(2026-09-22 결정) — `kpis.forecast_status.incomplete_accounts`가
+  어느 계정에서 며칠이 빠졌는지 안내만 한다.
 - `excluded`는 합계에서 빠진 계정 수와 사유다. 조용히 빼지 않는다.
 - 데이터가 전혀 없어도 `200`이다. `COST_DATA_UNAVAILABLE`을 던지지 않고 `status`로 표현한다.
 
