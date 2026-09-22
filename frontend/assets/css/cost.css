@@ -311,6 +311,13 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 .budget-form[open] > summary::after { content: " ▴"; }
 .budget-form .filter-grid { margin-top: 10px; }
 .budget-form .filter-grid .filter-box { flex: 1 1 120px; }
+/* CF-025 예산 설정 표 — 첫 칼럼은 "주기"(월간·분기·연간·사용자 지정 4종뿐)라 짧다. 공용
+   .changes-table의 첫 칼럼 min-width: 9rem은 원래 리소스·서비스 이름처럼 긴 텍스트용이라,
+   이 표에 그대로 두면 팀 생성 후 값이 채워질 때 적용 시작·종료·한도·상태 칼럼이 좁아져
+   글자가 깨진다 — 이 표만 첫 칼럼 폭을 내용에 맞게 줄인다(다른 칼럼 폭은 그대로 둔다). */
+#CF-025 .changes-table td:first-child, #CF-025 .changes-table th:first-child {
+  min-width: 0; width: 1%; white-space: nowrap;
+}
 /* ③ 마무리(2026-09-21): 팀 삭제 확인 박스·상태 태그가 status-list 안에서도 정렬되게 */
 #team-delete-confirm { margin-top: 10px; }
 .status-list .status-tag { justify-content: flex-end; }
