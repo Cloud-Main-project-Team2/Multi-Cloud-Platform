@@ -44,11 +44,10 @@ window.MCPCost = (function () {
   // ── 날짜 유틸 — period_end는 제외 경계다(05 §4). 변환은 여기 두 함수에서만 한다 ──────────
   function pad2(n) { return n < 10 ? "0" + n : String(n); }
   function isoOf(d) { return d.getFullYear() + "-" + pad2(d.getMonth() + 1) + "-" + pad2(d.getDate()); }
-  function todayISO() { return isoOf(new Date()); }
-  function startOfMonthISO() { var d = new Date(); return isoOf(new Date(d.getFullYear(), d.getMonth(), 1)); }
-  // 비용 집계 날짜는 UTC다(백엔드 coverage.utc_today · 1단계). KST 00~09시엔 로컬 "오늘"이 UTC보다 하루 앞서
-  // 기본 기간(이달 1일~오늘)이 UTC 미래를 포함해 전망이 거절됐다 — ①②의 기본 기간·프리셋·입력 상한은 UTC로 잡는다.
-  // ③ 예산 폼의 기본 시작일(startOfMonthISO)은 이번 변경 범위 밖이라 그대로 둔다.
+  // 비용 집계·예산 판정의 날짜는 모두 UTC다(백엔드 coverage.utc_today — 비용 1단계, 예산은 2026-09-22 결정).
+  // KST 00~09시엔 로컬 "오늘"이 UTC보다 하루 앞서 기본 기간이 UTC 미래를 포함하거나 "오늘 시작" 예산이
+  // "시작 전"으로 보였다 — 화면의 날짜 기본값·프리셋·입력 상한은 전부 UTC 유틸을 쓴다(로컬 날짜 유틸은 두지 않음).
+  // 시각(마지막 수집 시각 등) 표시는 fmtWhen 등 로컬 그대로 — 날짜 기준과 시각 표시는 다른 문제다.
   var clock = { now: function () { return new Date(); } };   // 테스트가 시계를 바꿔 끼울 수 있게 한 곳에 둔다
   function utcIsoOf(d) { return d.getUTCFullYear() + "-" + pad2(d.getUTCMonth() + 1) + "-" + pad2(d.getUTCDate()); }
   function utcTodayISO() { return utcIsoOf(clock.now()); }
@@ -1664,7 +1663,7 @@ window.MCPCost = (function () {
   };
 
   function budgetScopeNote(b) {
-    return '<p class="note">예산 기간 ' + esc(b.period_start) + " ~ " + esc(addDaysISO(b.period_end, -1)) + " · 기준일 " + esc(b.basis_date) +
+    return '<p class="note">예산 기간 ' + esc(b.period_start) + " ~ " + esc(addDaysISO(b.period_end, -1)) + " · 기준일 " + esc(b.basis_date) + " (UTC 일 기준)" +
       " · 팀 전체 계정 · 현재 소속 기준 · <strong>상단 필터 미적용</strong></p>";
   }
 
@@ -1747,7 +1746,7 @@ window.MCPCost = (function () {
   }
   function budgetDraftDirty(teamId) {
     var d = budgetDrafts[teamId];
-    return !!(d && (d.limit_amount || (d.start_date && d.start_date !== startOfMonthISO()) || d.period_type !== "monthly" || d.end_display));
+    return !!(d && (d.limit_amount || (d.start_date && d.start_date !== utcStartOfMonthISO()) || d.period_type !== "monthly" || d.end_display));
   }
   var budgetPending = false;
 
@@ -1769,13 +1768,13 @@ window.MCPCost = (function () {
         ["monthly", "quarterly", "annual", "custom"].map(function (k) {
           return '<label style="display:inline-flex;gap:4px;align-items:center;font-size:12px"><input type="radio" name="budget-period-type" value="' + k + '"' + (pt === k ? " checked" : "") + "> " + PERIOD_LABEL[k] + "</label>";
         }).join("") + "</span></div>" +
-      '<label class="filter-box">적용 시작일<input id="budget-start" type="date" value="' + esc(draft.start_date || startOfMonthISO()) + '" aria-describedby="budget-feedback"></label>' +
+      '<label class="filter-box">적용 시작일<input id="budget-start" type="date" value="' + esc(draft.start_date || utcStartOfMonthISO()) + '" aria-describedby="budget-feedback"></label>' +
       '<label class="filter-box" id="budget-end-wrap"' + (pt === "custom" ? "" : " hidden") + '>종료일(포함)<input id="budget-end" type="date" value="' + esc(draft.end_display || "") + '"></label>' +
       '<label class="filter-box">한도(' + esc(t ? t.currency : "USD") + ')<input id="budget-value" type="number" min="0.000001" step="0.01" placeholder="예: 300" value="' + esc(draft.limit_amount || "") + '" aria-describedby="budget-feedback"></label>' +
       '<span class="button-row" style="margin-top:0"><button type="button" class="btn primary no-print" data-action="budget-create"' + (budgetPending ? " disabled" : "") + ">" + (budgetPending ? "저장 중…" : "저장") + "</button>" +
       '<button type="button" class="btn no-print" data-action="budget-reset">취소</button></span>' +
       "</div>" +
-      '<p id="budget-feedback" class="note" role="status">통화는 팀 통화(' + esc(t ? t.currency : "USD") + ")로 고정됩니다. 예정(시작 전) 예산만 한도·종료일을 수정할 수 있습니다.</p>" +
+      '<p id="budget-feedback" class="note" role="status">통화는 팀 통화(' + esc(t ? t.currency : "USD") + ")로 고정됩니다. 예정(시작 전) 예산만 한도·종료일을 수정할 수 있습니다. 날짜는 <strong>UTC 일 기준</strong>(비용 집계와 같음)이라 한국 시간 새벽엔 오늘이 하루 다르게 보일 수 있습니다.</p>" +
       "</details>";
     if (!listOk) {
       html += '<div class="state-view" role="status"><span class="dash">—</span><p>예산 목록을 가져오지 못했습니다.</p><p class="tiny muted">' +

@@ -11,7 +11,11 @@ from decimal import Decimal
 
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Team, TeamBudget
 
-TODAY = dt.date.today()
+# 예산 판정(budget.py·routers/teams.py)의 '오늘'은 coverage.utc_today() = UTC 날짜다 — 비용 실측이 UTC 일 단위라
+# 예산도 같은 기준으로 맞춘 결정(2026-09-22). 이 파일의 TODAY도 UTC로 잡아야 서버와 같은 날을 가리킨다.
+# 예전엔 dt.date.today()(서버 로컬, 컨테이너·개발 머신은 KST)였는데 KST 00~09시엔 UTC보다 하루 앞서
+# "오늘 시작" custom 예산이 서버엔 "시작 전(upcoming)"으로 보여 test_status_custom_overrides_…가 그 시간대에만 깨졌다.
+TODAY = dt.datetime.now(dt.timezone.utc).date()
 MONTH_START = TODAY.replace(day=1)
 CONFIRM = {"X-Action-Confirmed": "true"}
 
@@ -368,6 +372,9 @@ def test_status_custom_overrides_recurring_and_upcoming_state(client, make_user,
     custom = _budget(client, h, t["id"], period_type="custom", start_date=TODAY.isoformat(), end_date=custom_end.isoformat(), limit_amount="50")
     assert custom.status_code == 201
     s = _status(client, h, t["id"])
+    # 기대값이 옳은 이유: custom 시작일 = UTC 오늘이므로 서버(utc_today) 기준 "진행 중"이고, 진행 중 custom은
+    # 진행 중 반복 예산보다 우선한다(05 §6-2 선택 순서). TODAY가 로컬 날짜였다면 KST 새벽엔 서버 오늘보다 하루
+    # 뒤라 upcoming으로 판정돼 반복 예산(id 1)이 선택된다 — 그 실패가 이 주석의 배경이다.
     assert s["budget"]["id"] == custom.json()["data"]["id"]  # 진행 중 custom이 override
     assert s["budget"]["period_type"] == "custom" and s["budget"]["period_end"] == custom_end.isoformat()
 
@@ -446,3 +453,32 @@ def test_budget_status_uses_utc_date(monkeypatch, db_session, make_user):
     db_session.flush()
     s = budget_mod.compute_budget_status(db_session, t)
     assert seen["d"] == dt.date(2026, 9, 20) and s["reason_code"] == "NO_BUDGET"
+
+
+def test_budget_state_uses_utc_day_not_server_local_day(client, make_user, auth_header, db_session, monkeypatch):
+    """KST 새벽(00~09시) 모의: 서버 로컬 날짜는 9/22인데 UTC 오늘은 9/21이다. 예산 판정은 UTC를 쓰므로
+    9/21 시작 예산은 '진행 중', 9/22(로컬 오늘) 시작 예산은 '시작 전'이어야 한다. 시계를 utc_today 고정으로
+    흉내 낸다(서버 시계·TZ에 무관)."""
+    import app.cost.budget as budget_mod
+    import app.routers.teams as teams_mod
+    utc_now = dt.date(2026, 9, 21)
+    monkeypatch.setattr(budget_mod, "utc_today", lambda: utc_now)
+    monkeypatch.setattr(teams_mod, "utc_today", lambda: utc_now)
+
+    user = make_user()
+    h = auth_header(user)
+    a = _account(db_session, user)
+    t = _team(client, h)
+    _assign(client, h, t["id"], [a.id])
+    _covered(db_session, a, dt.date(2026, 8, 1), dt.date(2026, 9, 22))
+
+    started_utc_today = _budget(client, h, t["id"], period_type="custom", start_date="2026-09-21", end_date="2026-10-01", limit_amount="50")
+    assert started_utc_today.status_code == 201
+    assert started_utc_today.json()["data"]["state"] == "in_progress"      # UTC 오늘 시작 → 바로 진행 중
+
+    t2 = _team(client, h, name="로컬오늘팀")
+    _assign(client, h, t2["id"], [])
+    starts_local_today = _budget(client, h, t2["id"], period_type="custom", start_date="2026-09-22", end_date="2026-10-01", limit_amount="50")
+    assert starts_local_today.status_code == 201
+    assert starts_local_today.json()["data"]["state"] == "upcoming"        # 로컬(KST) 오늘 = UTC 내일 → 아직 시작 전
+
