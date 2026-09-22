@@ -107,7 +107,7 @@ window.MCPCost = (function () {
   function defaultFilters() {
     return {
       periodStart: utcStartOfMonthISO(), periodEnd: utcTodayISO(),
-      providers: [], accountIds: [], currency: "", chargeCategory: "usage",
+      providers: [], accountIds: [], currency: "USD", chargeCategory: "usage",
       granularity: "daily", compare: "previous_period"
     };
   }
@@ -776,7 +776,7 @@ window.MCPCost = (function () {
   function resetFilters() {
     var d = defaultFilters();
     filters.periodStart = d.periodStart; filters.periodEnd = d.periodEnd;
-    filters.providers = []; filters.accountIds = []; filters.currency = ""; filters.chargeCategory = "usage";
+    filters.providers = []; filters.accountIds = []; filters.currency = d.currency; filters.chargeCategory = "usage";
   }
 
   // ── CF-002 MTD ──────────────────────────────────────────────────────────────────
