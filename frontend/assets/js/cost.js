@@ -185,10 +185,10 @@ window.MCPCost = (function () {
   function stateActionHtml(status) {
     switch (status) {
       case "NOT_CONNECTED": return '<div class="button-row no-print"><a class="btn" href="mypage.html">계정 연결</a></div>';
-      case "PENDING": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">비용 새로고침</button></div>';
+      case "PENDING": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">CSP 재수집 요청</button></div>';
       case "SETUP_REQUIRED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="open-setup-dialog">설정 안내</button></div>';
       case "PERMISSION_DENIED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="open-permission-dialog">필요 권한 보기</button></div>';
-      case "COLLECT_FAILED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">다시 시도</button></div>';
+      case "COLLECT_FAILED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">CSP 재수집 요청</button></div>';
       default: return "";
     }
   }
@@ -447,7 +447,7 @@ window.MCPCost = (function () {
         ". 그 날들은 합계에 빠져 있고 0원이 아닙니다. " + acct });
     });
     // ② 조회 범위 안 계정의 상태 — 합계에 영향
-    if (scoped.COLLECT_FAILED) out.push({ level: "warn", html: scoped.COLLECT_FAILED + "개 계정은 마지막 수집이 실패했습니다 — 금액을 0으로 대체하지 않습니다(과거 수집분은 합계에 포함). " + acct });
+    if (scoped.COLLECT_FAILED) out.push({ level: "warn", html: scoped.COLLECT_FAILED + "개 계정은 마지막 수집이 실패했습니다 — 금액을 0으로 대체하지 않습니다(과거 수집분은 합계에 포함). 재수집은 계정 표의 행 버튼으로. " + acct });
     if (scoped.CONNECTED_PARTIAL) out.push({ level: "warn", html: scoped.CONNECTED_PARTIAL + "개 계정은 마지막 수집이 부분 성공이라 그 구간은 확인되지 않았습니다. " + acct });
     if (scoped.PERMISSION_DENIED) out.push({ level: "warn", html: scoped.PERMISSION_DENIED + "개 계정은 비용 조회 권한이 부족합니다. " + acct });
     if (scoped.SETUP_REQUIRED) out.push({ level: "warn", html: scoped.SETUP_REQUIRED + "개 계정은 비용 조회 설정이 필요합니다. " + acct });
@@ -488,10 +488,14 @@ window.MCPCost = (function () {
       var t = new Date(it.next_manual_allowed_at).getTime();
       if (nextAllowed == null || t < nextAllowed) nextAllowed = t;
     });
-    var refreshDisabled = (nextAllowed != null && nextAllowed > Date.now()) || refreshPoll.active || running;
-    var refreshLabel = refreshPoll.active ? "수집 확인 중…" : (running ? "수집 진행 중…" : "비용 새로고침");
+    // 3-C: 버튼 문구·실행 전 안내·실제 body가 같은 대상을 가리킨다. 이 버튼은 CSP 재수집(과금 가능)이고,
+    // 화면 값만 다시 읽는 것은 조건 '적용'이다.
+    var targets = refreshTargets();
+    var refreshDisabled = (nextAllowed != null && nextAllowed > Date.now()) || refreshPoll.active || running || !targets.length;
+    var refreshLabel = refreshPoll.active ? "수집 확인 중…" : (running ? "수집 진행 중…" : "CSP 재수집 (" + targets.length + "개 계정)");
     var refreshHint = refreshPoll.active ? refreshPoll.text
-      : (nextAllowed != null && nextAllowed > Date.now() ? "계정당 1시간 1회 · " + fmtWhen(new Date(nextAllowed).toISOString()).text.replace(/ \(.*\)$/, "") + " 이후 가능" : "");
+      : (nextAllowed != null && nextAllowed > Date.now() ? "계정당 1시간 1회 · " + fmtWhen(new Date(nextAllowed).toISOString()).text.replace(/ \(.*\)$/, "") + " 이후 가능 · 대상 " + refreshScopeText(targets)
+         : "재수집 대상: " + refreshScopeText(targets) + " · 조회 기간 " + esc(disp.start) + " ~ " + esc(disp.end) + " · CSP API 호출(과금 가능) · 화면 값만 다시 읽으려면 조건 '적용'");
 
     var html = '<div class="summary-bar">' +
       '<span class="sb-item"><span class="sb-label">조회 기간</span><span class="sb-value">' + esc(disp.start) + " ~ " + esc(disp.end) + '</span><span class="tiny muted" title="비용은 CSP가 UTC 하루 단위로 확정합니다. 화면 시각은 로컬, 집계 날짜는 UTC입니다."> UTC 일 기준</span></span>' +
@@ -728,6 +732,14 @@ window.MCPCost = (function () {
       if (filters.chargeCategory !== "usage") parts.push("요금 분류: " + chargeCategoryLabel(filters.chargeCategory)); // 기본값이 아닐 때만
       if (selectedTeamId) parts.push("팀: " + teamNameOf(selectedTeamId) + "(예산·검토 탭만)");
       chip.textContent = parts.join(" · ");
+      // "이 계정만 보기"로 좁힌 상태는 계정 이름과 해제 버튼을 붙인다 — 다른 조건은 건드리지 않고 계정만 푼다
+      var clearBtn = document.getElementById("account-filter-clear-btn");
+      if (filters.accountIds.length) {
+        var names = filters.accountIds.map(function (id) { return accountLabelOf(id); }).join(", ");
+        if (!clearBtn) { clearBtn = document.createElement("button"); clearBtn.type = "button"; clearBtn.id = "account-filter-clear-btn"; clearBtn.className = "btn no-print"; clearBtn.setAttribute("data-action", "account-filter-clear"); clearBtn.style.cssText = "padding:2px 8px;font-size:11px;margin-left:6px"; chip.parentNode.insertBefore(clearBtn, chip.nextSibling); }
+        clearBtn.textContent = "계정 조건 해제 (" + names + ")";
+        clearBtn.hidden = false;
+      } else if (clearBtn) { clearBtn.hidden = true; }
     }
     updateFilterDirty();
   }
@@ -947,7 +959,7 @@ window.MCPCost = (function () {
   function accountActionsHtml(cap) {
     var out = ['<button type="button" class="btn no-print" data-action="open-account-detail" data-account-id="' + esc(cap.cloud_account_id) + '">상세</button>'];
     if (cap.status === "SETUP_REQUIRED" || cap.status === "PERMISSION_DENIED") out.push('<button type="button" class="btn no-print" data-action="open-setup-dialog" data-hint="' + esc(cap.setup_hint || "") + '" data-status="' + esc(cap.status) + '">설정 안내</button>');
-    if (cap.status === "COLLECT_FAILED") out.push('<button type="button" class="btn no-print" data-action="refresh-cost">다시 수집</button>');
+    if (cap.status === "COLLECT_FAILED") out.push('<button type="button" class="btn no-print" data-action="refresh-account" data-account-id="' + esc(cap.cloud_account_id) + '" title="이 계정 하나만 CSP에 다시 수집 요청(과금 가능)">이 계정 다시 수집</button>');
     if (cap.status === "NOT_CONNECTED") out.push('<a class="btn no-print" href="mypage.html">계정 연결</a>');
     return out.join(" ");
   }
@@ -1054,7 +1066,7 @@ window.MCPCost = (function () {
     var totalEst = (ctx.summary && ctx.summary.ok && (ctx.summary.value.kpis.list_price_monthly || [])[0]) || null;
     html += '<p class="kpi-basis">전체 예상 월 비용' + (totalEst ? "(" + esc(F.money(totalEst.amount, totalEst.currency)) + ")" : "") + " 중 담당자(" + esc(OWNER_TAG_KEY) + " 태그) 미지정 리소스 " + unassigned.length + "개의 금액 · 조회 기간과 무관</p>" +
       (noPrice > 0 ? '<p class="kpi-note">' + noPrice + "개는 정가표에 없어 금액 제외(개수엔 포함)</p>" : "") +
-      '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-034">미지정 대상 보기</button></div>';
+      '<div class="button-row no-print"><button type="button" class="btn" data-action="open-unassigned-dialog">미지정 대상 보기</button></div>';
     return { state: "CONNECTED_OK", html: html };
   }
 
@@ -1203,7 +1215,7 @@ window.MCPCost = (function () {
       (excludedCur.length ? " · 통화가 다른 계정 " + excludedCur.map(function (e) { return esc(e.currency ? e.currency + " " + (e.account_count || "") + "개" : String(e)); }).join(", ") + " 제외(합치지 않음)" : "") +
       (excludedAcc.length ? " · 합계 미반영 계정: " + excludedAcc.map(function (k) { return esc(S.exclusionLabel(k)) + " " + rc[k]; }).join(", ") : "") +
       " · 금액 내림차순, 상위 항목 외는 '기타'</p>" +
-      '<div class="button-row no-print"><button type="button" class="btn" data-action="open-full-breakdown-dialog">전체 내역</button></div>';
+      '<div class="button-row no-print"><button type="button" class="btn" data-action="open-full-breakdown-dialog">상위 20개 · 기타 · 미분류 보기</button></div>';
     return { state: "CONNECTED_OK", html: html };
   }
 
@@ -1979,7 +1991,7 @@ window.MCPCost = (function () {
       '<p class="note">원인을 단정하지 않습니다 — "원인 확인 필요"입니다. 태그 기준 검토 후보이며 조직 소유권을 뜻하지 않습니다.</p>' +
       (withActions ? '<div class="button-row">' +
         (it.review ? '<span class="badge">이미 검토 등록됨 · ' + esc(REVIEW_STATUS_LABEL[it.review.status] || it.review.status) + '</span> <button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-034">작업 큐에서 보기</button>' : '<button type="button" class="btn primary" data-action="anomaly-add-queue" data-source-key="' + esc(it.source_key) + '">검토 등록</button>') +
-        '<a class="btn" href="inventory.html?cloud_account_id=' + encodeURIComponent(it.cloud_account_id) + '">인벤토리 보기(계정)</a></div>' +
+        '<a class="btn" href="inventory.html?cloud_account_id=' + encodeURIComponent(it.cloud_account_id) + '" title="인벤토리는 아직 계정 파라미터를 읽지 않습니다 — 열린 뒤 계정 필터를 직접 고르세요">인벤토리 열기(계정 필터는 직접 선택)</a></div>' +
         '<p id="anomaly-feedback" class="note" role="status"></p>' : "");
   }
 
@@ -2020,7 +2032,7 @@ window.MCPCost = (function () {
       '<label class="filter-box" style="flex-basis:260px">메모<input id="review-note" type="text" maxlength="2000" value="' + esc(r.note || "") + '"></label>' +
       '<span class="button-row" style="margin-top:0"><button type="button" class="btn primary" data-action="review-patch" data-item-id="' + esc(r.id) + '">저장</button></span></div>' +
       '<p class="note">resolved로 닫힌 항목은 되돌릴 수 없습니다 — 재발은 새 항목입니다. 검토 상태는 금액·합계에 영향을 주지 않습니다.</p>' +
-      '<div class="button-row"><a class="btn" href="inventory.html?cloud_account_id=' + encodeURIComponent(r.source_key.split(":")[0]) + '">인벤토리 보기(계정)</a></div>' +
+      '<div class="button-row"><a class="btn" href="inventory.html?cloud_account_id=' + encodeURIComponent(r.source_key.split(":")[0]) + '" title="인벤토리는 아직 계정 파라미터를 읽지 않습니다 — 열린 뒤 계정 필터를 직접 고르세요">인벤토리 열기(계정 필터는 직접 선택)</a></div>' +
       '<p id="review-feedback" class="note" role="status"></p>';
   }
 
@@ -2324,28 +2336,138 @@ window.MCPCost = (function () {
       });
   }
 
-  function refreshCost() {
-    if (refreshPoll.active) return Promise.resolve();
+  // ── 재수집 대상 확정(3단계 3-C) ─────────────────────────────────────────────────
+  // 예전엔 전역 버튼과 계정 행 "다시 수집"이 같은 함수를 불러 전역 filters.accountIds를 썼다 — 계정을 안 고르면
+  // null → 백엔드가 **사용자 전체 계정**을 수집했고, 행 버튼도 그 계정 하나가 아니었다. 이제 대상은 항상 내부 계정
+  // id의 명시적 목록이다(null을 보내지 않는다). 전역 버튼 = 현재 조회 조건(CSP·계정 필터) 안의 실측 지원 계정,
+  // 행 버튼 = 그 계정 하나. 문구·실행 전 안내·실제 body가 같은 목록을 가리킨다.
+  function refreshTargets() {
+    var caps = capAccounts.filter(function (c) { return c.cost_read !== null && c.status !== "UNSUPPORTED"; }); // 미지원 CSP는 대상이 아니다
+    if (filters.accountIds.length) caps = caps.filter(function (c) { return filters.accountIds.indexOf(c.cloud_account_id) >= 0; });
+    if (filters.providers.length) caps = caps.filter(function (c) { return filters.providers.indexOf(c.provider) >= 0; });
+    return caps;
+  }
+  function refreshScopeText(targets) {
+    if (!targets.length) return "대상 계정 없음(현재 조건에 실측 지원 계정이 없음)";
+    var how = filters.accountIds.length ? "선택한 계정" : (filters.providers.length ? filters.providers.join("/").toUpperCase() + " 계정" : "실측 지원 계정 전체");
+    return how + " " + targets.length + "개: " + targets.slice(0, 3).map(function (c) { return c.account_label || c.external_account_id; }).join(", ") + (targets.length > 3 ? " 외" : "");
+  }
+  var SKIP_REASON = { JOB_ALREADY_RUNNING: "이미 수집 진행 중", RATE_LIMITED: "1시간 제한", UNSUPPORTED: "미지원 CSP" };
+
+  /** CSP에 실제 수집을 요청한다(과금 가능). 화면 데이터 재조회(load)와는 다른 일이다.
+      accountIds: 내부 계정 id 목록(필수, 빈 배열이면 요청하지 않음). label: 토스트에 붙일 대상 설명. */
+  function refreshCost(accountIds, label) {
+    if (refreshPoll.active) { toast("이미 수집 완료를 확인하는 중입니다."); return Promise.resolve(); }
+    var ids = (accountIds || []).map(String).filter(Boolean);
+    if (!ids.length) { toast("재수집 대상 계정이 없습니다 — 현재 조건에 실측 지원 계정이 없거나 계정을 확인할 수 없습니다."); return Promise.resolve(); }
     var api = toApiRange(filters.periodStart, filters.periodEnd);
     return window.MCPApi.request("/cost-ingestion-runs", {
       method: "POST",
-      body: {
-        cloud_account_ids: filters.accountIds.length ? filters.accountIds : null,
-        period_start: api.period_start, period_end: api.period_end
-      }
+      body: { cloud_account_ids: ids, period_start: api.period_start, period_end: api.period_end }   // null(전체) 금지 — 항상 명시 목록
     }).then(function (data) {
       var items = (data && data.items) || [];
       var skipped = (data && data.skipped) || [];
-      var skippedText = skipped.length ? " " + skipped.length + "개 계정은 건너뛰었습니다(이미 진행 중이거나 1시간 제한)." : "";
-      if (!items.length) { toast("새로 시작한 수집이 없습니다." + skippedText); return load(); }
+      var skipText = skipped.length ? " · 건너뜀 " + skipped.length + "개(" + skipped.map(function (k) { return (SKIP_REASON[k.reason_code] || k.reason_code) + (k.next_allowed_at ? " → " + fmtWhen(k.next_allowed_at).text.replace(/ \(.*\)$/, "") + " 이후" : ""); }).join(", ") + ")" : "";
+      if (!items.length) { toast("새로 시작한 수집이 없습니다" + skipText + "."); return load(); }
       refreshPoll.active = true; refreshPoll.runIds = items.map(function (it) { return it.id; });
-      refreshPoll.startedAt = Date.now(); refreshPoll.text = "수집 요청 접수됨 (" + items.length + "개 계정) · 완료를 확인하는 중…";
-      toast("수집 요청을 접수했습니다. 완료되면 자동으로 다시 조회합니다." + skippedText);
+      refreshPoll.startedAt = Date.now(); refreshPoll.text = "수집 요청 접수됨(202) — " + (label || items.length + "개 계정") + " · 아직 완료 아님, 완료를 확인하는 중…";
+      toast("수집 요청을 접수했습니다(" + items.length + "개 계정). 접수는 완료가 아니며, 끝나면 자동으로 다시 조회합니다" + skipText + ".");
       renderAll(); // 버튼을 "수집 확인 중…"으로
       refreshPoll.timer = setTimeout(pollRefreshRuns, REFRESH_POLL_INTERVAL_MS);
     }).catch(function (e) {
-      toast(window.MCErr ? window.MCErr.headline(e) : "새로고침 요청에 실패했습니다.");
+      var code = e && e.code;
+      if (code === "RATE_LIMITED") toast("요청한 계정이 모두 1시간 제한에 걸려 있습니다. 제한 시각 이후 다시 시도하세요.");
+      else if (code === "JOB_ALREADY_RUNNING") toast("요청한 계정이 모두 이미 수집 중입니다.");
+      else toast(window.MCErr ? window.MCErr.headline(e) : "재수집 요청에 실패했습니다.");
     });
+  }
+
+  // ── CF-016 서비스 상세 모달(3단계 3-A) ────────────────────────────────────────────
+  // 예전엔 CF-016이 받은 상위 6개를 "전체 명세"라 부르며 다시 그렸다. 서버 상한이 top_n=20이라 "전체"는 줄 수
+  // 없으므로 top_n=20으로 **따로 재조회**하고 이름도 실제 범위로 부른다(04 §5-2). rest(상위 20개 밖 합)와
+  // unallocated(service NULL 행 = 미분류)는 다른 것이라 한 줄로 합치지 않는다. 기타 안의 개별 서비스는 현재
+  // API로 볼 수 없다(응답에 목록이 없음) — 이 모달은 그 사실을 말할 뿐 새 API를 만들지 않는다.
+  var SERVICE_DETAIL_TOP_N = 20;
+  var serviceDetailSeq = 0;
+  function dialogIsOpen() { var m = document.getElementById("cost-dialog"); return !!m && !m.classList.contains("hidden"); }
+  function serviceDetailTitle() { return "서비스별 상세 — 상위 " + SERVICE_DETAIL_TOP_N + "개 · 기타 · 미분류"; }
+  function openServiceDetailDialog() {
+    var query = apiQuery("dimension=service&top_n=" + SERVICE_DETAIL_TOP_N);   // CF-016과 같은 기간·CSP·계정·통화, 차원 service
+    var seq = ++serviceDetailSeq;
+    var disp = toDisplayRange(toApiRange(filters.periodStart, filters.periodEnd).period_start, toApiRange(filters.periodStart, filters.periodEnd).period_end);
+    openDialog(serviceDetailTitle(), '<p class="note" role="status">조회 중… (' + esc(disp.start) + " ~ " + esc(disp.end) + ")</p>");
+    settle(window.MCPApi.request("/costs/breakdown" + query)).then(function (r) {
+      // 늦게 온 응답 폐기: 모달이 닫혔거나, 다시 열렸거나(순번), 그 사이 필터가 바뀌어 조건이 달라졌으면 그린다고 해도 틀린 표다
+      if (seq !== serviceDetailSeq || !dialogIsOpen()) return;
+      if (query !== apiQuery("dimension=service&top_n=" + SERVICE_DETAIL_TOP_N)) return;
+      var bodyEl = document.getElementById("dialog-body");
+      if (!bodyEl) return;
+      bodyEl.innerHTML = serviceDetailHtml(r, disp);
+    });
+  }
+  function serviceDetailHtml(r, disp) {
+    var retry = '<div class="button-row no-print"><button type="button" class="btn" data-action="open-full-breakdown-dialog">다시 조회</button></div>';
+    if (!r.ok) return fetchFailedHtml(r, "서비스별 상세") + retry;
+    var d = r.value;
+    var items = d.items || [];
+    var rest = d.rest || { amount: "0", count: 0 };
+    var unalloc = d.unallocated || { amount: "0" };
+    var cur = d.currency;
+    if (!cur || (!items.length && Number(rest.amount) === 0 && Number(unalloc.amount) === 0)) {
+      return '<p class="note">이 조건(' + esc(disp.start) + " ~ " + esc(disp.end) + ")에 실측 항목이 없습니다. 0원이 아니라 집계할 행이 없는 것입니다.</p>" + retry;
+    }
+    // 대사: 상위 항목 합 + 기타 + 미분류 = 전체(total). 화면에서 다시 더해 보여준다(QA-09).
+    var itemsSum = items.reduce(function (acc, it) { return F.addDecimalString(acc, it.amount); }, "0");
+    var recomputed = F.addDecimalString(F.addDecimalString(itemsSum, rest.amount || "0"), unalloc.amount || "0");
+    var matches = Number(recomputed).toFixed(6) === Number(d.total).toFixed(6);
+    var rowHtml = function (label, amount, pct, cls, note) {
+      return '<tr class="' + (cls || "") + '"><td>' + label + (note ? '<br><span class="tiny muted">' + note + "</span>" : "") + '</td><td class="num">' + smallMoneyHtml(amount, cur, false) + '</td><td class="num">' + (pct == null ? "—" : esc(pct) + "%") + "</td></tr>";
+    };
+    var rows = items.map(function (it) { return rowHtml(esc(it.label), it.amount, it.share_pct); }).join("");
+    if (Number(rest.amount) !== 0 || rest.count)
+      rows += rowHtml("기타 (" + (rest.count || 0) + "종)", rest.amount, rest.share_pct, "muted", "상위 " + SERVICE_DETAIL_TOP_N + "개 밖 서비스의 합 — 개별 서비스는 현재 API가 주지 않습니다");
+    if (Number(unalloc.amount) !== 0)
+      rows += rowHtml("미분류(서비스 미지정)", unalloc.amount, unalloc.share_pct, "muted", "서비스 이름이 없는 실측 행(계정 단위 요금 등) — '기타'와 다릅니다");
+    return '<p class="small">' + esc(disp.start) + " ~ " + esc(disp.end) + " · 통화 <strong>" + esc(cur) + "</strong> · 사용료(usage) 고정 집계 — 요금 분류 필터 미적용 · CSP·계정 필터 적용 · 상위 " +
+        SERVICE_DETAIL_TOP_N + "개까지(서버 상한)" + (excludedCurrencyText(d)) + "</p>" +
+      '<div class="table-wrap"><table class="changes-table"><thead><tr><th scope="col">서비스</th><th scope="col" class="num">금액</th><th scope="col" class="num">비중</th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<p class="note">상위 ' + items.length + "개 합 " + esc(F.money(itemsSum, cur)) + " + 기타 " + esc(F.money(rest.amount || "0", cur)) + " + 미분류 " + esc(F.money(unalloc.amount || "0", cur)) +
+        " = " + esc(F.money(recomputed, cur)) + (matches ? " · 전체 합계 " + esc(F.money(d.total, cur)) + "와 일치" : ' · <span style="color:var(--cost-warn)">전체 합계 ' + esc(F.money(d.total, cur)) + "와 다름 — 서버 응답 확인 필요</span>") +
+        " · 표시 단위 미만 소액은 반올림된 값이며 정확한 값은 금액에 마우스를 올리면 보입니다</p>";
+  }
+  function excludedCurrencyText(d) {
+    var ex = (d.currency_selection && d.currency_selection.excluded) || [];
+    return ex.length ? " · 통화가 다른 계정 " + ex.map(function (e) { return e.currency ? esc(e.currency) + " " + (e.account_count || "") + "개" : ""; }).join(", ") + " 제외(합치지 않음)" : "";
+  }
+
+  // ── CF-007 Owner 미지정 대상 목록(3단계 3-B) ─────────────────────────────────────
+  // 예전엔 "미지정 대상 보기"가 검토 큐(CF-034)로 스크롤했다 — 큐는 급증 검토 항목이라 미지정 리소스가 없다.
+  // 카드가 집계한 것과 **같은 함수**(unassignedResources)로 같은 목록을 보여줘 개수가 일치한다. /resources는
+  // 페이지네이션 없이 전부 내려온다(routers/resources.py list_resources) — 일부만 받은 것이 아니다.
+  function unassignedDialogHtml() {
+    var list = unassignedResources();
+    if (!ctx.resources || !ctx.resources.ok) return fetchFailedHtml(ctx.resources, "미지정 리소스");
+    if (!list.length) return '<p class="note">' + esc(OWNER_TAG_KEY) + " 태그가 비어 있는 리소스가 없습니다.</p>";
+    var priced = list.filter(function (r) { return r.cost_summary && r.cost_summary.estimated_monthly_cost != null; });
+    var rows = list.slice().sort(function (a, b) {
+      var pa = a.cost_summary && a.cost_summary.estimated_monthly_cost, pb = b.cost_summary && b.cost_summary.estimated_monthly_cost;
+      if ((pa == null) !== (pb == null)) return pa == null ? 1 : -1;          // 정가 있는 것 먼저
+      return Number(pb || 0) - Number(pa || 0);
+    }).map(function (r) {
+      var cs = r.cost_summary || {};
+      var ca = r.cloud_account || {};
+      var acct = ca.account_label || ca.external_account_id || accountLabelOf(ca.id);   // 내부 id가 아니라 사람이 아는 계정 이름/외부 식별자
+      var price = cs.estimated_monthly_cost != null ? esc(F.money(cs.estimated_monthly_cost, cs.currency || "USD")) + " /월" : '—<br><span class="tiny muted">정가표에 없음 — 카드 금액에 미포함(0원 아님)</span>';
+      return "<tr><td>" + providerCellHtml(r.cloud_account ? r.cloud_account.provider : r.provider) + " " + esc(r.name || r.external_resource_id) +
+        '<br><span class="tiny muted">' + esc((r.service && r.service.display_name) || r.original_resource_type || "") + (r.region ? " · " + esc(r.region) : "") + "</span></td>" +
+        "<td>" + esc(acct) + "</td>" +
+        '<td class="num">' + price + "</td>" +
+        "<td>" + resourceStatusHtml(r.status) + "</td>" +
+        '<td class="actions"><button type="button" class="btn no-print" data-action="open-resource-detail" data-resource-id="' + esc(r.id) + '">인벤토리에서 보기</button></td></tr>';
+    }).join("");
+    return '<p class="small">' + esc(OWNER_TAG_KEY) + " 태그가 없는(또는 비어 있는) 리소스 <strong>" + list.length + "개</strong> · 그중 정가 추정이 있는 " + priced.length + "개만 카드 금액에 포함 · 현재 구성 × 730h 정가 기준(실측 배분 아님) · 조회 기간과 무관 · CSP·계정 필터 적용</p>" +
+      '<div class="table-wrap"><table class="changes-table"><thead><tr><th scope="col">리소스</th><th scope="col">계정</th><th scope="col" class="num">정가 추정</th><th scope="col">상태</th><th scope="col"><span class="sr-only">행동</span></th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<p class="note">태그 기준 검토 후보입니다 — 태그가 없다는 것만으로 낭비·방치·특정 부서 소유를 뜻하지 않습니다. 담당자 지정은 각 CSP 콘솔에서 태그(' + esc(OWNER_TAG_KEY) + ")를 붙이면 다음 동기화에 반영됩니다. 검토 큐에는 자동 등록되지 않습니다.</p>";
   }
 
   // ── 이벤트 위임 ──────────────────────────────────────────────────────────────────
@@ -2369,9 +2491,18 @@ window.MCPCost = (function () {
         case "nav-scroll":
           navScroll(btn.getAttribute("data-tab"), btn.getAttribute("data-target"));
           break;
-        case "refresh-cost":
-          if (!btn.disabled) refreshCost();
+        case "refresh-cost": {
+          if (btn.disabled) break;
+          var targets = refreshTargets();
+          refreshCost(targets.map(function (c) { return c.cloud_account_id; }), refreshScopeText(targets));
           break;
+        }
+        case "refresh-account": {
+          if (btn.disabled) break;
+          var one = btn.getAttribute("data-account-id");
+          refreshCost([one], "계정 " + accountLabelOf(one));
+          break;
+        }
         case "trend-mode": {
           var mode = btn.getAttribute("data-mode");
           if (mode === filters.granularity) break;
@@ -2392,8 +2523,15 @@ window.MCPCost = (function () {
           load();
           break;
         case "account-filter-set":
-          filters.accountIds = [btn.getAttribute("data-account-id")];
+          filters.accountIds = [btn.getAttribute("data-account-id")];   // 기간·통화·요금 분류·CSP는 그대로 — 계정 조건만 바뀐다
           renderFilters();
+          syncUrl();
+          load();
+          break;
+        case "account-filter-clear":
+          filters.accountIds = [];
+          renderFilters();
+          syncUrl();
           load();
           break;
         case "open-resource-detail":
@@ -2428,17 +2566,14 @@ window.MCPCost = (function () {
         case "open-warnings-dialog":
           openDialog("데이터 누락·수집 상태 전체", warningsDialogHtml());
           break;
+        case "open-unassigned-dialog":
+          openDialog(OWNER_TAG_KEY + " 미지정 리소스", unassignedDialogHtml());
+          break;
         case "open-permission-dialog":
           openDialog("필요 권한", "<p>이 계정의 비용 조회 권한이 부족합니다. 마이페이지에서 자격 증명의 권한을 확인하세요.</p>");
           break;
         case "open-full-breakdown-dialog":
-          if (ctx.breakdownService && ctx.breakdownService.ok) {
-            var d = ctx.breakdownService.value;
-            var rows = (d.items || []).map(function (it) {
-              return "<tr><td>" + esc(it.label) + '</td><td class="num">' + esc(F.money(it.amount, d.currency)) + "</td><td class=\"num\">" + esc(it.share_pct) + "%</td></tr>";
-            }).join("");
-            openDialog("서비스별 전체 명세", '<div class="table-wrap"><table><thead><tr><th scope="col">서비스</th><th scope="col">금액</th><th scope="col">비중</th></tr></thead><tbody>' + rows + "</tbody></table></div>");
-          }
+          openServiceDetailDialog();
           break;
         default: break;
       }
