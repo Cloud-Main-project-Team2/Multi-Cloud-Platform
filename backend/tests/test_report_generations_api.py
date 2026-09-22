@@ -14,7 +14,7 @@ import datetime as dt
 from decimal import Decimal
 
 import app.routers.reports as reports_router
-from app.models import CloudAccount, CloudAccountCost, ReportGeneration
+from app.models import CloudAccount, CloudAccountCost, Notification, ReportGeneration
 
 
 def _make_account(db_session, user, provider="aws", external_account_id="111122223333"):
@@ -55,6 +55,20 @@ def test_create_report_generation(client, make_user, auth_header, db_session):
 
     row = db_session.query(ReportGeneration).filter_by(user_id=user.id).one()
     assert row.providers == "aws,azure,gcp"  # 정렬된 canonical 형태로 저장된다
+
+
+def test_create_report_generation_notifies_success(client, make_user, auth_header, db_session):
+    """"생성하기"는 요청 안에서 즉시 끝나 별도 job이 없으므로(4차 항목 2), 사용자가 결과 탭을
+    기다리지 못하고 페이지를 벗어나도 알림함에서 확인할 수 있어야 한다."""
+    user = make_user()
+    resp = client.post("/api/v1/reports", json=_PAYLOAD, headers=auth_header(user))
+    report_id = resp.json()["data"]["id"]
+
+    notif = db_session.query(Notification).filter_by(user_id=user.id, type="report_generated").one()
+    assert notif.reference_type == "report_generation"
+    assert str(notif.reference_id) == report_id
+    assert notif.message_params["period_from"] == "2026-09-13"
+    assert notif.message_params["period_to"] == "2026-09-19"
 
 
 def test_recreating_same_conditions_does_not_duplicate(client, make_user, auth_header, db_session):

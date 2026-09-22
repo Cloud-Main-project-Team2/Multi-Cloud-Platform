@@ -9,6 +9,7 @@ import가 있는 건 수집 실행 부분뿐이어야 한다(§11-1-2 CSP 호출
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
@@ -34,7 +35,7 @@ from app.db import SessionLocal, get_db
 from app.deps import get_current_user
 from app.errors import ApiError, validation_error
 from app.logging_config import log_background_task, log_business_event
-from app.models import CloudAccount, Credential, CostIngestionRun, User
+from app.models import CloudAccount, Credential, CostIngestionRun, Notification, User
 from app.providers.session import CredentialResolutionError, resolve_secret_payload
 from app.schemas.costs import (
     CostBreakdownResponse,
@@ -127,6 +128,41 @@ def _serialize_run(run: CostIngestionRun, provider: str) -> CostIngestionRunOut:
 # --- 실행(백그라운드) ---------------------------------------------------------------------
 
 
+def _create_cost_ingestion_notification(
+    db: Session, run: CostIngestionRun, account: CloudAccount | None
+) -> None:
+    """수동 새로고침(POST /cost-ingestion-runs) 종결 시 알림함에 완료 안내를 남긴다 — cost.js의
+    폴링은 페이지에 종속돼(pagehide에서 중단) 화면을 벗어나면 끊기므로(item 2), 완료 시점을
+    페이지와 무관하게 알리는 유일한 통로다. 자동 수집(app/cost/scheduler.py)은 별도 구현이라
+    영향받지 않는다."""
+    params: dict[str, Any] = {
+        "run_id": str(run.id),
+        "provider": account.provider if account else None,
+        "account_name": account.account_label if account else None,
+    }
+    if run.status == "success":
+        params["records_replaced"] = run.records_replaced
+        notif_type, message_key = "cost_ingestion_succeeded", "notif.cost_ingestion.succeeded"
+    else:
+        # partial_success도 실패 쪽으로 묶는다 — 데이터가 조용히 덜 갱신된 채로 "성공" 배지가
+        # 뜨면 사용자가 원인을 놓친다(§4-4 부분 응답 정책과 같은 방향).
+        if run.error_message:
+            params["reason"] = run.error_message
+        elif run.error_code:
+            params["reason"] = run.error_code
+        notif_type, message_key = "cost_ingestion_failed", "notif.cost_ingestion.failed"
+    db.add(
+        Notification(
+            user_id=run.user_id,
+            type=notif_type,
+            reference_type="cost_ingestion_run",
+            reference_id=run.id,
+            message_key=message_key,
+            message_params=params,
+        )
+    )
+
+
 def _run_cost_ingestion_run(run_id: int) -> None:
     # 요청 사이클 밖(BackgroundTasks)이라 전역 예외 핸들러가 닿지 않는다 — 감싸지 않으면
     # 수집 도중 터진 예외가 로그에 한 줄도 남지 않는다(sync_jobs.py와 동일 원칙).
@@ -147,6 +183,7 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             run.status = "failed"
             run.error_code = "UNSUPPORTED"
             run.finished_at = dt.datetime.now(dt.timezone.utc)
+            _create_cost_ingestion_notification(db, run, account)
             db.commit()
             return
 
@@ -165,6 +202,7 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             run.error_code = "CLOUD_PERMISSION_DENIED"
             run.error_message = "검증된 자격 증명이 없습니다."
             run.finished_at = dt.datetime.now(dt.timezone.utc)
+            _create_cost_ingestion_notification(db, run, account)
             db.commit()
             return
 
@@ -174,6 +212,7 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             run.status = "failed"
             run.error_code = "PROVIDER_API_ERROR"
             run.finished_at = dt.datetime.now(dt.timezone.utc)
+            _create_cost_ingestion_notification(db, run, account)
             db.commit()
             return
 
@@ -188,6 +227,7 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             run.error_code = exc.error_code
             run.error_message = exc.message
             run.finished_at = dt.datetime.now(dt.timezone.utc)
+            _create_cost_ingestion_notification(db, run, account)
             db.commit()
             return
 
@@ -206,6 +246,7 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             run.status = "partial_success"
             run.error_code = result.error_code
             run.finished_at = dt.datetime.now(dt.timezone.utc)
+            _create_cost_ingestion_notification(db, run, account)
             db.commit()
             log_business_event(
                 "cost.ingestion_run.finished", level="ERROR", run_id=run_id,
@@ -225,12 +266,14 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             run.error_code = "JOB_ALREADY_RUNNING"
             run.error_message = "이 계정의 비용 수집이 이미 진행 중입니다."
             run.finished_at = dt.datetime.now(dt.timezone.utc)
+            _create_cost_ingestion_notification(db, run, account)
             db.commit()
             return
 
         run.records_replaced = replaced
         run.status = "success"
         run.finished_at = dt.datetime.now(dt.timezone.utc)
+        _create_cost_ingestion_notification(db, run, account)
         db.commit()
 
         log_business_event(
