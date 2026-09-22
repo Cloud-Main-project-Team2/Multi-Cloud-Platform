@@ -38,3 +38,11 @@ class MarkReadData(BaseModel):
 
 class MarkReadResponse(BaseModel):
     data: MarkReadData
+
+
+class DeleteAllData(BaseModel):
+    deleted: int
+
+
+class DeleteAllResponse(BaseModel):
+    data: DeleteAllData

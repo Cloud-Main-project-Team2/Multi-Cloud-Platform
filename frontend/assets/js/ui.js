@@ -174,7 +174,9 @@
     }
 
     function render(items) {
-      var head = '<div class="notif-pop__head">알림 <span class="notif-pop__count">' + items.length + "</span></div>";
+      var head = '<div class="notif-pop__head">알림 <span class="notif-pop__count">' + items.length + "</span>" +
+        (items.length ? '<button type="button" class="notif-pop__clear-all" data-notif-clear-all>모두 지우기</button>' : "") +
+        "</div>";
       if (!items.length) {
         pop.innerHTML = head + '<div class="notif-pop__empty" style="padding:1rem;font-size:.8rem;color:var(--muted-foreground)">새 알림이 없습니다.</div>';
         return;
@@ -182,15 +184,39 @@
       pop.innerHTML = head + '<ul class="notif-pop__list">' +
         items.map(function (n) {
           var m = notifMeta(n);
-          return '<li><a class="notif-pop__item" href="' + m.href + '">' +
+          return '<li class="notif-pop__row">' +
+            '<a class="notif-pop__item" href="' + m.href + '">' +
             '<span class="notif-pop__icon">' + m.icon + "</span>" +
             '<span class="notif-pop__body">' +
             '<span class="notif-pop__title">' + escHtml(m.title) + "</span>" +
             '<span class="notif-pop__desc">' + escHtml(m.desc) + "</span>" +
             '<span class="notif-pop__time">' + escHtml(relTime(n.created_at)) + "</span>" +
-            "</span></a></li>";
+            "</span></a>" +
+            '<button type="button" class="notif-pop__delete" data-notif-delete="' + n.id + '" aria-label="알림 삭제">' + ICONS.x + "</button>" +
+            "</li>";
         }).join("") + "</ul>";
     }
+
+    // 삭제(개별·전체) — 목록이 render()로 매번 새로 그려지므로 델리게이션으로 pop 하나에만 건다.
+    pop.addEventListener("click", function (e) {
+      var delBtn = e.target.closest("[data-notif-delete]");
+      if (delBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        var id = delBtn.getAttribute("data-notif-delete");
+        if (api && api.request) {
+          api.request("/notifications/" + id, { method: "DELETE" }).then(load).catch(function () {});
+        }
+        return;
+      }
+      if (e.target.closest("[data-notif-clear-all]")) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (api && api.request) {
+          api.request("/notifications", { method: "DELETE" }).then(load).catch(function () {});
+        }
+      }
+    });
 
     function load() {
       if (!api || !api.request) { render([]); setBadge(0); return; }
