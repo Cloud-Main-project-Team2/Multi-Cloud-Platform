@@ -82,7 +82,6 @@ window.MCPCostState = (function () {
     not_current_month: "이번 달 1일부터 오늘까지를 조회할 때만 전망을 냅니다.",
     first_day: "1일에는 아직 근거가 될 실측이 없어 전망을 내지 않습니다.",
     no_accounts: "조회 조건에 전망 대상 계정(실측 지원 계정)이 없습니다.",
-    insufficient_coverage: "이번 달 수집이 빠진 계정이 있어 전망을 내지 않습니다(빠진 날을 0원으로 평균 내지 않습니다).",
     currency_unknown: "이번 달 수집은 확인됐지만(0원) 통화를 알 수 없어 전망을 내지 않습니다."
   };
   function forecastText(state) {

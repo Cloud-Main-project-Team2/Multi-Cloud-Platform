@@ -124,7 +124,8 @@ def test_no_run_no_rows_is_missing(client, make_user, auth_header, db_session):
 
 
 def test_partial_success_run_does_not_cover(client, make_user, auth_header, db_session):
-    """partial_success는 행을 저장하지 않는다(08 §4-4) — 그 구간은 확인된 것이 아니다."""
+    """partial_success는 행을 저장하지 않는다(08 §4-4) — 그 구간은 확인된 것이 아니다. 이번 달 실측
+    행이 하나도 없으니(수집 누락 자체는 전망을 막지 않지만) 통화를 알 수 없어 전망은 못 낸다."""
     user = make_user()
     a = _account(db_session, user)
     _run(db_session, user, a, dt.date(2026, 9, 1), dt.date(2026, 9, 21), status="partial_success", records=0)
@@ -132,7 +133,7 @@ def test_partial_success_run_does_not_cover(client, make_user, auth_header, db_s
     d = _summary(client, user, auth_header)
     assert _acc(d, a)["status"] == "CONNECTED_PARTIAL"
     assert _acc(d, a)["coverage"]["missing_count"] == 20
-    assert d["kpis"]["forecast_status"]["state"] == "insufficient_coverage"
+    assert d["kpis"]["forecast_status"]["state"] == "currency_unknown"
 
 
 # --- 3: 같은 날 A 수집·B 미수집 → 경고에 B만 ----------------------------------------------------
@@ -184,9 +185,10 @@ def test_last_run_failed_but_period_fully_covered_forecasts_and_compares(client,
     assert c["totals"] == {"current": "20.000000", "previous": "20.000000", "delta": "0.000000", "delta_pct": "0.0"}
 
 
-def test_pending_account_in_scope_blocks_forecast(client, make_user, auth_header, db_session):
-    """수집된 적 없는 계정을 조용히 빼고 나머지로 '전체 완료'라 하면 안 된다 — 그 계정도 대상이므로
-    전망은 계산 불가이고 사유에 그 계정이 적힌다."""
+def test_pending_account_in_scope_does_not_block_forecast(client, make_user, auth_header, db_session):
+    """수집된 적 없는 계정을 조용히 빼고 계산하지 않는다 — 그 계정도 required_accounts·
+    incomplete_accounts에 그대로 남는다. 다만 2026-09-22 결정으로 그 계정의 결측이 계산 자체를
+    막지는 않는다 — A만으로 누적·경과일수 기준 전망을 낸다(9/1~9/20 $20 ÷ 20일 × 30일 = $30)."""
     user = make_user()
     a = _account(db_session, user, ext="A")
     b = _account(db_session, user, ext="B-pending")
@@ -194,10 +196,11 @@ def test_pending_account_in_scope_blocks_forecast(client, make_user, auth_header
 
     d = _summary(client, user, auth_header)
     fs = d["kpis"]["forecast_status"]
-    assert fs["state"] == "insufficient_coverage" and fs["required_accounts"] == 2
+    assert fs["state"] == "computed" and fs["required_accounts"] == 2
     assert fs["incomplete_accounts"] == [{"cloud_account_id": str(b.id), "missing_count": 20}]
-    assert d["kpis"]["forecast_month_end"] == []
-    assert d["kpis"]["mtd_actual"][0]["amount"] == "20.000000"   # 합계 자체는 A로 계산된다(전망만 막힌다)
+    assert d["kpis"]["forecast_month_end"] == [{"cost_kind": "actual", "currency": "USD", "amount": "30.000000",
+                                                "method": "mtd_prorated", "based_through": "2026-09-20"}]
+    assert d["kpis"]["mtd_actual"][0]["amount"] == "20.000000"   # 합계·전망 모두 실측이 있는 A로만 계산된다
 
 
 # --- 7: 오늘 포함 기간 vs 어제까지 완료된 기간 ---------------------------------------------------
@@ -301,9 +304,10 @@ def test_currency_filter_excludes_only_accounts_with_known_other_currency(client
     assert d2["excluded"]["reason_counts"] == {"PENDING": 1, "UNSUPPORTED": 1}
 
 
-def test_multi_currency_forecast_is_all_or_nothing(client, make_user, auth_header, db_session):
-    """forecast_status는 응답 전체 상태다. KRW 계정이 부족하면 USD 전망도 내지 않는다 — 일부 통화만
-    계산된 결과를 전체가 계산된 것처럼 보이지 않게."""
+def test_multi_currency_forecast_computes_per_currency_despite_partial_coverage(client, make_user, auth_header, db_session):
+    """2026-09-22 결정: 수집 누락이 있어도 전망 계산 자체를 막지 않는다. KRW 계정이 하루 부족해도
+    USD 전망은 그대로 나오고, KRW도 실제로 수집된 19일치 누적으로 계산된다(0으로 채우지 않는다).
+    forecast_status.incomplete_accounts는 어느 계정이 얼마나 빠졌는지 안내만 한다."""
     user = make_user()
     usd = _account(db_session, user, ext="USD")
     krw = _account(db_session, user, ext="KRW")
@@ -311,8 +315,11 @@ def test_multi_currency_forecast_is_all_or_nothing(client, make_user, auth_heade
     _rows_every_day(db_session, krw, dt.date(2026, 9, 1), dt.date(2026, 9, 20), currency="KRW")  # 9/20 없음
 
     d = _summary(client, user, auth_header)
-    assert d["kpis"]["forecast_month_end"] == []
-    assert d["kpis"]["forecast_status"]["incomplete_accounts"] == [{"cloud_account_id": str(krw.id), "missing_count": 1}]
+    fs = d["kpis"]["forecast_status"]
+    assert fs["state"] == "computed"
+    assert fs["incomplete_accounts"] == [{"cloud_account_id": str(krw.id), "missing_count": 1}]
+    rows = {r["currency"]: r["amount"] for r in d["kpis"]["forecast_month_end"]}
+    assert rows == {"USD": "30.000000", "KRW": "28.500000"}   # USD $20÷20일×30일 · KRW 19÷20일×30일(9/20 제외)
 
     _row(db_session, krw, dt.date(2026, 9, 20), "1.000000", currency="KRW")
     d2 = _summary(client, user, auth_header)
