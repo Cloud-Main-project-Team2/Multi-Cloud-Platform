@@ -107,7 +107,7 @@ window.MCPCost = (function () {
   function defaultFilters() {
     return {
       periodStart: utcStartOfMonthISO(), periodEnd: utcTodayISO(),
-      providers: [], accountIds: [], currency: "", chargeCategory: "usage",
+      providers: [], accountIds: [], currency: "USD", chargeCategory: "usage",
       granularity: "daily", compare: "previous_period"
     };
   }
@@ -785,7 +785,7 @@ window.MCPCost = (function () {
   function resetFilters() {
     var d = defaultFilters();
     filters.periodStart = d.periodStart; filters.periodEnd = d.periodEnd;
-    filters.providers = []; filters.accountIds = []; filters.currency = ""; filters.chargeCategory = "usage";
+    filters.providers = []; filters.accountIds = []; filters.currency = d.currency; filters.chargeCategory = "usage";
   }
 
   // ── CF-002 MTD ──────────────────────────────────────────────────────────────────
@@ -882,22 +882,24 @@ window.MCPCost = (function () {
       if (!rows.length) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">전망 값이 없습니다(사유 미제공).</p>' + btn };
     } else if (fs.state !== "computed") {
       var why = S.forecastText(fs.state);
-      var detail = "";
-      if (fs.state === "insufficient_coverage") {
-        var inc = fs.incomplete_accounts || [];
-        var days = inc.reduce(function (n, a) { return n + (a.missing_count || 0); }, 0);
-        detail = '<p class="kpi-note">대상 ' + fs.required_accounts + "개 계정 중 " + inc.length + "개에서 이달 1일~" + esc(fs.based_through || "어제") + " 사이 " + days + "일이 수집되지 않았습니다" +
-          (inc.length ? " — " + esc(inc.slice(0, 3).map(function (a) { return accountLabelOf(a.cloud_account_id) + " " + a.missing_count + "일"; }).join(", ")) + (inc.length > 3 ? " 외" : "") : "") + "</p>" +
-          '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-009">수집 상태 보기</button></div>';
-      }
-      return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">' + esc(why) + "</p>" + detail + btn };
+      return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">' + esc(why) + "</p>" + btn };
     }
     if (!rows.length) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">전망 값이 없습니다.</p>' + btn };
-    // computed = 대상 계정 전부가 이달 1일~어제(UTC)를 빠짐없이 수집 확인한 상태. 근거 날짜는 based_through.
+    // computed = 계산됨. 2026-09-22부터 대상 계정 일부가 이달 수집을 못 마쳤어도 계산은 계속하고
+    // (수집 안 된 날은 0원으로 채우지 않고 합계에서만 뺀다), incomplete_accounts로 안내만 한다.
     var lastAsOf = d.as_of ? fmtWhen(d.as_of).text.replace(/ \(.*\)$/, "") : "없음";
+    var inc = (fs && fs.incomplete_accounts) || [];
+    var partialNote = "";
+    if (inc.length) {
+      var days = inc.reduce(function (n, a) { return n + (a.missing_count || 0); }, 0);
+      partialNote = '<p class="kpi-note">일부 날짜 데이터가 누락되어 추정치입니다 — 대상 ' + fs.required_accounts + "개 계정 중 " + inc.length + "개에서 이달 1일~" + esc(fs.based_through || "어제") + " 사이 " + days + "일이 수집되지 않았습니다" +
+        (" — " + esc(inc.slice(0, 3).map(function (a) { return accountLabelOf(a.cloud_account_id) + " " + a.missing_count + "일"; }).join(", ")) + (inc.length > 3 ? " 외" : "")) + "</p>" +
+        '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-009">수집 상태 보기</button></div>';
+    }
     var html = moneyBadgeLines(rows, "전망") +
-      '<p class="kpi-basis">이달 1일 ~ ' + esc(rows[0].based_through || (fs && fs.based_through) || "어제") + "까지 실측(수집 확인됨)을 남은 일수로 늘린 값 · 마지막 수집 " + esc(lastAsOf) + "</p>" +
-      (fs ? '<p class="tiny muted">대상 계정 ' + fs.required_accounts + "개 전부 수집 확인 · 실측·정가 추정과 합치지 않음</p>" : "") + btn;
+      '<p class="kpi-basis">이달 1일 ~ ' + esc(rows[0].based_through || (fs && fs.based_through) || "어제") + "까지 실측(수집된 날만 합산)을 남은 일수로 늘린 값 · 마지막 수집 " + esc(lastAsOf) + "</p>" +
+      partialNote +
+      (fs ? '<p class="tiny muted">대상 계정 ' + fs.required_accounts + "개" + (inc.length ? " 중 " + inc.length + "개 부분 수집" : " 전부 수집 확인") + " · 실측·정가 추정과 합치지 않음</p>" : "") + btn;
     return { state: "CONNECTED_OK", html: html };
   }
 
@@ -1480,26 +1482,27 @@ window.MCPCost = (function () {
       rows.forEach(function (r) {
         var a = r.a;
         var pct = denomOk ? (Number(r.amount) / Number(total) * 100) : null;
+        // 퍼센트 칸에 고정 폭을 줘서(.pct-value) 비중바 길이가 줄어도 항상 같은 자리에 온전히 보이게 한다.
         var pctText = pct == null ? '<span class="tiny muted" title="' + (shareOk ? "합계가 0이라 비중을 낼 수 없습니다" : "비중은 사용료 기준에서만 냅니다") + '">—</span>' : esc(pct.toFixed(1)) + "%";
         var bar = pct == null ? "" : '<div class="bar-track" aria-hidden="true"><div class="bar-fill" style="width:' + Math.min(pct, 100) + '%"></div></div>';
-        rowsHtml += '<tr data-account-id="' + esc(a.cloud_account_id) + '"><td data-label="계정">' + label(a) +
+        rowsHtml += '<tr data-account-id="' + esc(a.cloud_account_id) + '"><td class="account-name-cell" data-label="계정">' + label(a) +
           (r.partial ? ' <span class="tiny" style="color:var(--cost-warn)">부분 · ' + a.coverage.missing_count + "일 미수집</span>" : "") +
           (r.zero ? ' <span class="tiny muted">수집 확인된 0원</span>' : "") + "</td>" +
-          '<td class="num" data-label="기간 비용">' + esc(F.money(r.amount, a.currency || cur)) + "</td>" +
-          '<td class="num" data-label="비중">' + pctText + bar + "</td>" +
-          '<td data-label="팀">' + esc(a.team_id ? teamNameOf(a.team_id) : "미배정") + "</td>" +
-          '<td class="actions"><button type="button" class="btn no-print" data-action="account-filter-set" data-account-id="' + esc(a.cloud_account_id) + '">이 계정만 보기</button></td></tr>';
+          '<td class="num account-period-cell" data-label="기간 비용">' + esc(F.money(r.amount, a.currency || cur)) + "</td>" +
+          '<td class="num account-share-col" data-label="비중"><span class="account-share-cell">' + bar + '<span class="pct-value">' + pctText + "</span></span></td>" +
+          '<td class="num account-team-cell" data-label="팀">' + esc(a.team_id ? teamNameOf(a.team_id) : "미배정") + "</td>" +
+          '<td class="actions account-actions-cell"><button type="button" class="btn no-print" data-action="account-filter-set" data-account-id="' + esc(a.cloud_account_id) + '">이 계정만 보기</button></td></tr>';
       });
     });
     // 금액을 확인할 수 없는 계정은 지우지 않고 표 맨 뒤에 "—" 행으로 둔다(03 §8 "금액 없는 행은 맨 뒤", 04 §5-6
     // "UNSUPPORTED 계정도 목록에서 지우지 않는다"). 사유는 한 마디만 적고 운영 상세는 CF-009로 보낸다.
     // 다섯 줄을 넘을 때만 접어서, 금액 순위가 확인 불가 행에 밀리지 않게 한다.
     var unknownRows = unknown.map(function (u) {
-      return '<tr class="no-amount" data-account-id="' + esc(u.a.cloud_account_id) + '"><td data-label="계정">' + label(u.a) + "</td>" +
-        '<td class="num" data-label="기간 비용">—<br><span class="tiny muted">' + esc(u.why) + "</span></td>" +
-        '<td class="num" data-label="비중"><span class="tiny muted">—</span></td>' +
-        '<td data-label="팀">' + esc(u.a.team_id ? teamNameOf(u.a.team_id) : "미배정") + "</td>" +
-        '<td class="actions"><button type="button" class="btn no-print" data-action="nav-scroll" data-tab="overview" data-target="CF-009">수집 상태 보기</button></td></tr>';
+      return '<tr class="no-amount" data-account-id="' + esc(u.a.cloud_account_id) + '"><td class="account-name-cell" data-label="계정">' + label(u.a) + "</td>" +
+        '<td class="num account-period-cell" data-label="기간 비용">—<br><span class="tiny muted">' + esc(u.why) + "</span></td>" +
+        '<td class="num account-share-col" data-label="비중"><span class="tiny muted">—</span></td>' +
+        '<td class="num account-team-cell" data-label="팀">' + esc(u.a.team_id ? teamNameOf(u.a.team_id) : "미배정") + "</td>" +
+        '<td class="actions account-actions-cell"><button type="button" class="btn no-print" data-action="nav-scroll" data-tab="overview" data-target="CF-009">수집 상태 보기</button></td></tr>';
     }).join("");
     var UNKNOWN_FOLD_AT = 5;
     var folded = unknown.length > UNKNOWN_FOLD_AT;
@@ -1510,7 +1513,11 @@ window.MCPCost = (function () {
       rowsHtml += unknownRows;
     }
 
-    var html = '<div class="table-wrap"><table class="account-table"><thead><tr><th scope="col">계정</th><th scope="col" class="num">기간 비용</th><th scope="col" class="num">비중' + (shareOk ? "" : ' <span class="tiny muted">(사용료 기준만)</span>') + '</th><th scope="col">팀</th><th scope="col"><span class="sr-only">행동</span></th></tr></thead><tbody>' +
+    // "기간 비용"·"비중"·"팀" 헤더에 num을 줘서 제목이 값과 같은 오른쪽 기준으로 맞는다(전에는
+    // 헤더만 왼쪽 정렬이라 제목·값 위치가 어긋나 보였다). "계정" 헤더는 account-name-cell로 폭을
+    // 잡아 옆 "기간 비용" 칼럼이 붙어 보이게 한다(계정 열이 불필요하게 넓어 둘 사이가 크게
+    // 벌어졌었다).
+    var html = '<div class="table-wrap"><table class="account-table account-cost-table"><thead><tr><th scope="col" class="account-name-cell">계정</th><th scope="col" class="num account-period-cell">기간 비용</th><th scope="col" class="num account-share-col">비중' + (shareOk ? "" : ' <span class="tiny muted">(사용료 기준만)</span>') + '</th><th scope="col" class="num account-team-cell">팀</th><th scope="col" class="account-actions-cell"><span class="sr-only">행동</span></th></tr></thead><tbody>' +
       (rowsHtml || '<tr><td colspan="5" class="tiny muted">' + (accounts.length ? "조회 조건에서 금액이 확인된 계정이 없습니다" : "조회 조건에 맞는 계정이 없습니다") + "</td></tr>") + "</tbody></table></div>";
     html += '<p class="note">금액·비중 모두 조회 조건의 ' + esc(chargeCategoryLabel(filters.chargeCategory)) + " 합(계정별) 기준 · 비중 = 계정 금액 ÷ 같은 통화 계정 합계" +
       (shareOk ? "" : " — 사용료가 아닌 분류에서는 비중을 내지 않습니다") + (multi ? " · 통화가 달라 통화별로 나눠 보며 하나의 순위로 세우지 않습니다" : "") +
@@ -2510,7 +2517,13 @@ window.MCPCost = (function () {
       var cs = r.cost_summary || {};
       var ca = r.cloud_account || {};
       var acct = ca.account_label || ca.external_account_id || accountLabelOf(ca.id);   // 내부 id가 아니라 사람이 아는 계정 이름/외부 식별자
-      var price = cs.estimated_monthly_cost != null ? esc(F.money(cs.estimated_monthly_cost, cs.currency || "USD")) + " /월" : '—<br><span class="tiny muted">정가표에 없음 — 카드 금액에 미포함(0원 아님)</span>';
+      // 정가 없음 문구는 "정가표에 없음" / "카드 금액에 미포함(0원 아님)" 두 줄로 미리 고정한다 —
+      // .changes-table td.num이 white-space: nowrap이라, <br> 없이 한 문장으로 두면 이 칸이 문장
+      // 전체 폭만큼 넓어져 옆 "행동" 칼럼(버튼)이 밀려 깨진다. 선행 "—"는 칼럼 폭 상한(max-width)
+      // 안에서 "(0원 아님)"까지 안 잘리게 빼서 2번째 줄 길이를 줄인다.
+      var price = cs.estimated_monthly_cost != null
+        ? '<span class="price-value">' + esc(F.money(cs.estimated_monthly_cost, cs.currency || "USD")) + " /월</span>"
+        : '<span class="tiny muted price-unknown">정가표에 없음<br>카드 금액에 미포함(0원 아님)</span>';
       return "<tr><td>" + providerCellHtml(r.cloud_account ? r.cloud_account.provider : r.provider) + " " + esc(r.name || r.external_resource_id) +
         '<br><span class="tiny muted">' + esc((r.service && r.service.display_name) || r.original_resource_type || "") + (r.region ? " · " + esc(r.region) : "") + "</span></td>" +
         "<td>" + esc(acct) + "</td>" +
@@ -2519,7 +2532,7 @@ window.MCPCost = (function () {
         '<td class="actions"><button type="button" class="btn no-print" data-action="open-resource-detail" data-resource-id="' + esc(r.id) + '">인벤토리에서 보기</button></td></tr>';
     }).join("");
     return '<p class="small">' + esc(OWNER_TAG_KEY) + " 태그가 없는(또는 비어 있는) 리소스 <strong>" + list.length + "개</strong> · 그중 정가 추정이 있는 " + priced.length + "개만 카드 금액에 포함 · 현재 구성 × 730h 정가 기준(실측 배분 아님) · 조회 기간과 무관 · CSP·계정 필터 적용</p>" +
-      '<div class="table-wrap"><table class="changes-table"><thead><tr><th scope="col">리소스</th><th scope="col">계정</th><th scope="col" class="num">정가 추정</th><th scope="col">상태</th><th scope="col"><span class="sr-only">행동</span></th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<div class="table-wrap"><table class="changes-table unassigned-table"><thead><tr><th scope="col">리소스</th><th scope="col">계정</th><th scope="col" class="num">정가 추정</th><th scope="col">상태</th><th scope="col"><span class="sr-only">행동</span></th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
       '<p class="note">태그 기준 검토 후보입니다 — 태그가 없다는 것만으로 낭비·방치·특정 부서 소유를 뜻하지 않습니다. 담당자 지정은 각 CSP 콘솔에서 태그(' + esc(OWNER_TAG_KEY) + ")를 붙이면 다음 동기화에 반영됩니다. 검토 큐에는 자동 등록되지 않습니다.</p>";
   }
 
@@ -2604,8 +2617,8 @@ window.MCPCost = (function () {
             metaItem("날짜 경계", "날짜는 CSP 청구 기준(UTC)으로 집계됩니다. 화면의 시각 표시는 브라우저 시간대로 바꿔 보여줄 뿐 집계를 바꾸지 않습니다.") + "</dl>");
           break;
         case "open-forecast-dialog":
-          openDialog("예측 방법", '<p>방법: 이번 달 1일부터 어제(UTC)까지의 실측 비용 ÷ 경과일 × 이달 총일수(<code>mtd_prorated</code>).</p>' +
-            '<p class="note">대상 계정(실측 지원·현재 조건 안) 전부가 그 기간을 빠짐없이 수집 확인했을 때만 계산합니다. 하루라도 빠지면 0원으로 채우지 않고 전망을 내지 않습니다. 이번 달 1일부터 오늘까지를 조회할 때만 제공하며, 저장하지 않는 값입니다.</p>');
+          openDialog("예측 방법", '<p>방법: 이번 달 1일부터 어제(UTC)까지 실제로 수집된 날짜의 실측 비용 합계 ÷ 오늘까지의 경과일(달력 기준) × 이달 총일수(<code>mtd_prorated</code>).</p>' +
+            '<p class="note">수집되지 않은 날은 0원으로 채우지 않고 합계에서 그냥 뺍니다. 대상 계정 중 일부가 이달 수집을 빠짐없이 마치지 못했어도 계산 자체는 막지 않으며, 그 경우 어느 계정에서 며칠이 빠졌는지 안내가 함께 표시됩니다. 이번 달 1일부터 오늘까지를 조회할 때만 제공하며, 저장하지 않는 값입니다.</p>');
           break;
         case "open-setup-dialog": {
           var st = btn.getAttribute("data-status");

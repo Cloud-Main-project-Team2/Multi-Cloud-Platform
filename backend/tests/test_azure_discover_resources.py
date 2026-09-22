@@ -84,10 +84,19 @@ def test_discovers_vm_storage_and_sql(monkeypatch):
     assert by_key[("sql_database", "mcp-pg-9")].original_resource_type == "Azure Database for PostgreSQL"
     assert by_key[("sql_database", "mcp-mssql-10")].original_resource_type == "Azure SQL Database"
 
+    # 2026-09-22 수정: SQL Database도 VM처럼 비용 추정용 spec(engine/region)을 채운다 — 이전엔
+    # 빈 dict라 동기화로 발견한 Azure DB는 항상 "정가 추정 불가"였다(app/pricing.py 참고).
+    assert by_key[("sql_database", "mcp-db-8")].spec == {"engine": "MySQL", "region": "koreacentral"}
+    assert by_key[("sql_database", "mcp-pg-9")].spec == {"engine": "PostgreSQL", "region": "eastus"}
+    assert by_key[("sql_database", "mcp-mssql-10")].spec == {"engine": "SQL Server", "region": "eastus"}
+    # Storage는 정가표에 없는 사용량 기반 서비스라 spec을 안 채운다(기존 동작 유지).
+    assert storage.spec == {}
+
     cdn = by_key[("cdn", "mcp-cdn01-11-fd-profile")]
     assert cdn.original_resource_type == "Microsoft.Cdn/profiles"
     assert cdn.region is None  # 전역 리소스
     assert cdn.status == "DEPLOYED"
+    assert cdn.spec == {}
 
     # disks/generic VM/afdEndpoints 행은 걸러졌다 — 총 6건(VM 1 + Storage 1 + SQL 3 + CDN 1).
     assert len(result) == 6

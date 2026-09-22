@@ -238,6 +238,33 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 /* 계정별 비용 및 수집 상태 — 데스크톱 표 */
 .account-table th, .account-table td { padding: 9px 8px; vertical-align: middle; }
 .account-table td.num { font-weight: 650; }
+/* "행동" 버튼은 옆 칼럼들이 넓어지며 좁아져도 여러 줄로 깨지지 않는다 — 표가 컨테이너보다
+   넓어지면 .table-wrap이 가로 스크롤을 대신 낸다(이미 있는 패턴). */
+.account-table td.actions .btn { white-space: nowrap; }
+/* CF-018 계정별 비용 표 — auto 표 레이아웃에서는 칸 하나를 내용 폭으로 줄일 때마다(계정→
+   행동→기간 비용 순으로 시도) "표는 항상 컨테이너 폭 100%를 채워야 한다"는 규칙 때문에 그
+   남는 폭이 매번 옆의 다른 칸으로 옮겨붙었다(계정↔기간 비용, 기간 비용↔비중 사이가 번갈아
+   벌어짐). table-layout:fixed로 바꿔 다섯 칸 모두 고정 rem 폭을 주더라도, 표 자체의 width가
+   여전히 100%(공용 table 규칙)면 그 다섯 폭의 합보다 컨테이너가 넓을 때 브라우저가 남는 폭을
+   다시 칼럼들에 나눠 줘 버린다 — width:auto로 바꿔도 마찬가지였다(이 표의 shrink-to-fit
+   계산이 기대와 달리 컨테이너 폭에 그대로 맞춰졌다). 그래서 표 폭 자체를 다섯 칼럼 합계와
+   똑같은 절대값(62rem)으로 못박는다 — 컨테이너가 이보다 넓어도 표는 62rem 그대로이고, 더
+   좁으면 늘 있던 .table-wrap 가로 스크롤로 넘어간다(칸이 짓눌리지 않는다). */
+.account-cost-table { table-layout: fixed; width: 62rem; }
+.account-cost-table .account-name-cell { width: 17rem; white-space: nowrap; }
+.account-cost-table .account-period-cell { width: 12rem; }
+.account-cost-table .account-share-col { width: 20rem; }
+.account-cost-table .account-team-cell { width: 4rem; white-space: nowrap; }
+.account-cost-table .account-actions-cell { width: 9rem; white-space: nowrap; }
+/* CF-018 계정별 비용 — 헤더는 기본이 왼쪽 정렬이라 오른쪽 정렬인 금액 칸과 제목 위치가 어긋나
+   보였다. td.num처럼 헤더도 num을 붙이면 오른쪽 기준으로 맞는다(값이 없는 다른 account-table
+   헤더는 num을 안 붙이므로 영향 없음). */
+.account-table th.num { text-align: right; }
+/* "비중" 칸 — 바를 퍼센트 왼쪽에 두는 한 줄 배치(inline-flex). 퍼센트는 고정 폭(.pct-value)으로
+   예약해 둬서 칼럼이 좁아져도 잘리거나 바와 겹치지 않는다. */
+.account-share-cell { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; width: 100%; }
+.account-share-cell .pct-value { display: inline-block; min-width: 3.4em; text-align: right; }
+.account-table .account-share-cell .bar-track { max-width: 140px; flex: 1 1 auto; margin-top: 0; }
 .provider-cell { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; vertical-align: middle; }
 .provider-logo { height: 14px; width: auto; flex: none; }
 .account-table .status-cell { display: flex; flex-direction: column; gap: 2px; }
@@ -253,6 +280,17 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 /* 준비 중 블록은 KPI와 같은 덩치로 반복하지 않는다 */
 .pending-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-foreground); padding: 6px 0; }
 
+/* CF-007 Owner 미지정 리소스 모달 — "정가 추정" 칼럼이 .changes-table td.num의 white-space:
+   nowrap을 그대로 물려받아 "정가표에 없음 — 카드 금액에 미포함(0원 아님)" 한 문장이 한 줄로
+   퍼지면서 옆 "행동" 칼럼(인벤토리에서 보기 버튼)이 밀려 깨졌다. price-unknown은 JS에서 이미
+   <br>로 "정가표에 없음" / "카드 금액에 미포함(0원 아님)" 두 줄로 고정해 보내므로, 여기서는
+   그 줄바꿈이 실제로 적용되게 nowrap을 풀어주고 칼럼 폭에 상한만 둔다. 13rem은 2번째 줄(가장
+   긴 줄, 실측 188px + 좌우 패딩 18px)이 한 줄에 다 들어가고도 옆 칼럼에 여유가 남는 값이다 —
+   이보다 좁으면 "아님)"이 세 번째 줄로 밀려 다시 깨진다. 버튼은 폭이 줄어도 항상 한 줄로 남긴다. */
+.unassigned-table th:nth-child(3), .unassigned-table td:nth-child(3) { max-width: 13rem; }
+.unassigned-table .price-unknown { white-space: normal; display: inline-block; }
+.unassigned-table td.actions .btn { white-space: nowrap; }
+
 /* 모바일: 표를 세로 카드로 */
 @media (max-width: 720px) {
   .summary-bar .button-row { margin-left: 0; width: 100%; }
@@ -264,6 +302,18 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
   .account-table td.actions { justify-content: flex-start; padding-top: 8px; }
   .account-table td.actions::before { content: none; }
   .filter-grid .filter-box { flex: 1 1 140px; }
+  /* CF-018 표는 데스크톱에서만 table-layout:fixed·칼럼별 고정 rem 폭을 쓴다(카드 레이아웃까지
+     새어 들어가면 각 칸이 좁은 카드 폭보다 넓은 rem 값을 그대로 고집해 "prod-aws-01"·결측
+     안내·버튼이 카드 밖으로 넘친다). 카드 레이아웃에서는 tr/td가 block·flex이므로 표 자체는
+     auto로 되돌리고, 칸별 폭·nowrap도 모두 되돌린다 — 데스크톱 규칙(.account-cost-table
+     .xxx-cell)과 명시도를 맞춰야 이 규칙이 실제로 이긴다(클래스 하나짜리로는 미디어쿼리
+     안이어도 안 이긴다). */
+  .account-cost-table { table-layout: auto; width: 100%; }
+  .account-cost-table .account-name-cell { width: auto; white-space: normal; }
+  .account-cost-table .account-period-cell { width: auto; }
+  .account-cost-table .account-share-col { width: auto; }
+  .account-cost-table .account-team-cell { width: auto; white-space: normal; }
+  .account-cost-table .account-actions-cell { width: auto; white-space: normal; }
 }
 
 /* ═══ ② 비용 분석 탭 (2026-09-21) ═══ */
@@ -313,6 +363,13 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 .budget-form[open] > summary::after { content: " ▴"; }
 .budget-form .filter-grid { margin-top: 10px; }
 .budget-form .filter-grid .filter-box { flex: 1 1 120px; }
+/* CF-025 예산 설정 표 — 첫 칼럼은 "주기"(월간·분기·연간·사용자 지정 4종뿐)라 짧다. 공용
+   .changes-table의 첫 칼럼 min-width: 9rem은 원래 리소스·서비스 이름처럼 긴 텍스트용이라,
+   이 표에 그대로 두면 팀 생성 후 값이 채워질 때 적용 시작·종료·한도·상태 칼럼이 좁아져
+   글자가 깨진다 — 이 표만 첫 칼럼 폭을 내용에 맞게 줄인다(다른 칼럼 폭은 그대로 둔다). */
+#CF-025 .changes-table td:first-child, #CF-025 .changes-table th:first-child {
+  min-width: 0; width: 1%; white-space: nowrap;
+}
 /* ③ 마무리(2026-09-21): 팀 삭제 확인 박스·상태 태그가 status-list 안에서도 정렬되게 */
 #team-delete-confirm { margin-top: 10px; }
 .status-list .status-tag { justify-content: flex-end; }

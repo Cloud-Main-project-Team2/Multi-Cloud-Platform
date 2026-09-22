@@ -396,9 +396,18 @@ def discover_resources(secret_payload: dict, project_id: str) -> list:
 
 
 def list_network_resources(secret_payload: dict, project_id: str) -> dict:
-    """프로비저닝 폼의 "기존 리소스 사용"에서 실제 VPC 네트워크 목록을 보여주기 위한 조회 전용
-    API(2026-09-17). GCP 네트워크는 전역(global) 리소스라 AWS(리전 필요)와 달리 region 파라미터가
-    없다. 실패 시 빈 목록이 아니라 예외를 올린다(app/providers/aws.py와 동일 원칙)."""
+    """프로비저닝 폼의 "기존 리소스 사용"에서 실제 VPC 네트워크·Storage 버킷 목록을 보여주기 위한
+    조회 전용 API(2026-09-17, 버킷은 2026-09-22 추가). GCP 네트워크는 전역(global) 리소스라
+    AWS(리전 필요)와 달리 region 파라미터가 없다. 실패 시 빈 목록이 아니라 예외를 올린다
+    (app/providers/aws.py와 동일 원칙).
+
+    **버킷을 여기에 같이 담는 이유**: 이름이 "네트워크"지만, 실제로는 "프로비저닝 폼이 기존
+    리소스를 골라 재사용할 때 쓰는 조회 전용 API"라는 게 이 엔드포인트의 진짜 역할이다(Azure의
+    resource_groups도 엄밀히는 네트워크가 아니지만 이미 여기 들어있다). CDN "기존 버킷 연결"
+    필드가 지금까지 자유 텍스트 입력이라 사용자가 버킷 이름을 직접 타이핑해야 했는데
+    (2026-09-22 실사용 중 발견), discover_resources()가 이미 같은 REST 호출로 버킷을 조회하고
+    있어 그 로직을 재사용한다 — 새 엔드포인트를 따로 만드는 대신 기존 "실제 목록 불러오기"
+    드롭다운 프레임워크(frontend의 EXISTING_RESOURCE_FIELDS/EXISTING_FIELD_SOURCES)에 얹는다."""
     from app.resource_actions import ResourceActionError
 
     try:
@@ -408,10 +417,18 @@ def list_network_resources(secret_payload: dict, project_id: str) -> dict:
             {"name": n.name, "self_link": n.self_link, "auto_create_subnetworks": n.auto_create_subnetworks}
             for n in client.list(project=project_id)
         ]
-    except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError) as exc:
+
+        session = AuthorizedSession(credentials.with_scopes(_CLOUD_PLATFORM_SCOPE))
+        resp = session.get(f"https://storage.googleapis.com/storage/v1/b?project={project_id}")
+        resp.raise_for_status()
+        buckets = [
+            {"name": b["name"], "location": (b.get("location") or "").lower()}
+            for b in resp.json().get("items", [])
+        ]
+    except (GoogleAuthError, GoogleAPICallError, ValueError, KeyError, requests.RequestException) as exc:
         raise ResourceActionError("PROVIDER_API_ERROR") from exc
 
-    return {"networks": networks}
+    return {"networks": networks, "buckets": buckets}
 
 
 def _firewall_rule_out(f) -> dict:
