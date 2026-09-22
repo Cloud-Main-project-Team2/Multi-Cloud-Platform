@@ -1310,8 +1310,10 @@ window.MCPCost = (function () {
     if (!incRows.length && !decRows.length && !noPrev.length) {
       return { state: "CONNECTED_OK", html: '<p class="note">두 기간 모두 비교할 실측 항목이 없습니다.</p>' };
     }
-    var head = '<thead><tr><th scope="col">서비스</th><th scope="col" class="num">이전(' + esc(prev.start) + "~" + esc(prev.end) + ')</th><th scope="col" class="num">현재(' + esc(cur.start) + "~" + esc(cur.end) + ')</th><th scope="col" class="num">증가액</th><th scope="col" class="num">증가율</th></tr></thead>';
-    var html = '<p class="note">' + esc(d.currency || "") + " · 사용료 기준(요금 분류 필터 미적용) · 증가액 내림차순 · 증가율은 이전 금액 대비 비율(증가액과 다른 정보)" +
+    // 열 이름에 두 기간을 통째로 적으면 반폭 카드에서 표가 넘쳐 가로로 스크롤된다(4단계 실측 120px).
+    // 날짜는 블록 안내 줄에 한 번만 적고, 열 이름은 "이전/현재"로 두되 각 열의 title에 정확한 범위를 남긴다.
+    var head = '<thead><tr><th scope="col">서비스</th><th scope="col" class="num" title="' + esc(prev.start) + " ~ " + esc(prev.end) + '">이전</th><th scope="col" class="num" title="' + esc(cur.start) + " ~ " + esc(cur.end) + '">현재</th><th scope="col" class="num">증가액</th><th scope="col" class="num">증가율</th></tr></thead>';
+    var html = '<p class="note">이전 ' + esc(prev.start) + "~" + esc(prev.end) + " · 현재 " + esc(cur.start) + "~" + esc(cur.end) + " · " + esc(d.currency || "") + " · 사용료 기준(요금 분류 필터 미적용) · 증가액 내림차순 · 증가율은 이전 금액 대비 비율(증가액과 다른 정보)" +
       ((d.increases || []).concat(d.decreases || [], d.new_items || []).some(function (it) { return it.key === "__unallocated__"; }) ? " · \"미분류\"는 서비스가 지정되지 않은 금액으로 합계에 포함(상위 항목 밖 \"기타\"와 다름)" : "") + "</p>" +
       '<div class="table-wrap"><table class="changes-table">' + head + "<tbody>" +
       (incRows.length ? incRows.join("") : '<tr><td colspan="5" class="tiny muted">이전 기간보다 늘어난 서비스가 없습니다</td></tr>') +
@@ -1459,7 +1461,7 @@ window.MCPCost = (function () {
       if (a.actual != null) return confirmed.push({ a: a, amount: a.actual, partial: !!(cov && cov.missing_count) });
       if (cov && cov.days > 0 && cov.missing_count === 0) return confirmed.push({ a: a, amount: "0.000000", zero: true });
       if (!cov) return unknown.push({ a: a, why: S.kind(a.status) === "unsupported" ? S.exclusionLabel("UNSUPPORTED") : (S.label(a.status) || "확인 불가") });
-      if (cov.covered > 0) return unknown.push({ a: a, why: cov.missing_count + "일 미수집(확인된 날은 0원)" });
+      if (cov.covered > 0) return unknown.push({ a: a, why: cov.missing_count + "일 미수집" });
       unknown.push({ a: a, why: cov.days === 0 ? "완료된 날 없음" : S.exclusionLabel("PERIOD_NOT_COVERED") });
     });
     // 통화별 묶음 — 같은 통화 안에서만 내림차순·비중

@@ -286,7 +286,9 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 
 /* 증가액 표 — 서비스명 열은 줄바꿈, 숫자 열은 오른쪽 정렬·고정폭 숫자 */
 .changes-table td.num, .changes-table th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.changes-table td:first-child { min-width: 9rem; overflow-wrap: normal; word-break: keep-all; }  /* 좁은 화면에서 이름이 한 글자씩 세로로 찌그러지지 않게 — 넘치면 .table-wrap 안에서 가로 스크롤 */
+.changes-table td:first-child { min-width: 9rem; word-break: keep-all; overflow-wrap: anywhere; }
+/* 한글 단어는 통째로(keep-all), 끊을 데 없는 긴 영문 서비스명(AmazonCloudFront 등)만 접는다 —
+   4단계 실측: 반폭 카드에서 표가 120px 넘쳐 가로로 스크롤되던 것을 줄인다. 그래도 넘치면 .table-wrap 안에서만 스크롤된다. */
 .sub-amount { display: block; font-size: 11px; color: var(--muted-foreground); }
 
 /* 집계 단위 토글 — 눌린 버튼 */
