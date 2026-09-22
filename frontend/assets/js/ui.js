@@ -269,8 +269,30 @@
     });
   }
 
+  // 📁 프로비저닝 하위 보안그룹 메뉴 — 화살표 클릭으로 토글, 그룹 내 항목이 active면
+  // (프로비저닝/보안그룹 페이지) 클릭 없이도 펼쳐진 상태로 시작한다.
+  function initSidebarNavGroups() {
+    document.querySelectorAll(".nav-group[data-nav-group]").forEach(function (group) {
+      var toggle = group.querySelector(".nav-group__toggle");
+      var submenu = group.querySelector(".nav-group__submenu");
+      if (!toggle || !submenu) return;
+
+      function setOpen(open) {
+        submenu.classList.toggle("hidden", !open);
+        group.classList.toggle("nav-group--open", open);
+        toggle.setAttribute("aria-expanded", String(open));
+      }
+
+      setOpen(!!group.querySelector(".nav-item.active"));
+      toggle.addEventListener("click", function () {
+        setOpen(submenu.classList.contains("hidden"));
+      });
+    });
+  }
+
   injectServiceName();
   syncThemeIcons();
   initNotifications();
   initLangDropdown();
+  initSidebarNavGroups();
 })();

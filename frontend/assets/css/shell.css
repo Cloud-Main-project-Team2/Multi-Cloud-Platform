@@ -28,6 +28,20 @@
 .nav-item:hover .nav-ico, .nav-item.active .nav-ico{ opacity:1; }
 .sidebar__utils .bell-ico{ flex:0 0 auto; }
 
+/* 프로비저닝 하위에 보안그룹을 묶는 접이식 그룹(nav-group) — 화살표 클릭 또는 그룹 내 항목이
+   active일 때(프로비저닝/보안그룹 페이지) 자동으로 펼쳐진다. 초기화는 ui.js의 initSidebarNavGroups(). */
+.nav-group__row{ display:flex; align-items:stretch; gap:.15rem; }
+.nav-group__link{ flex:1 1 auto; min-width:0; }
+.nav-group__toggle{
+  display:grid; place-items:center; flex:0 0 auto; width:2rem; margin:0; padding:0;
+  border:0; background:transparent; color:#c3d2e0; cursor:pointer; border-radius:.55rem;
+}
+.nav-group__toggle:hover{ background:rgba(255,255,255,.07); color:#fff; }
+.nav-group__chevron{ transition:transform .15s ease; }
+.nav-group--open .nav-group__chevron{ transform:rotate(180deg); }
+.nav-group__submenu{ display:flex; flex-direction:column; gap:.15rem; padding-left:.9rem; margin-top:.1rem; }
+.nav-item--sub{ font-size:.85rem; }
+
 /* 확장 기능(비용 관리·보고서 작성)을 기본 메뉴와 구분하는 은은한 하늘색 구분선 */
 .sidebar__divider{ margin:.6rem .9rem; height:1px; border:0;
   background:linear-gradient(90deg, transparent, rgba(86,165,221,.45), transparent); }
