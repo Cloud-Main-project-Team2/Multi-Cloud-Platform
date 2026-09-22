@@ -196,8 +196,11 @@
     function load() {
       if (!api || !api.request) { render([]); setBadge(0); return; }
       api.request("/notifications")
-        .then(function (resp) {
-          var data = (resp && resp.data) || {};
+        .then(function (data) {
+          // MCPApi.request()는 이미 응답 envelope의 data 필드까지 풀어서 반환한다
+          // (rawRequest가 `return json.data`) — 여기서 다시 .data를 또 벗기면 항상
+          // undefined가 돼 목록이 늘 비어 보인다(실제로 있던 버그, 4차 항목 2에서 발견).
+          data = data || {};
           render(data.items || []);
           setBadge(data.unread_count || 0);
         })
