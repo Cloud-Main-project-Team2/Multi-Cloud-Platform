@@ -14,7 +14,15 @@ import datetime as dt
 import pytest
 
 import app.routers.sync_jobs as sync_jobs_router
-from app.models import CloudAccount, Credential, Resource, ResourceSyncJob, ResourceSyncJobItem, ServiceCatalog
+from app.models import (
+    CloudAccount,
+    Credential,
+    Notification,
+    Resource,
+    ResourceSyncJob,
+    ResourceSyncJobItem,
+    ServiceCatalog,
+)
 from app.resource_sync import DiscoveredResource, SyncError
 from app.security.credential_crypto import encrypt_credential_json
 
@@ -330,6 +338,45 @@ def test_process_sync_item_maps_sync_error(db_session, make_user, monkeypatch):
 
     assert item.status == "failed"
     assert item.error_code == "PROVIDER_API_ERROR"
+
+
+def test_create_sync_notification_success_and_failure(db_session, make_user):
+    """동기화 완료 알림(4차 항목 2) — inventory.js 폴링은 페이지를 벗어나면 끊기므로, 종결 시
+    알림함에 남는 row가 유일한 완료 통지 통로다."""
+    user = make_user()
+    account = _make_account(db_session, user, "aws", "111122223333")
+    job = ResourceSyncJob(user_id=user.id, status="success", requested_at=dt.datetime.now(dt.timezone.utc))
+    db_session.add(job)
+    db_session.flush()
+    item = ResourceSyncJobItem(
+        sync_job_id=job.id, cloud_account_id=account.id, provider="aws", status="success",
+        resources_discovered=3, resources_created=1, resources_updated=2,
+    )
+    db_session.add(item)
+    db_session.flush()
+
+    sync_jobs_router._create_sync_notification(db_session, job, [item])
+    db_session.commit()
+
+    notif = db_session.query(Notification).filter_by(user_id=user.id, type="resource_sync_succeeded").one()
+    assert notif.reference_type == "resource_sync_job"
+    assert notif.reference_id == job.id
+    assert notif.message_params == {"job_id": str(job.id), "discovered": 3, "created": 1, "updated": 2}
+
+    job2 = ResourceSyncJob(user_id=user.id, status="failed", requested_at=dt.datetime.now(dt.timezone.utc))
+    db_session.add(job2)
+    db_session.flush()
+    item2 = ResourceSyncJobItem(
+        sync_job_id=job2.id, cloud_account_id=account.id, provider="aws", status="failed", error_message="boom",
+    )
+    db_session.add(item2)
+    db_session.flush()
+
+    sync_jobs_router._create_sync_notification(db_session, job2, [item2])
+    db_session.commit()
+
+    notif2 = db_session.query(Notification).filter_by(user_id=user.id, type="resource_sync_failed").one()
+    assert notif2.message_params["reason"] == "boom"
 
 
 def test_aggregate_status_partial_success():

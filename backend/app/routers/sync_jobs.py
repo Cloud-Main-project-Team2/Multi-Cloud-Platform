@@ -14,6 +14,7 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends
 from sqlalchemy.orm import Session
@@ -23,7 +24,16 @@ from app.db import SessionLocal, get_db
 from app.deps import get_current_user
 from app.errors import ApiError, validation_error
 from app.logging_config import log_background_task, log_business_event
-from app.models import CloudAccount, Credential, Resource, ResourceSyncJob, ResourceSyncJobItem, ServiceCatalog, User
+from app.models import (
+    CloudAccount,
+    Credential,
+    Notification,
+    Resource,
+    ResourceSyncJob,
+    ResourceSyncJobItem,
+    ServiceCatalog,
+    User,
+)
 from app.resource_sync import DiscoveredResource, SyncError, discover_resources
 from app.schemas.errors import explanation_for, specific_reason_for
 from app.schemas.sync_jobs import (
@@ -293,6 +303,36 @@ def _process_sync_item(db: Session, item: ResourceSyncJobItem, account: CloudAcc
     db.commit()
 
 
+def _create_sync_notification(db: Session, job: ResourceSyncJob, items: list[ResourceSyncJobItem]) -> None:
+    """동기화 종결 시 알림함(§ 벨)에 완료 안내를 남긴다 — inventory.js 폴링은 페이지에 종속돼
+    사용자가 화면을 벗어나면 끊기므로(item 2), 완료 시점을 페이지와 무관하게 알리는 유일한 통로다."""
+    failed_items = [i for i in items if i.status == "failed"]
+    params: dict[str, Any] = {
+        "job_id": str(job.id),
+        "discovered": sum(i.resources_discovered for i in items),
+        "created": sum(i.resources_created for i in items),
+        "updated": sum(i.resources_updated for i in items),
+    }
+    if job.status == "failed":
+        if failed_items and failed_items[0].error_message:
+            params["reason"] = failed_items[0].error_message
+        notif_type, message_key = "resource_sync_failed", "notif.resource_sync.failed"
+    else:
+        if job.status == "partial_success":
+            params["failed_count"] = len(failed_items)
+        notif_type, message_key = "resource_sync_succeeded", "notif.resource_sync.succeeded"
+    db.add(
+        Notification(
+            user_id=job.user_id,
+            type=notif_type,
+            reference_type="resource_sync_job",
+            reference_id=job.id,
+            message_key=message_key,
+            message_params=params,
+        )
+    )
+
+
 def _run_sync_job(job_id: int) -> None:
     # 요청 사이클 밖(BackgroundTasks)이라 전역 예외 핸들러가 닿지 않는다 — 여기서 감싸지 않으면
     # 동기화 도중 터진 예외가 로그에 한 줄도 남지 않는다.
@@ -341,6 +381,7 @@ def _run_sync_job_inner(job_id: int) -> None:
             _CANCEL_REQUESTED.discard(job_id)
         else:
             job.status = _aggregate_status([i.status for i in items])
+            _create_sync_notification(db, job, items)
         job.finished_at = dt.datetime.now(dt.timezone.utc)
         db.commit()
     finally:

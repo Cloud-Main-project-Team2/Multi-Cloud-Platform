@@ -23,7 +23,7 @@ from app.db import get_db
 from app.deps import get_current_user
 from app.errors import ApiError, validation_error
 from app.logging_config import log_business_event
-from app.models import ReportDeliverySetting, ReportGeneration, User
+from app.models import Notification, ReportDeliverySetting, ReportGeneration, User
 from app.report_cost import build_cost_snapshot
 from app.schemas.reports import (
     ReportGenerationCreate,
@@ -187,9 +187,40 @@ def create_report_generation(
         )
         .returning(ReportGeneration.id)
     )
-    row_id = db.execute(stmt).scalar_one()
-    db.commit()
+    # 완료 알림 — "생성하기"가 요청/응답 안에서 즉시 끝나 별도 job이 없으므로(item 2), 사용자가
+    # 결과 탭을 기다리지 못하고 페이지를 벗어나도 알림함에서 확인할 수 있게 성공/실패를 함께 남긴다.
+    params: dict = {
+        "period_type": payload.period_type, "period_from": payload.period_from, "period_to": payload.period_to,
+    }
+    try:
+        row_id = db.execute(stmt).scalar_one()
+    except Exception:
+        db.rollback()
+        db.add(
+            Notification(
+                user_id=current_user.id,
+                type="report_generation_failed",
+                reference_type="report_generation",
+                reference_id=None,
+                message_key="notif.report.failed",
+                message_params=params,
+            )
+        )
+        db.commit()
+        raise
+
     row = db.get(ReportGeneration, row_id)
+    db.add(
+        Notification(
+            user_id=current_user.id,
+            type="report_generated",
+            reference_type="report_generation",
+            reference_id=row.id,
+            message_key="notif.report.succeeded",
+            message_params=params,
+        )
+    )
+    db.commit()
     return ReportGenerationResponse(data=_serialize_generation(row))
 
 

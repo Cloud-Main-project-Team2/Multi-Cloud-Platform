@@ -117,8 +117,9 @@
       return { icon: ok, title: "프로비저닝 완료", desc: (resource ? resource + " " : "") + "생성이 완료되었습니다.", href: href };
     }
     if (n.type === "provisioning_failed") {
-      var reason = p.reason ? " · " + p.reason : "";
-      return { icon: bad, title: "프로비저닝 실패", desc: (resource ? resource + " " : "") + "생성에 실패했습니다." + reason, href: href };
+      // 실패 사유(reason)는 terraform/CSP 원문 에러가 그대로 들어와 길고 기술적이라 벨에는
+      // 띄우지 않는다 — 자세한 내용은 프로비저닝 화면(href)에서 확인한다.
+      return { icon: bad, title: "프로비저닝 실패", desc: (resource ? resource + " " : "") + "생성에 실패했습니다.", href: href };
     }
     // 비용 파트 알림 2종(PR 7·8) — 문구는 message_params로 만들고 비용 화면으로 보낸다.
     if (n.type === "budget_threshold") {
@@ -127,6 +128,26 @@
     if (n.type === "cost_anomaly") {
       var pct = p.delta_pct == null ? "신규 비용 발생" : "+" + p.delta_pct + "%";
       return { icon: bad, title: "비용 급증 · 원인 확인 필요", desc: (p.service || "") + " " + (p.date || "") + " · +" + (p.delta || "") + " " + (p.currency || "") + " (" + pct + ")", href: "cost.html#CF-034" };
+    }
+    // 리소스 조회(동기화)·비용 새로고침(수집)·보고서 작성 완료 알림(4차 항목 2) — 각각 페이지에
+    // 종속된 폴링만 있어 화면을 벗어나면 완료를 놓치던 세 기능을 벨로 보완한다.
+    if (n.type === "resource_sync_succeeded") {
+      return { icon: ok, title: "리소스 조회 완료", desc: "새로 발견 " + (p.discovered || 0) + "건 · 생성 " + (p.created || 0) + "건 · 갱신 " + (p.updated || 0) + "건", href: "inventory.html" };
+    }
+    if (n.type === "resource_sync_failed") {
+      return { icon: bad, title: "리소스 조회 실패", desc: "일부 계정에서 조회에 실패했습니다.", href: "inventory.html" };
+    }
+    if (n.type === "cost_ingestion_succeeded") {
+      return { icon: ok, title: "비용 새로고침 완료", desc: (p.account_name || p.provider || "계정") + " · 갱신 " + (p.records_replaced || 0) + "건", href: "cost.html" };
+    }
+    if (n.type === "cost_ingestion_failed") {
+      return { icon: bad, title: "비용 새로고침 실패", desc: (p.account_name || p.provider || "계정") + " 새로고침에 실패했습니다.", href: "cost.html" };
+    }
+    if (n.type === "report_generated") {
+      return { icon: ok, title: "보고서 생성 완료", desc: (p.period_from || "") + " ~ " + (p.period_to || ""), href: n.reference_id ? "report-view.html?id=" + n.reference_id : "reports.html" };
+    }
+    if (n.type === "report_generation_failed") {
+      return { icon: bad, title: "보고서 생성 실패", desc: (p.period_from || "") + " ~ " + (p.period_to || "") + " 생성에 실패했습니다.", href: "reports.html" };
     }
     return { icon: ok, title: n.type || "알림", desc: n.message_key || "", href: href };
   }
@@ -146,17 +167,16 @@
     pop.setAttribute("aria-label", "알림");
     utils.appendChild(pop);
 
-    var unread = 0;
-
     function setBadge(count) {
-      unread = count;
       if (!badge) return;
       if (count > 0) { badge.textContent = count > 99 ? "99+" : count; badge.style.display = ""; }
       else { badge.style.display = "none"; }
     }
 
     function render(items) {
-      var head = '<div class="notif-pop__head">알림 <span class="notif-pop__count">' + items.length + "</span></div>";
+      var head = '<div class="notif-pop__head">알림 <span class="notif-pop__count">' + items.length + "</span>" +
+        (items.length ? '<button type="button" class="notif-pop__clear-all" data-notif-clear-all>모두 지우기</button>' : "") +
+        "</div>";
       if (!items.length) {
         pop.innerHTML = head + '<div class="notif-pop__empty" style="padding:1rem;font-size:.8rem;color:var(--muted-foreground)">새 알림이 없습니다.</div>';
         return;
@@ -164,21 +184,48 @@
       pop.innerHTML = head + '<ul class="notif-pop__list">' +
         items.map(function (n) {
           var m = notifMeta(n);
-          return '<li><a class="notif-pop__item" href="' + m.href + '">' +
+          return '<li class="notif-pop__row">' +
+            '<a class="notif-pop__item" href="' + m.href + '">' +
             '<span class="notif-pop__icon">' + m.icon + "</span>" +
             '<span class="notif-pop__body">' +
             '<span class="notif-pop__title">' + escHtml(m.title) + "</span>" +
             '<span class="notif-pop__desc">' + escHtml(m.desc) + "</span>" +
             '<span class="notif-pop__time">' + escHtml(relTime(n.created_at)) + "</span>" +
-            "</span></a></li>";
+            "</span></a>" +
+            '<button type="button" class="notif-pop__delete" data-notif-delete="' + n.id + '" aria-label="알림 삭제">' + ICONS.x + "</button>" +
+            "</li>";
         }).join("") + "</ul>";
     }
+
+    // 삭제(개별·전체) — 목록이 render()로 매번 새로 그려지므로 델리게이션으로 pop 하나에만 건다.
+    pop.addEventListener("click", function (e) {
+      var delBtn = e.target.closest("[data-notif-delete]");
+      if (delBtn) {
+        e.preventDefault();
+        e.stopPropagation();
+        var id = delBtn.getAttribute("data-notif-delete");
+        if (api && api.request) {
+          api.request("/notifications/" + id, { method: "DELETE" }).then(load).catch(function () {});
+        }
+        return;
+      }
+      if (e.target.closest("[data-notif-clear-all]")) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (api && api.request) {
+          api.request("/notifications", { method: "DELETE" }).then(load).catch(function () {});
+        }
+      }
+    });
 
     function load() {
       if (!api || !api.request) { render([]); setBadge(0); return; }
       api.request("/notifications")
-        .then(function (resp) {
-          var data = (resp && resp.data) || {};
+        .then(function (data) {
+          // MCPApi.request()는 이미 응답 envelope의 data 필드까지 풀어서 반환한다
+          // (rawRequest가 `return json.data`) — 여기서 다시 .data를 또 벗기면 항상
+          // undefined가 돼 목록이 늘 비어 보인다(실제로 있던 버그, 4차 항목 2에서 발견).
+          data = data || {};
           render(data.items || []);
           setBadge(data.unread_count || 0);
         })
@@ -188,17 +235,23 @@
     // 초기 배지: 정적 마크업의 하드코딩 값 대신 실제 미확인 개수 반영 전까지 숨긴다.
     setBadge(0);
     load();
+    // 페이지를 열어 둔 채로 프로비저닝/동기화/비용 새로고침/보고서가 끝나는 경우가 있어
+    // (item 2) 최초 1회 로드만으로는 완료 안내를 놓친다 — 가볍게 주기적으로 다시 불러온다.
+    setInterval(load, 20000);
 
     bell.style.cursor = "pointer";
     bell.addEventListener("click", function (e) {
       e.stopPropagation();
       var opening = pop.classList.contains("hidden");
       pop.classList.toggle("hidden");
-      // 열 때: 미확인이 있으면 읽음 처리해 배지를 0으로.
-      if (opening && unread > 0 && api && api.request) {
-        api.request("/notifications/read-all", { method: "POST" })
-          .then(function () { setBadge(0); })
-          .catch(function () {});
+      if (opening) {
+        // 열 때마다 최신 목록을 다시 불러온 뒤(주기적 폴링 사이에 새로 생겼을 수 있음) 읽음 처리한다.
+        load();
+        if (api && api.request) {
+          api.request("/notifications/read-all", { method: "POST" })
+            .then(function () { setBadge(0); })
+            .catch(function () {});
+        }
       }
     });
     document.addEventListener("click", function (e) {
@@ -269,8 +322,30 @@
     });
   }
 
+  // 📁 프로비저닝 하위 보안그룹 메뉴 — 화살표 클릭으로 토글, 그룹 내 항목이 active면
+  // (프로비저닝/보안그룹 페이지) 클릭 없이도 펼쳐진 상태로 시작한다.
+  function initSidebarNavGroups() {
+    document.querySelectorAll(".nav-group[data-nav-group]").forEach(function (group) {
+      var toggle = group.querySelector(".nav-group__toggle");
+      var submenu = group.querySelector(".nav-group__submenu");
+      if (!toggle || !submenu) return;
+
+      function setOpen(open) {
+        submenu.classList.toggle("hidden", !open);
+        group.classList.toggle("nav-group--open", open);
+        toggle.setAttribute("aria-expanded", String(open));
+      }
+
+      setOpen(!!group.querySelector(".nav-item.active"));
+      toggle.addEventListener("click", function () {
+        setOpen(submenu.classList.contains("hidden"));
+      });
+    });
+  }
+
   injectServiceName();
   syncThemeIcons();
   initNotifications();
   initLangDropdown();
+  initSidebarNavGroups();
 })();
