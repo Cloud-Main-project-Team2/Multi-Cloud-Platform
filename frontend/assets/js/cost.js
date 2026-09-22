@@ -2459,7 +2459,13 @@ window.MCPCost = (function () {
       var cs = r.cost_summary || {};
       var ca = r.cloud_account || {};
       var acct = ca.account_label || ca.external_account_id || accountLabelOf(ca.id);   // 내부 id가 아니라 사람이 아는 계정 이름/외부 식별자
-      var price = cs.estimated_monthly_cost != null ? esc(F.money(cs.estimated_monthly_cost, cs.currency || "USD")) + " /월" : '—<br><span class="tiny muted">정가표에 없음 — 카드 금액에 미포함(0원 아님)</span>';
+      // 정가 없음 문구는 "정가표에 없음" / "카드 금액에 미포함(0원 아님)" 두 줄로 미리 고정한다 —
+      // .changes-table td.num이 white-space: nowrap이라, <br> 없이 한 문장으로 두면 이 칸이 문장
+      // 전체 폭만큼 넓어져 옆 "행동" 칼럼(버튼)이 밀려 깨진다. 선행 "—"는 칼럼 폭 상한(max-width)
+      // 안에서 "(0원 아님)"까지 안 잘리게 빼서 2번째 줄 길이를 줄인다.
+      var price = cs.estimated_monthly_cost != null
+        ? '<span class="price-value">' + esc(F.money(cs.estimated_monthly_cost, cs.currency || "USD")) + " /월</span>"
+        : '<span class="tiny muted price-unknown">정가표에 없음<br>카드 금액에 미포함(0원 아님)</span>';
       return "<tr><td>" + providerCellHtml(r.cloud_account ? r.cloud_account.provider : r.provider) + " " + esc(r.name || r.external_resource_id) +
         '<br><span class="tiny muted">' + esc((r.service && r.service.display_name) || r.original_resource_type || "") + (r.region ? " · " + esc(r.region) : "") + "</span></td>" +
         "<td>" + esc(acct) + "</td>" +
@@ -2468,7 +2474,7 @@ window.MCPCost = (function () {
         '<td class="actions"><button type="button" class="btn no-print" data-action="open-resource-detail" data-resource-id="' + esc(r.id) + '">인벤토리에서 보기</button></td></tr>';
     }).join("");
     return '<p class="small">' + esc(OWNER_TAG_KEY) + " 태그가 없는(또는 비어 있는) 리소스 <strong>" + list.length + "개</strong> · 그중 정가 추정이 있는 " + priced.length + "개만 카드 금액에 포함 · 현재 구성 × 730h 정가 기준(실측 배분 아님) · 조회 기간과 무관 · CSP·계정 필터 적용</p>" +
-      '<div class="table-wrap"><table class="changes-table"><thead><tr><th scope="col">리소스</th><th scope="col">계정</th><th scope="col" class="num">정가 추정</th><th scope="col">상태</th><th scope="col"><span class="sr-only">행동</span></th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
+      '<div class="table-wrap"><table class="changes-table unassigned-table"><thead><tr><th scope="col">리소스</th><th scope="col">계정</th><th scope="col" class="num">정가 추정</th><th scope="col">상태</th><th scope="col"><span class="sr-only">행동</span></th></tr></thead><tbody>' + rows + "</tbody></table></div>" +
       '<p class="note">태그 기준 검토 후보입니다 — 태그가 없다는 것만으로 낭비·방치·특정 부서 소유를 뜻하지 않습니다. 담당자 지정은 각 CSP 콘솔에서 태그(' + esc(OWNER_TAG_KEY) + ")를 붙이면 다음 동기화에 반영됩니다. 검토 큐에는 자동 등록되지 않습니다.</p>";
   }
 

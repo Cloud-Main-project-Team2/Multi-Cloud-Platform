@@ -253,6 +253,17 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 /* 준비 중 블록은 KPI와 같은 덩치로 반복하지 않는다 */
 .pending-note { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--muted-foreground); padding: 6px 0; }
 
+/* CF-007 Owner 미지정 리소스 모달 — "정가 추정" 칼럼이 .changes-table td.num의 white-space:
+   nowrap을 그대로 물려받아 "정가표에 없음 — 카드 금액에 미포함(0원 아님)" 한 문장이 한 줄로
+   퍼지면서 옆 "행동" 칼럼(인벤토리에서 보기 버튼)이 밀려 깨졌다. price-unknown은 JS에서 이미
+   <br>로 "정가표에 없음" / "카드 금액에 미포함(0원 아님)" 두 줄로 고정해 보내므로, 여기서는
+   그 줄바꿈이 실제로 적용되게 nowrap을 풀어주고 칼럼 폭에 상한만 둔다. 13rem은 2번째 줄(가장
+   긴 줄, 실측 188px + 좌우 패딩 18px)이 한 줄에 다 들어가고도 옆 칼럼에 여유가 남는 값이다 —
+   이보다 좁으면 "아님)"이 세 번째 줄로 밀려 다시 깨진다. 버튼은 폭이 줄어도 항상 한 줄로 남긴다. */
+.unassigned-table th:nth-child(3), .unassigned-table td:nth-child(3) { max-width: 13rem; }
+.unassigned-table .price-unknown { white-space: normal; display: inline-block; }
+.unassigned-table td.actions .btn { white-space: nowrap; }
+
 /* 모바일: 표를 세로 카드로 */
 @media (max-width: 720px) {
   .summary-bar .button-row { margin-left: 0; width: 100%; }
