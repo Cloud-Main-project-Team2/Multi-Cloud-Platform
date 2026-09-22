@@ -57,14 +57,18 @@ window.MCPCostChart = (function () {
   }
 
   /* ── 공통 축 ───────────────────────────────────────────────────────────────
-     labels: x축 라벨 배열 · max: 눈금 상한 · currency: 단위 표기용 */
+     labels: x축 라벨 배열 · max: 눈금 상한 · currency: 단위 표기용
+     라벨 x좌표는 geo.left에서 AXIS_LABEL_GAP만큼 띄운다 — geo.left 자체가 이미 이 라벨 폭을
+     감안해 계산돼 있으므로(axisLeftMargin), 막대 절반 폭(최대 36/2px)이 이 여백 안쪽에서
+     시작해도 라벨 글자와 겹치지 않는다. */
   function axes(geo, labels, max, currency) {
     var out = "";
+    var labelX = geo.left - AXIS_LABEL_GAP;
     [0, 0.5, 1].forEach(function (f) {
       var y = geo.y(max * f);
       out += '<line x1="' + geo.left + '" y1="' + y + '" x2="' + geo.right + '" y2="' + y +
              '" stroke="var(--border)" stroke-dasharray="4 4"/>';
-      out += '<text x="' + (geo.left - 6) + '" y="' + (y + 4) + '" text-anchor="end" fill="currentColor" font-size="' + AXIS_FONT + '">' +
+      out += '<text x="' + labelX + '" y="' + (y + 4) + '" text-anchor="end" fill="currentColor" font-size="' + AXIS_FONT + '">' +
              esc(F.money(String(max * f), currency)) + '</text>';
     });
     // x 라벨: 너비에 맞춰 개수를 정한다(라벨 하나에 약 64px). 좁으면 글자를 줄이지 않고 눈금을 줄인다.
@@ -101,10 +105,24 @@ window.MCPCostChart = (function () {
      축 글자(11)가 20px로 보였다. 이제 1 user unit = 1 CSS px: 글자 12px는 어디서나 12px, 높이는
      너비에 따라 200~260px로 고정하고 비율을 왜곡하지 않는다(preserveAspectRatio 기본값 유지). */
   var AXIS_FONT = 12;
-  function geometry(labelCount, width) {
+  // 12px 폰트에서 문자 하나의 평균 폭 추정치(인라인 SVG라 실측이 안 되므로 넉넉히 잡는다) ·
+  // 라벨 오른쪽 끝 ~ 그래프 시작(geo.left) 사이 여백. stackedBar 막대 절반 폭이 최대 18px이므로
+  // 그보다 크게 잡아야 막대가 라벨 쪽으로 파고들지 않는다(y축 라벨과 그래프가 겹치던 원인).
+  var AXIS_CHAR_W = 7.2;
+  var AXIS_LABEL_GAP = 26;
+
+  /* y축 눈금 3개(0·중간·최댓값) 중 가장 긴 라벨 문자열 기준으로 왼쪽 여백을 정한다. */
+  function axisLeftMargin(max, currency) {
+    var widest = [0, 0.5, 1].reduce(function (w, f) {
+      return Math.max(w, String(F.money(String(max * f), currency)).length);
+    }, 0);
+    return Math.ceil(widest * AXIS_CHAR_W) + AXIS_LABEL_GAP + 4;
+  }
+
+  function geometry(labelCount, width, leftMargin) {
     var W = Math.max(320, Math.round(width || 720));
     var H = W < 480 ? 200 : 260;
-    var left = 60, right = W - 12, top = 14, bottom = H - 34;
+    var left = Math.max(60, leftMargin || 0), right = W - 12, top = 14, bottom = H - 34;
     return {
       W: W, H: H, left: left, right: right, top: top, bottom: bottom, max: 1,
       x: function (i) {
@@ -157,7 +175,6 @@ window.MCPCostChart = (function () {
 
     var labels = opts.labels || [];
     var series = opts.series || [];
-    var geo = geometry(labels.length, opts.width);
 
     var peak = 0;
     series.forEach(function (s) {
@@ -167,7 +184,9 @@ window.MCPCostChart = (function () {
       });
     });
     if (opts.thresholdLine && num(opts.thresholdLine.value) > peak) peak = num(opts.thresholdLine.value);
-    geo.max = niceMax(peak);
+    var max = niceMax(peak);
+    var geo = geometry(labels.length, opts.width, axisLeftMargin(max, opts.currency));
+    geo.max = max;
 
     var svg = '<svg class="chart" viewBox="0 0 ' + geo.W + ' ' + geo.H + '" role="img" aria-label="' +
               esc((opts.title || "비용 추이") + ". 같은 값을 표로도 제공합니다.") + '">';
@@ -227,7 +246,6 @@ window.MCPCostChart = (function () {
 
     var labels = opts.labels || [];
     var series = opts.series || [];
-    var geo = geometry(labels.length, opts.width);
 
     var peak = 0;
     labels.forEach(function (l) {
@@ -235,7 +253,9 @@ window.MCPCostChart = (function () {
       series.forEach(function (s) { if (s.points && s.points[l] != null) sum += num(s.points[l]); });
       if (sum > peak) peak = sum;
     });
-    geo.max = niceMax(peak);
+    var max = niceMax(peak);
+    var geo = geometry(labels.length, opts.width, axisLeftMargin(max, opts.currency));
+    geo.max = max;
 
     var bw = Math.max(4, Math.min(36, (geo.right - geo.left) / Math.max(labels.length, 1) * 0.62));
     var svg = '<svg class="chart" viewBox="0 0 ' + geo.W + ' ' + geo.H + '" role="img" aria-label="' +
