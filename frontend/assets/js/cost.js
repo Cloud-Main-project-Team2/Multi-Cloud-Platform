@@ -1445,18 +1445,23 @@ window.MCPCost = (function () {
       rows.forEach(function (r) {
         var a = r.a;
         var pct = denomOk ? (Number(r.amount) / Number(total) * 100) : null;
+        // 퍼센트 칸에 고정 폭을 줘서(.pct-value) 비중바 길이가 줄어도 항상 같은 자리에 온전히 보이게 한다.
         var pctText = pct == null ? '<span class="tiny muted" title="' + (shareOk ? "합계가 0이라 비중을 낼 수 없습니다" : "비중은 사용료 기준에서만 냅니다") + '">—</span>' : esc(pct.toFixed(1)) + "%";
         var bar = pct == null ? "" : '<div class="bar-track" aria-hidden="true"><div class="bar-fill" style="width:' + Math.min(pct, 100) + '%"></div></div>';
-        rowsHtml += '<tr data-account-id="' + esc(a.cloud_account_id) + '"><td data-label="계정">' + label(a) +
+        rowsHtml += '<tr data-account-id="' + esc(a.cloud_account_id) + '"><td class="account-name-cell" data-label="계정">' + label(a) +
           (r.partial ? ' <span class="tiny" style="color:var(--cost-warn)">부분 · ' + a.coverage.missing_count + "일 미수집</span>" : "") +
           (r.zero ? ' <span class="tiny muted">수집 확인된 0원</span>' : "") + "</td>" +
-          '<td class="num" data-label="기간 비용">' + esc(F.money(r.amount, a.currency || cur)) + "</td>" +
-          '<td class="num" data-label="비중">' + pctText + bar + "</td>" +
-          '<td data-label="팀">' + esc(a.team_id ? teamNameOf(a.team_id) : "미배정") + "</td>" +
-          '<td class="actions"><button type="button" class="btn no-print" data-action="account-filter-set" data-account-id="' + esc(a.cloud_account_id) + '">이 계정만 보기</button></td></tr>';
+          '<td class="num account-period-cell" data-label="기간 비용">' + esc(F.money(r.amount, a.currency || cur)) + "</td>" +
+          '<td class="num account-share-col" data-label="비중"><span class="account-share-cell">' + bar + '<span class="pct-value">' + pctText + "</span></span></td>" +
+          '<td class="num account-team-cell" data-label="팀">' + esc(a.team_id ? teamNameOf(a.team_id) : "미배정") + "</td>" +
+          '<td class="actions account-actions-cell"><button type="button" class="btn no-print" data-action="account-filter-set" data-account-id="' + esc(a.cloud_account_id) + '">이 계정만 보기</button></td></tr>';
       });
     });
-    var html = '<div class="table-wrap"><table class="account-table"><thead><tr><th scope="col">계정</th><th scope="col">기간 비용</th><th scope="col">비중' + (shareOk ? "" : ' <span class="tiny muted">(사용료 기준만)</span>') + '</th><th scope="col">팀</th><th scope="col"><span class="sr-only">행동</span></th></tr></thead><tbody>' +
+    // "기간 비용"·"비중"·"팀" 헤더에 num을 줘서 제목이 값과 같은 오른쪽 기준으로 맞는다(전에는
+    // 헤더만 왼쪽 정렬이라 제목·값 위치가 어긋나 보였다). "계정" 헤더는 account-name-cell로 폭을
+    // 잡아 옆 "기간 비용" 칼럼이 붙어 보이게 한다(계정 열이 불필요하게 넓어 둘 사이가 크게
+    // 벌어졌었다).
+    var html = '<div class="table-wrap"><table class="account-table account-cost-table"><thead><tr><th scope="col" class="account-name-cell">계정</th><th scope="col" class="num account-period-cell">기간 비용</th><th scope="col" class="num account-share-col">비중' + (shareOk ? "" : ' <span class="tiny muted">(사용료 기준만)</span>') + '</th><th scope="col" class="num account-team-cell">팀</th><th scope="col" class="account-actions-cell"><span class="sr-only">행동</span></th></tr></thead><tbody>' +
       (rowsHtml || '<tr><td colspan="5" class="tiny muted">' + (accounts.length ? "조회 조건에서 금액이 확인된 계정이 없습니다" : "조회 조건에 맞는 계정이 없습니다") + "</td></tr>") + "</tbody></table></div>";
     if (unknown.length) {
       html += '<details class="note"><summary style="cursor:pointer">금액을 확인할 수 없는 계정 ' + unknown.length + "개</summary>" +
