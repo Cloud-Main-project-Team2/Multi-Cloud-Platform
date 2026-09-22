@@ -321,6 +321,25 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 .block-content[aria-busy="true"] { opacity: .55; position: relative; }
 .block-content[aria-busy="true"]::after { content: "조회 중…"; position: absolute; top: 0; right: 0; font-size: 11px; color: var(--muted-foreground); background: var(--surface); padding: 1px 6px; border-radius: 4px; }
 /* CF-018 통화별 묶음 머리줄 */
-.account-table tr.group-head td { background: var(--muted); font-weight: 600; font-size: 12px; }
+.account-table tr.group-head td,
+.changes-table tr.group-head td { background: var(--muted); font-weight: 600; font-size: 12px; }
 .account-table td .bar-track { max-width: 120px; margin-top: 4px; }
 
+
+/* ── 4단계: ① 개요 KPI 그룹 ─────────────────────────────────────────────────────
+   카드를 늘리지 않고 그룹 제목으로만 "실측 / 정가 추정"을 가른다. 그룹은 4열 그리드에서 2열을
+   차지해 두 그룹이 한 줄에 들어가고, 안에서 카드 2장이 다시 나뉜다. 좁아지면 그룹이 전폭이 되고
+   그다음 카드가 세로로 쌓인다(기존 중단점과 같은 값). */
+.kpi-group { grid-column: span 2; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.kpi-group-title { margin: 0; font-size: 12px; font-weight: 700; color: var(--muted-foreground); letter-spacing: -.01em; }
+.kpi-group-note { margin: 0 0 2px; font-size: 11px; color: var(--muted-foreground); line-height: 1.5; }
+.kpi-group-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: stretch; }
+.kpi-group-cards .block { height: 100%; }
+@media (max-width: 1050px) { .kpi-group { grid-column: 1 / -1; } }
+@media (max-width: 760px) { .kpi-group-cards { grid-template-columns: 1fr; } }
+/* 카드 제목 아래 범위 배지 — "이 카드의 값이 어느 기간·어느 기준인가"를 제목과 분리해 적는다 */
+.kpi .kpi-scope { margin-top: 2px; }
+
+/* CF-018 — 금액 없는 행은 맨 뒤(03 §8). 순위 행과 구분되게 톤만 낮추고 지우지는 않는다 */
+.account-table tr.no-amount td { color: var(--muted-foreground); }
+.account-table tr.no-amount-fold td { background: transparent; padding: 6px 0; }
