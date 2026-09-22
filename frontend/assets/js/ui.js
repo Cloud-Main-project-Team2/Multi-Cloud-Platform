@@ -117,8 +117,9 @@
       return { icon: ok, title: "프로비저닝 완료", desc: (resource ? resource + " " : "") + "생성이 완료되었습니다.", href: href };
     }
     if (n.type === "provisioning_failed") {
-      var reason = p.reason ? " · " + p.reason : "";
-      return { icon: bad, title: "프로비저닝 실패", desc: (resource ? resource + " " : "") + "생성에 실패했습니다." + reason, href: href };
+      // 실패 사유(reason)는 terraform/CSP 원문 에러가 그대로 들어와 길고 기술적이라 벨에는
+      // 띄우지 않는다 — 자세한 내용은 프로비저닝 화면(href)에서 확인한다.
+      return { icon: bad, title: "프로비저닝 실패", desc: (resource ? resource + " " : "") + "생성에 실패했습니다.", href: href };
     }
     // 비용 파트 알림 2종(PR 7·8) — 문구는 message_params로 만들고 비용 화면으로 보낸다.
     if (n.type === "budget_threshold") {
@@ -134,15 +135,13 @@
       return { icon: ok, title: "리소스 조회 완료", desc: "새로 발견 " + (p.discovered || 0) + "건 · 생성 " + (p.created || 0) + "건 · 갱신 " + (p.updated || 0) + "건", href: "inventory.html" };
     }
     if (n.type === "resource_sync_failed") {
-      var syncReason = p.reason ? " · " + p.reason : "";
-      return { icon: bad, title: "리소스 조회 실패", desc: "일부 계정에서 조회에 실패했습니다." + syncReason, href: "inventory.html" };
+      return { icon: bad, title: "리소스 조회 실패", desc: "일부 계정에서 조회에 실패했습니다.", href: "inventory.html" };
     }
     if (n.type === "cost_ingestion_succeeded") {
       return { icon: ok, title: "비용 새로고침 완료", desc: (p.account_name || p.provider || "계정") + " · 갱신 " + (p.records_replaced || 0) + "건", href: "cost.html" };
     }
     if (n.type === "cost_ingestion_failed") {
-      var costReason = p.reason ? " · " + p.reason : "";
-      return { icon: bad, title: "비용 새로고침 실패", desc: (p.account_name || p.provider || "계정") + costReason, href: "cost.html" };
+      return { icon: bad, title: "비용 새로고침 실패", desc: (p.account_name || p.provider || "계정") + " 새로고침에 실패했습니다.", href: "cost.html" };
     }
     if (n.type === "report_generated") {
       return { icon: ok, title: "보고서 생성 완료", desc: (p.period_from || "") + " ~ " + (p.period_to || ""), href: n.reference_id ? "report-view.html?id=" + n.reference_id : "reports.html" };
