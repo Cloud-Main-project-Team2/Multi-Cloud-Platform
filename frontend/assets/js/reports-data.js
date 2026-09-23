@@ -5,34 +5,26 @@
 
    비용 요약(mapCostSnapshot)은 서버가 생성 시점에 비용 파트(app/cost/query.py)의 공통 함수로
    계산해 `cost_snapshot`에 고정 저장한 값을 그대로 옮겨 담는다 — 여기서 다시 계산하지 않는다.
-   AI 분석 요약·인수인계는 아직 재사용할 API가 없어 BASE 목업 그대로다. 사용률·미사용 리소스는
-   report-view.js가 실 API로 실시간 조회해 덮어쓴다(비용과 달리 "지금 이 순간" 값이 맞는
-   섹션이라 스냅샷 저장 대상이 아니다). */
+   AI 분석 요약(mapAiSummary, 2026-09-23)도 같은 방식이다 — 서버(app/report_summary.py)가
+   생성 시점의 비용 스냅샷·실시간 사용률/미사용 리소스를 근거로 LLM에게 만들게 한 문단·조치
+   목록을 `ai_summary`에 고정 저장한 값 그대로 옮겨 담는다. OPENAI_API_KEY 미설정이거나 생성이
+   실패했으면 null — report-view.js가 "생성 실패"로 표시한다(목업으로 가리지 않는다).
+   인수인계는 아직 재사용할 API가 없어 BASE 목업 그대로다. 사용률·미사용 리소스는 report-view.js가
+   실 API로 실시간 조회해 덮어쓴다(비용과 달리 "지금 이 순간" 값이 맞는 섹션이라 스냅샷 저장
+   대상이 아니다). */
 (function () {
   "use strict";
 
   var PERIOD_LABEL = { DAILY: "일간", WEEKLY: "주간", MONTHLY: "월간", HALF_YEARLY: "반기" };
   var PERIOD_DAYS = { DAILY: 1, WEEKLY: 7, MONTHLY: 30, HALF_YEARLY: 182 };
   var COMPARE_LABEL = { DAILY: "전일", WEEKLY: "전주", MONTHLY: "전월", HALF_YEARLY: "전반기" };
-  // AI 분석 요약 문단이 "이번 주"/"전주"를 하드코딩해서 일간/월간/반기 보고서에서도 그대로
-  // 나오던 문제(2026-09-19 확인) — periodType에 맞는 명사로 치환한다.
-  var PERIOD_NOUN = { DAILY: "오늘", WEEKLY: "이번 주", MONTHLY: "이번 달", HALF_YEARLY: "이번 반기" };
 
-  // AI 분석 요약·인수인계는 비용 API처럼 재사용할 공통 계산 함수가 없어 여전히 목업이다
-  // (2026-09-19 기준). 비용(cost)은 더 이상 여기 없다 — report_generations.cost_snapshot을
-  // mapCostSnapshot()으로 그대로 옮겨 쓴다.
+  // 인수인계는 비용/AI 요약과 달리 재사용할 공통 계산 함수가 없어 여전히 목업이다(2026-09-23
+  // 기준). 비용(cost)·AI 분석 요약(summary)은 더 이상 여기 없다 — 각각 report_generations의
+  // cost_snapshot/ai_summary를 mapCostSnapshot()/mapAiSummary()로 그대로 옮겨 쓴다.
   var BASE = {
     title: "멀티클라우드 운영 보고서",
     owner: "안권형",
-    summary: {
-      paragraph: "이번 주 전체 비용은 전주 대비 8.3% 증가했으며, Azure VM 2대 신규 생성이 가장 큰 요인입니다. GCP는 미사용 인스턴스 정리 효과로 유일하게 비용이 감소했습니다. 운영 측면에서는 prod-api-01의 자원 여유가 부족한 상태입니다.",
-      actions: [
-        "prod-api-01의 CPU가 94%에 도달했습니다. 스케일업을 검토하세요",
-        "Azure 비용이 12.7% 증가했습니다. 신규 VM 2대의 필요성을 확인하세요",
-        "미사용 리소스 4건을 정리하면 월 $125를 절감할 수 있습니다",
-        "GCP 서비스 계정 키 3건이 10월 만료 예정입니다",
-      ],
-    },
     utilization: [
       { csp: "aws", name: "prod-api-01", type: "EC2 t3.large", cpu: 94, mem: 88 },
       { csp: "gcp", name: "prod-web-01", type: "CE n2-standard-4", cpu: 81, mem: 62 },
@@ -98,6 +90,15 @@
     };
   }
 
+  // AI 분석 요약 실 API 연동(2026-09-23) — app/report_summary.py::build_ai_summary()의 결과
+  // (`ai_summary`)를 그대로 옮겨 담는다. null이면 생성 시점에 계산 자체가 실패한 것(설정
+  // 없음/LLM 오류/파싱 실패) — 목업 문구로 채우지 않고 그대로 null을 돌려준다(cost_snapshot과
+  // 같은 정책, §9).
+  function mapAiSummary(s) {
+    if (!s) return null;
+    return { paragraph: s.paragraph, actions: s.actions || [] };
+  }
+
   // BASE + 이력 메타를 조합해 완전한 보고서 payload를 만든다.
   // clouds에 없는 CSP는 모든 섹션에서 제외한다 — "선택한 클라우드만 포함해 생성" 규칙(§1).
   function buildReport(m) {
@@ -107,15 +108,6 @@
     var utilization = BASE.utilization.filter(function (r) { return order.indexOf(r.csp) !== -1; });
     var unusedItems = BASE.unused.filter(function (r) { return order.indexOf(r.csp) !== -1; });
     var unusedSaving = unusedItems.reduce(function (s, r) { return s + r.cost; }, 0);
-
-    // BASE.summary.paragraph는 "이번 주"/"전주"로 고정 작성돼 있다 — periodType에 맞는
-    // 명사로 바꿔서 일간/월간/반기 보고서에서도 어색하지 않게 한다(2026-09-19 확인).
-    var summary = {
-      paragraph: BASE.summary.paragraph
-        .replace("이번 주", PERIOD_NOUN[m.periodType] || "이번 주")
-        .replace("전주", COMPARE_LABEL[m.periodType] || "전주"),
-      actions: BASE.summary.actions,
-    };
 
     return {
       id: m.id,
@@ -129,7 +121,7 @@
       createdAt: m.createdAt,
       title: BASE.title,
       owner: BASE.owner,
-      summary: summary,
+      summary: mapAiSummary(m.aiSummary),
       cost: mapCostSnapshot(m.costSnapshot),
       utilization: utilization,
       unused: { items: unusedItems, totalSaving: unusedSaving },
@@ -156,6 +148,7 @@
       clouds: row.clouds,
       createdAt: row.generated_at,
       costSnapshot: row.cost_snapshot,
+      aiSummary: row.ai_summary,
     });
   }
 

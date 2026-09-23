@@ -1,12 +1,13 @@
 /* report-view.html 전용 렌더링 스크립트 — 순수 프론트엔드 프로토타입.
    ?id= 쿼리로 assets/js/reports-data.js(MCReports)의 보고서를 찾아 문서 섹션을 채운다.
-   비용/인수인계는 아직 목업이지만(비용 API 미구현), **리소스 사용률(2026-09-18)과 미사용
-   리소스(2026-09-19)는 실 API(`GET /resources/utilization/top`, `GET /resources/unused/top`,
-   app/metrics.py)로 교체했다** — 미사용 리소스는 미연결 디스크(AWS EBS)와 유휴 인스턴스(지금
-   CPU 10% 미만)만 감지한다(미연결 공인 IP·Azure/GCP 디스크는 discover_resources 확장이 먼저
-   필요해 범위 밖). 나머지 섹션도 실 API가 준비되면 MCReports.getById(id) 자리를 GET
-   /api/v1/reports/{id}(§5.2) 호출로 바꾸면 되고, 아래 렌더링 함수들은 그대로 재사용 가능하도록
-   payload 모양에만 의존한다.
+   인수인계만 아직 목업이고(재사용할 공통 계산 함수가 없음), 비용 요약(app/report_cost.py,
+   2026-09-19)·AI 분석 요약(app/report_summary.py, 2026-09-23)은 생성 시점에 고정 계산해
+   저장한 실데이터이며, **리소스 사용률(2026-09-18)과 미사용 리소스(2026-09-19)는 실 API**
+   (`GET /resources/utilization/top`, `GET /resources/unused/top`, app/metrics.py)로
+   교체했다 — 미사용 리소스는 미연결 디스크(AWS EBS)와 유휴 인스턴스(지금 CPU 10% 미만)만
+   감지한다(미연결 공인 IP·Azure/GCP 디스크는 discover_resources 확장이 먼저 필요해 범위 밖).
+   인수인계도 실 API가 준비되면 MCReports.getById(id) 자리를 GET /api/v1/reports/{id}(§5.2)
+   호출로 바꾸면 되고, 아래 렌더링 함수들은 그대로 재사용 가능하도록 payload 모양에만 의존한다.
 
    차트 좌표 계산은 보고서_구현명세_v5.md §3.2 공식을 그대로 따른다. */
 (function () {
@@ -340,9 +341,17 @@
     document.getElementById("rv-owner").textContent = report.owner;
     document.getElementById("rv-created").textContent = new Date(report.createdAt).toLocaleString("ko-KR", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" });
 
-    // AI 분석 요약
-    document.getElementById("rv-summary-p").textContent = report.summary.paragraph;
-    document.getElementById("rv-summary-actions").innerHTML = report.summary.actions.map(function (a) { return "<li>" + esc(a) + "</li>"; }).join("");
+    // AI 분석 요약 — app/report_summary.py가 생성 시점에 비용 스냅샷·실시간 사용률/미사용
+    // 리소스를 근거로 LLM에게 만들게 한 값(report.summary)을 그대로 옮겨 담는다(2026-09-23,
+    // 사용자 확인 후 실데이터 연동). null이면 OPENAI_API_KEY 미설정이거나 생성이 실패한 것 —
+    // 목업 문구로 가리지 않고 실패를 그대로 보여준다(cost와 같은 정책, §9).
+    if (report.summary) {
+      document.getElementById("rv-summary-p").textContent = report.summary.paragraph;
+      document.getElementById("rv-summary-actions").innerHTML = report.summary.actions.map(function (a) { return "<li>" + esc(a) + "</li>"; }).join("");
+    } else {
+      document.getElementById("rv-summary-p").textContent = "AI 요약을 생성하지 못했습니다(같은 조건으로 다시 생성해 보세요).";
+      document.getElementById("rv-summary-actions").innerHTML = "";
+    }
 
     // 비용 요약 — app/report_cost.py가 생성 시점에 계산해 고정 저장한 값(report.cost)을 그대로
     // 옮겨 담을 뿐, 새 합계·비율·기여율을 여기서 만들지 않는다(비용 파트 지시 §1). cost가

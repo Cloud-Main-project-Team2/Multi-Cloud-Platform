@@ -6,8 +6,9 @@
   메일을 보낸다.
 - **생성 이력**: 실제로 "생성하기"를 누른 기록. `(user_id, period_type, period_from,
   period_to, providers)` UNIQUE + `ON CONFLICT DO UPDATE`로 같은 조건 재생성은 새 행을
-  만들지 않는다. 비용 요약(`cost_snapshot`)은 이때 `app/report_cost.py`로 계산해 그대로
-  저장한다(생성 시점 고정 — app/models.py::ReportGeneration 참고).
+  만들지 않는다. 비용 요약(`cost_snapshot`)은 이때 `app/report_cost.py`로, AI 분석 요약
+  (`ai_summary`, 2026-09-23)은 `app/report_summary.py`로 계산해 그대로 저장한다(생성 시점
+  고정 — app/models.py::ReportGeneration 참고).
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from app.errors import ApiError, validation_error
 from app.logging_config import log_business_event
 from app.models import Notification, ReportDeliverySetting, ReportGeneration, User
 from app.report_cost import build_cost_snapshot
+from app.report_summary import build_ai_summary
 from app.schemas.reports import (
     ReportGenerationCreate,
     ReportGenerationDeleteData,
@@ -129,6 +131,7 @@ def _serialize_generation(row: ReportGeneration) -> ReportGenerationOut:
         generated_at=iso_z(row.generated_at),
         created_at=iso_z(row.created_at),
         cost_snapshot=row.cost_snapshot,
+        ai_summary=row.ai_summary,
     )
 
 
@@ -140,7 +143,7 @@ def _parse_report_id(raw: str) -> int:
 
 
 @router.post("/reports", response_model=ReportGenerationResponse)
-def create_report_generation(
+async def create_report_generation(
     payload: ReportGenerationCreate,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -170,6 +173,18 @@ def create_report_generation(
         )
         cost_snapshot = None
 
+    # AI 분석 요약도 비용과 같은 장애 격리 정책이다 — OPENAI_API_KEY 미설정/LLM 호출 실패/
+    # 응답 파싱 실패 어느 쪽이든 보고서 생성 자체는 계속 진행하고 이 섹션만 "생성 실패"로
+    # 남긴다(app/report_summary.py 참고, 목업으로 채우지 않는다).
+    try:
+        ai_summary = await build_ai_summary(db, current_user, cost_snapshot)
+    except Exception:
+        log_business_event(
+            "report.ai_summary_failed", level="ERROR", exc_info=True,
+            user_id=current_user.id, period_type=payload.period_type,
+        )
+        ai_summary = None
+
     stmt = (
         pg_insert(ReportGeneration)
         .values(
@@ -180,10 +195,11 @@ def create_report_generation(
             providers=providers,
             generated_at=now,
             cost_snapshot=cost_snapshot,
+            ai_summary=ai_summary,
         )
         .on_conflict_do_update(
             constraint="uq_report_generations_params",
-            set_={"generated_at": now, "cost_snapshot": cost_snapshot},
+            set_={"generated_at": now, "cost_snapshot": cost_snapshot, "ai_summary": ai_summary},
         )
         .returning(ReportGeneration.id)
     )

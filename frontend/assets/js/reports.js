@@ -1,7 +1,9 @@
 /* 보고서 작성 페이지(reports.html) 전용 스크립트.
    비용 요약(2026-09-19)·미사용 리소스(2026-09-19)·사용률(2026-09-18)은 실 API로 교체됐다 —
    비용은 report_generations.cost_snapshot(생성 시점 고정, app/report_cost.py), 나머지 둘은
-   조회 시점 실시간 값이다. AI 분석 요약·인수인계는 재사용할 API가 없어 여전히 목업이다. */
+   조회 시점 실시간 값이다. AI 분석 요약도 report_generations.ai_summary(생성 시점 고정,
+   app/report_summary.py, 2026-09-23)로 교체됐다 — 다만 이 화면(요약 카드)은 그 문단을 직접
+   쓰지 않는다(report-view.js만 렌더링). 인수인계는 재사용할 API가 없어 여전히 목업이다. */
 (function () {
   "use strict";
   if (!window.MCReports) return;
