@@ -3,8 +3,9 @@
 
    PR 6 — 화면 실 API 연동(14블록). 2026-09-20 프론트 라운드 — PR 7(팀·예산)·PR 8(급증·검토 큐·
    가격 비교·AI 문맥)을 ③ 탭에 연결(CFL-03·CF-026·CF-025·CF-027·CF-033·CF-034·CF-035·CF-039).
-   "준비 중"은 CF-041(비용 보고서)뿐이다 — 보고서 부품 3종은 보고서 담당(안권형님)과 필요 계약을
-   맞춘 뒤 만든다. ③ 탭의 팀 선택(CFL-03)은 ③ 탭에만 적용되고 ①② 탭 블록에 영향을 주지 않는다.
+   2026-09-23(5단계): "준비 중" 블록은 이제 없다 — CF-041은 기존 보고서 화면(reports.html)으로
+   보내는 이동 링크로 바꿨다(이 화면의 조회 조건은 전달되지 않는다는 고지 포함). 보고서 부품 3종
+   (`/cost-reports/*`)은 여전히 보고서 담당(안권형님)과 필요 계약을 맞춘 뒤 정한다. ③ 탭의 팀 선택(CFL-03)은 ③ 탭에만 적용되고 ①② 탭 블록에 영향을 주지 않는다.
    CF-007·CF-030은 처음엔 "준비 중"으로 뒀었는데 확정 7을 잘못 읽은 것이었다(2026-09-19 정정,
    12_원본문서_추적표 §2-1-1 #1) — 설계만인 것은 태그 기반 *실측* 배분이고, GET /resources의
    tags.Owner로 *정가 기준* 그룹핑은 지금 된다. 둘 다 기존 API만으로 그린다.
@@ -380,7 +381,7 @@ window.MCPCost = (function () {
     { id: "CF-027",  tab: "budget",   render: renderThresholds },
     { id: "CF-033",  tab: "budget",   render: renderAnomalies },
     { id: "CF-039",  tab: "budget",   render: renderAiCta },
-    { id: "CF-041",  tab: "budget",   render: function () { return { state: "UNSUPPORTED", html: pendingBlockHtml("비용 보고서(미리보기·CSV 내보내기)는 준비 중입니다. 보고서 기능과 연동 방식이 정해지면 이 자리에서 제공됩니다.") }; } }
+    { id: "CF-041",  tab: "budget",   render: renderReportLink }
   ];
 
   /** 나중에 만들어진 <select>에 dropdown.js 룩을 입힌다(CFL-01 필터와 동일 클래스). */
@@ -1531,6 +1532,18 @@ window.MCPCost = (function () {
       (unknown.length ? " · 금액을 확인할 수 없는 계정 " + unknown.length + "개는 맨 뒤에 사유와 함께 둡니다(수집 상태는 ① 개요 탭)" : "") +
       " · 계정 합계와 리소스 정가를 더하지 않습니다</p>";
     return { state: "CONNECTED_OK", html: html };
+  }
+
+  // ── CF-041 비용 보고서 — 기존 보고서 화면으로 보내는 이동 링크만 둔다 ────────────────
+  // 보고서는 이미 동작한다(`POST /reports` + reports.html). 여기서 같은 것을 다시 만들지 않는다.
+  // 이 화면의 조회 조건은 전달하지 않는다 — `POST /reports`가 받는 것은 기간 종류·기간·CSP뿐이라
+  // 계정·통화·요금 분류는 넘길 방법이 없다. 넘기지 못하는 조건을 "현재 조건으로 생성"이라고 부르면
+  // 사용자는 화면과 같은 값을 기대하게 된다. 기간·CSP 전달은 reports.html이 쿼리를 읽게 된 뒤 후속.
+  function renderReportLink() {
+    return { state: "CONNECTED_OK", html:
+      '<p class="small">비용 요약이 들어간 보고서는 보고서 화면에서 만듭니다.</p>' +
+      '<p class="note">이 화면의 <strong>계정·통화·요금 분류 조건은 전달되지 않습니다</strong> · 보고서의 비용 값은 <strong>생성 시점 값으로 고정</strong>됩니다(이후 재수집으로 숫자가 바뀌어도 그 보고서는 그대로입니다).</p>' +
+      '<div class="button-row no-print"><a class="btn primary" href="reports.html">보고서 만들러 가기</a></div>' };
   }
 
   // ── CF-039 AI 비용 상담 — 정적 CTA. 실제 채팅은 agent.js가 처리한다(07 §10) ────────
