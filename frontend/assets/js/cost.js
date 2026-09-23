@@ -148,6 +148,7 @@ window.MCPCost = (function () {
     if (filters.chargeCategory) parts.push("charge_category=" + encodeURIComponent(filters.chargeCategory));
     parts.push("granularity=" + encodeURIComponent(filters.granularity));
     parts.push("compare=" + encodeURIComponent(filters.compare));
+    parts.push("tab=" + encodeURIComponent(activeTab));
     if (selectedTeamId) parts.push("team=" + encodeURIComponent(selectedTeamId));
     var url = window.location.pathname + "?" + parts.join("&");
     window.history.replaceState(null, "", url);
@@ -635,9 +636,11 @@ window.MCPCost = (function () {
       '<span class="button-row" style="margin-top:0">' +
         '<button type="button" class="btn primary" data-action="apply-filters">적용</button>' +
         '<button type="button" class="btn" data-action="reset-filters">초기화</button>' +
+        '<button type="button" class="btn no-print" data-action="copy-conditions-link" title="지금 보고 있는 탭·기간·CSP·계정·통화·요금 분류·집계 단위·비교 기준이 담긴 주소를 복사합니다">이 조건 링크 복사</button>' +
       "</span>" +
       "</div>" +
       '<p class="note filter-error" id="filter-period-note" role="alert" hidden></p>' +
+      '<p class="note" id="share-link-note" role="status" hidden></p>' +
       '<p class="note">공통 조회 조건입니다. 예외 — 정가 추정(현재 구성 예상 월 비용·상위 리소스)은 기간·통화·요금 분류와 무관하고, 비용 검토 목록은 기간과 무관하며, 예산·검토 탭의 팀 예산은 팀 선택만 따릅니다.</p>' +
       "</details>";
   }
@@ -2432,6 +2435,8 @@ window.MCPCost = (function () {
 
   // ── 화면 이동 ────────────────────────────────────────────────────────────────────
   function switchTab(key) {
+    activeTab = TAB_KEYS.indexOf(key) >= 0 ? key : "overview";
+    syncUrl();      // 지금 보고 있는 탭까지 링크에 담는다(뒤로 가기·링크 공유에서 같은 화면이 열리게)
     var tabs = document.querySelectorAll('.tabs [role="tab"][data-tab]');
     Array.prototype.forEach.call(tabs, function (btn) {
       var active = btn.getAttribute("data-tab") === key;
@@ -2841,6 +2846,7 @@ window.MCPCost = (function () {
         next.focus();
       });
     });
+    switchTab(activeTab);   // ?tab=으로 받은 탭을 처음부터 연다
   }
 
   // 모달이 닫히면 열기 전에 초점이 있던 요소로 돌아간다(modal.js는 열고 닫기만 한다).

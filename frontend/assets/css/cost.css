@@ -402,3 +402,6 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 /* CF-018 — 금액 없는 행은 맨 뒤(03 §8). 순위 행과 구분되게 톤만 낮추고 지우지는 않는다 */
 .account-table tr.no-amount td { color: var(--muted-foreground); }
 .account-table tr.no-amount-fold td { background: transparent; padding: 6px 0; }
+
+/* 5단계: 조건 링크 복사 — 자동 복사가 막힌 브라우저에서 주소를 직접 고를 수 있게 */
+.share-url { width: 100%; margin-top: 6px; font-size: 11px; padding: 4px 6px; border: 1px solid var(--border); border-radius: 5px; background: var(--surface); color: var(--foreground); }
