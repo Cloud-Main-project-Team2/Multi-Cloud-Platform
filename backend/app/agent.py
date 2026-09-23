@@ -143,18 +143,14 @@ def build_user_context(db: Session, user_id: int, cost_conditions: dict | None =
     return "\n".join(parts)
 
 
-async def ask_agent(message: str, history: list[dict[str, str]], context: str) -> str:
-    """조립된 컨텍스트를 시스템 프롬프트로 넣고 OpenAI Chat Completions API를 호출해 답변 텍스트를
-    반환한다. Anthropic과 달리 system 프롬프트도 messages 배열 안의 role="system" 항목이다."""
+async def call_chat_completion(messages: list[dict[str, str]], *, max_tokens: int = _MAX_TOKENS) -> str:
+    """OpenAI Chat Completions API 저수준 호출부 — 설정 읽기·타임아웃·오류 매핑을 한곳에 모은다.
+    `ask_agent()`(채팅)와 `app/report_summary.py::build_ai_summary()`(보고서 AI 분석 요약,
+    2026-09-23)가 이 함수를 공유한다 — 프롬프트 내용은 호출자마다 다르지만 OpenAI 호출 자체는
+    같아야 한다(재사용 지시, 2026-09-23 "방법 A로 진행")."""
     settings = get_settings()
     if not settings.openai_api_key:
         raise AgentNotConfiguredError()
-
-    messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT_TEMPLATE.format(context=context)},
-        *history,
-        {"role": "user", "content": message},
-    ]
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
@@ -166,7 +162,7 @@ async def ask_agent(message: str, history: list[dict[str, str]], context: str) -
                 },
                 json={
                     "model": settings.openai_model,
-                    "max_tokens": _MAX_TOKENS,
+                    "max_tokens": max_tokens,
                     "messages": messages,
                 },
             )
@@ -181,3 +177,14 @@ async def ask_agent(message: str, history: list[dict[str, str]], context: str) -
     if not choices:
         return ""
     return choices[0].get("message", {}).get("content", "") or ""
+
+
+async def ask_agent(message: str, history: list[dict[str, str]], context: str) -> str:
+    """조립된 컨텍스트를 시스템 프롬프트로 넣고 OpenAI Chat Completions API를 호출해 답변 텍스트를
+    반환한다. Anthropic과 달리 system 프롬프트도 messages 배열 안의 role="system" 항목이다."""
+    messages = [
+        {"role": "system", "content": _SYSTEM_PROMPT_TEMPLATE.format(context=context)},
+        *history,
+        {"role": "user", "content": message},
+    ]
+    return await call_chat_completion(messages)

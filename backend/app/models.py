@@ -738,7 +738,10 @@ class ReportGeneration(CreatedAtMixin, Base):
     권형님_보고서_비용연동_개발프롬프트 §9). 재수집이 일어나 실제 비용이 바뀌어도 이미 생성된
     보고서는 그 시점 값을 그대로 보여준다 — 최신 값이 보고 싶으면 같은 조건으로 다시
     "생성하기"를 눌러야 한다(ON CONFLICT DO UPDATE가 `cost_snapshot`도 함께 갱신).
-    나머지(AI 요약·인수인계)는 여전히 프론트(`reports-data.js`)가 그때그때 구성한다."""
+
+    AI 분석 요약(`ai_summary`, 2026-09-23)도 같은 이유로 생성 시점에 계산해서 고정 저장한다 —
+    `app/report_summary.py::build_ai_summary()` 참고. 인수인계 섹션은 아직 프론트
+    (`reports-data.js`)가 그때그때 구성하는 목업이다."""
 
     __tablename__ = "report_generations"
 
@@ -757,6 +760,10 @@ class ReportGeneration(CreatedAtMixin, Base):
     # app/report_cost.py::build_cost_snapshot()의 결과를 그대로 담는다(cost/query.py
     # summary·breakdown·trend·changes 원본 dict, JSON-safe 변환만 거침) — 생성 시점 값 고정.
     cost_snapshot: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # app/report_summary.py::build_ai_summary()의 결과({"paragraph": str, "actions": [str]})를
+    # 그대로 담는다 — 생성 시점 값 고정. OPENAI_API_KEY 미설정/LLM 실패 시 None(목업으로 채우지
+    # 않는다).
+    ai_summary: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
     __table_args__ = (
         sa.UniqueConstraint(

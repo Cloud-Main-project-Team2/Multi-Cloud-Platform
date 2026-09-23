@@ -28,8 +28,6 @@
   --danger: #b3261e;
   --warn: #8a5a00;
   --ok: #1a6b3f;
-  --draft: #7a3ea3;
-  --draft-bg: #f5eefb;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -64,27 +62,10 @@ body {
   padding: 44px 48px 36px;
 }
 
-/* ── 초안 배지 ─────────────────────────── */
-.draft-banner {
-  background: var(--draft-bg);
-  border: 1px solid #e0cdf0;
-  border-radius: 4px;
-  padding: 10px 14px;
-  font-size: 12.5px;
-  color: var(--draft);
-  margin-bottom: 24px;
-  line-height: 1.6;
-}
-.draft-banner b { font-weight: 600; }
-
 /* ── 머리말 ───────────────────────────── */
 .masthead { border-bottom: 2px solid var(--ink); padding-bottom: 18px; margin-bottom: 28px; }
 .masthead .titlerow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .masthead h1 { font-size: 23px; font-weight: 600; letter-spacing: -0.02em; }
-.badge-draft {
-  font-size: 11.5px; font-weight: 500; padding: 3px 9px; border-radius: 3px;
-  background: var(--draft-bg); color: var(--draft);
-}
 .masthead .sub { font-size: 14px; color: var(--ink-soft); margin-top: 4px; }
 .masthead dl {
   display: grid;
@@ -111,10 +92,6 @@ section > h2 {
   display: flex;
   align-items: baseline;
   gap: 9px;
-}
-section > h2 .pending {
-  font-size: 11.5px; font-weight: 500; padding: 2px 8px; border-radius: 3px;
-  background: var(--draft-bg); color: var(--draft);
 }
 .caption { font-size: 12.5px; color: var(--ink-faint); margin-top: 9px; }
 
@@ -247,16 +224,9 @@ footer { border-top: 1px solid var(--line); padding-top: 14px; font-size: 12px; 
 
 <article class="sheet">
 
-  <div class="draft-banner">
-    <b>초안 — 일부 섹션 목업 포함</b><br>
-    AI 분석 요약·인수인계 사항은 아직 입력·연동 기능이 없어 샘플/예시로 표시됩니다(비용·사용률·미사용 리소스는 실 데이터입니다).<br>
-    보안 현황 섹션은 향후 과제로 분리되어 이번 보고서에 포함하지 않습니다.
-  </div>
-
   <header class="masthead">
     <div class="titlerow">
       <h1 id="rv-title">멀티클라우드 운영 보고서</h1>
-      <span class="badge-draft">초안</span>
     </div>
     <p class="sub" id="rv-sub">—</p>
     <dl>
@@ -269,7 +239,7 @@ footer { border-top: 1px solid var(--line); padding-top: 14px; font-size: 12px; 
 
   <!-- 1. AI 분석 요약 -->
   <section>
-    <h2>AI 분석 요약 <span class="pending">샘플 데이터</span></h2>
+    <h2>AI 분석 요약</h2>
     <div class="summary">
       <p id="rv-summary-p">—</p>
       <ul id="rv-summary-actions"></ul>
@@ -347,7 +317,7 @@ footer { border-top: 1px solid var(--line); padding-top: 14px; font-size: 12px; 
 
   <!-- 5. 인수인계 사항 -->
   <section>
-    <h2>인수인계 사항 <span class="pending">예시 항목</span></h2>
+    <h2>인수인계 사항</h2>
     <div class="handover" id="rv-handover"></div>
     <p class="caption">이 섹션은 담당자가 직접 입력합니다 — 지금 보이는 항목은 입력 화면이 아직 없어 넣어둔 예시입니다.</p>
   </section>

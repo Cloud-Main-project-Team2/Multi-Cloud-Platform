@@ -73,6 +73,10 @@ class ReportGenerationOut(BaseModel):
     # 않는다(비용 파트 요구사항, app/models.py::ReportGeneration 참고). 아직 계산에 실패한
     # 레코드(마이그레이션 직후 옛 행 등)는 None — 프론트가 "비용 정보 없음"으로 표시한다.
     cost_snapshot: dict[str, Any] | None = None
+    # app/report_summary.py::build_ai_summary()의 결과({"paragraph": str, "actions": [str]}) —
+    # 생성 시점에 고정. OPENAI_API_KEY 미설정/LLM 실패 시 None — 프론트가 "생성 실패"로 표시한다
+    # (목업으로 채우지 않는다, 2026-09-23).
+    ai_summary: dict[str, Any] | None = None
 
 
 class ReportGenerationResponse(BaseModel):
