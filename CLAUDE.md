@@ -78,8 +78,16 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 비용 관리 — PR 1~6(정가 추정·`cost.html`·스키마·AWS 실측 수집·조회 API 6종·화면 연동) | `seunghyun/be-cost-*`·`seunghyun/fe-cost-*` (`docs/비용_개발문서/14_개발_트래커.md`가 정본) | 이승현 | merged (#100, #109) |
 | 비용 관리 PR 7 — 팀·예산 API 9종 + 소진율 + 80/100% 임계 알림 (초과 차단은 ADR-042로 보류) | `seunghyun/be-cost-team-budget` | 이승현 | merged (#110) |
 | 비용 관리 PR 8 — 급증 탐지·검토 큐·AI 상담 문맥·`price-comparisons`·예산 기준일 분리 (보고서 부품 3종·반기는 안권형님 확인 후) | `seunghyun/be-cost-anomaly-report` | 이승현 | merged (#111) |
-| 비용 화면 ③탭 실 연동(팀·예산·급증·검토 큐·가격 비교) + CF-007/CF-030 복귀 + 알림 문구 | `seunghyun/fe-cost-budget-anomaly` | 이승현 | PR #112 |
-| 비용 백엔드 후속 — 반복 예산 부분 UNIQUE·팀별 락·예산 날짜 UTC | `seunghyun/be-cost-hardening` | 이승현 | in progress |
+| 비용 화면 ③탭 실 연동(팀·예산·급증·검토 큐·가격 비교) + CF-007/CF-030 복귀 + 알림 문구 | `seunghyun/fe-cost-budget-anomaly` | 이승현 | merged (#112) |
+| 비용 백엔드 후속 — 반복 예산 부분 UNIQUE·팀별 락·예산 날짜 UTC | `seunghyun/be-cost-hardening` | 이승현 | merged (#113) |
+| 비용 화면 다듬기 — ①② 문구·상태·배치·차트·새로고침 / ③ 예산·검토 탭 마무리 | `seunghyun/fe-cost-polish`·`-budget-tab` | 이승현 | merged (#116, #117) |
+| 비용 조회 정확성 1단계 — 수집 확인(coverage)·전망 상태·비교 사유·통화 제외·UTC 경계 | `seunghyun/be-cost-query-accuracy` | 이승현 | merged (#118) |
+| 비용 화면 2단계 — 1단계 계약 반영(전망 상태·비교 사유·월별 집계·UTC 기본 기간) | `seunghyun/fe-cost-accuracy` | 이승현 | merged (#121) |
+| 이미지 슬림화 `backend/.dockerignore`(2.11GB→918MB) · 예산 날짜 UTC 통일 | `seunghyun/chore-dockerignore`·`-budget-utc` | 이승현 | merged (#123, #124) |
+| 비용 화면 3단계 — 버튼·상세 목록·이동 연결(서비스 상세 재조회·미지정 목록·재수집 대상 명시) | `seunghyun/cost-actions` | 이승현 | merged (#126) |
+| 비용 화면 4단계 — ①② 역할·제목·배치 정리 + CF-022 다통화 수정 | `seunghyun/cost-layout` | 이승현 | merged (#129) |
+| 비용 5단계 — 카테고리 분류 정확성 + 검토 이력·가격 비교 진입점·조건 링크·보고서 연결 | `seunghyun/cost-extras` | 이승현 | merged (#130) |
+| 비용 6단계 — 계약 문서 반영 + 인수인계(`docs/Cost_Round_Handover_2026-09-23.md`) | `seunghyun/cost-docs` | 이승현 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -567,6 +575,38 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   - **검증**: backend 테스트 644개 통과(azure discover 5·aws discover 3 신규). 실제 Azure 계정으로
     라이브 discover→스토리지 발견 확인, 실동기화로 기존 stale 스토리지 행의 `is_stale`이 True→False로
     복구되는 것까지 end-to-end 확인.
+
+- **비용 조회 정확성·화면 정리 라운드(2026-09-21~23, #118·#121·#123·#124·#126·#129·#130)**: 팀 공유가
+  필요한 사실만 여기에 둔다. 상세는 `docs/Cost_Round_Handover_2026-09-23.md`(tracked) — 설계 문서
+  `docs/비용_개발문서/`는 `.gitignore:49`로 제외돼 저장소에 없다.
+  - **"수집 확인(coverage)"이 화면의 0원을 뒷받침한다**: 그 날 행이 있거나 **성공한 수집 run의 범위에
+    든 날**을 수집된 것으로 본다(`app/cost/coverage.py` 한 곳). $0인 날은 행이 안 생기므로 행 유무만
+    보면 정상 0원 계정이 영원히 결측으로 보인다. `/costs/summary`·`/costs/collection-status`가
+    계정별 `coverage`를 주고, 예산 결측·급증 판정도 같은 함수를 쓴다.
+  - **비용 쪽 날짜 경계는 전부 UTC**(`utc_today()`): KST 새벽 0~9시에 화면 기본 기간이 서버보다 하루
+    앞서던 문제를 없앴다. API 응답·DB 시각이 UTC인 것과 같은 계열이며, 로그의 KST 표기(§로깅)와는
+    목적이 다르다.
+  - **⚠️ 전망(월말 예상) 계약이 상충한다 — 확정 필요**: 1단계(#118)는 "대상 계정이 이달을 빠짐없이
+    수집했을 때만 계산"이었는데 #128(조은솔)이 "누락이 있어도 계산하고 안내만"으로 바꿨다. 지금 구현은
+    분모가 **달력 경과일**이라 수집 지연이 있으면 전망이 **실제보다 낮게** 나온다
+    (`docs/비용_개발문서/03` §5 · `10` QA-08 ⑤와 반대). 확정 전까지 참고치로 본다.
+  - **통화 기본값을 하드코딩하지 않는다**(ADR-023): `defaultFilters().currency`가 한때 `"USD"`로
+    고정됐는데(#128) KRW 계정만 가진 사용자는 추이·분포가 영원히 비어서 `""`로 되돌렸다(#130).
+    서버가 "선택 범위에서 금액 비중이 가장 큰 통화"를 고른다.
+  - **표·카드는 통화별로 나눈다, 그래프만 하나를 고른다**(03 §10): 상위 N 리소스(CF-022)가 통화를 섞어
+    정렬한 뒤 잘라서 KRW 5개 + USD 1개면 USD가 통째로 사라졌다(#129에서 통화별 섹션으로 수정).
+  - **AWS 카테고리 매핑표가 두 곳에 있다**: `app/cost/query.py::_AWS_SERVICE_TO_CATEGORY`(비용)와
+    `app/report_cost.py::_SERVICE_TO_CATEGORY`(보고서). 실제 Cost Explorer는 `Amazon Elastic Compute
+    Cloud - Compute`처럼 정식 명칭을 주는데 비용 쪽 표가 짧은 코드(`AmazonEC2`)만 갖고 있어 카테고리
+    집계가 **전액 미분류**였고 **대시보드 카테고리 카드가 실측 대신 추정치로 내려가 있었다**(#130에서
+    수정, 두 표 값 일치 확인). **단일 소스 통합은 후속** — 한쪽만 고치면 화면과 보고서가 갈라진다.
+    카테고리 어휘는 `service_catalog` 4종뿐이라 네트워크·보안 계열은 계속 미분류이며, 어휘 확장은
+    대시보드의 `CATEGORY_LABEL`과 함께 정해야 한다.
+  - **비용 화면에 "준비 중" 블록은 없다**: CF-041은 새 API 없이 `reports.html`로 보내는 이동 링크다.
+    이 화면의 계정·통화·요금 분류는 전달되지 않는다(`POST /reports`가 받지 않음)고 화면에 적었다.
+  - **검증 범위**: 백엔드 865개 통과. 프론트는 jsdom 픽스처 70개 + Chrome 자동화 32항목이지만
+    `docs/비용_개발문서/verify/`(gitignore)에 있어 저장소에 없다. **사람 눈으로 볼 항목 10건과 실제
+    CSP 재수집(과금 호출) 1건은 아직 미확인**이다 — jsdom 통과를 브라우저 확인으로 쓰지 않는다.
 
 - **비용 팀·예산 PR 7 — 문서가 정하지 않아 세션에서 확정한 규칙(2026-09-19, `seunghyun/be-cost-team-budget`)**:
   정본 설계는 `docs/비용_개발문서/05_API계약.md` §6 · `08` §6 · ADR-020/021/037/042. 그 문서들이 비워 둔
