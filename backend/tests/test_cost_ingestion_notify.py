@@ -69,3 +69,31 @@ def test_partial_success_is_treated_as_failure_notification(db_session, make_use
 
     notif = db_session.query(Notification).filter_by(user_id=user.id, type="cost_ingestion_failed").one()
     assert notif.message_params["reason"] == "PROVIDER_API_ERROR"
+
+
+# --- partial_success는 1시간 제한을 만들지 않는다 (2026-09-23) ------------------------------------
+
+
+def test_partial_success_does_not_rate_limit_manual_retry(db_session, make_user):
+    """부분 응답 run은 **행을 하나도 저장하지 않으므로**(08 §4-4) 수동 재수집 1시간 제한을 만들면
+    안 된다 — 아무것도 받지 못한 사용자가 1시간 동안 복구 수단을 잃는다.
+
+    `_last_manual_success()`가 제한의 유일한 기준이라(`POST /cost-ingestion-runs`) 그 함수만 본다."""
+    user = make_user()
+    account = _make_account(db_session, user)
+    _make_run(db_session, user, account, "partial_success", error_code="PROVIDER_API_ERROR",
+              started_at=dt.datetime.now(dt.timezone.utc), finished_at=dt.datetime.now(dt.timezone.utc))
+    db_session.commit()
+
+    assert costs_router._last_manual_success(db_session, account.id) is None
+
+
+def test_success_run_still_rate_limits_manual_retry(db_session, make_user):
+    """반대 방향 고정 — 진짜 성공은 계속 1시간 제한을 만든다(CSP 과금 호출을 막는 장치)."""
+    user = make_user()
+    account = _make_account(db_session, user)
+    now = dt.datetime.now(dt.timezone.utc)
+    run = _make_run(db_session, user, account, "success", records_replaced=7, started_at=now, finished_at=now)
+    db_session.commit()
+
+    assert costs_router._last_manual_success(db_session, account.id).id == run.id
