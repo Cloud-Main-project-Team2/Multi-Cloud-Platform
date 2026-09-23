@@ -94,12 +94,17 @@ def _last_active_run(db: Session, cloud_account_id: int) -> CostIngestionRun | N
 
 
 def _last_manual_success(db: Session, cloud_account_id: int) -> CostIngestionRun | None:
+    """1시간 제한의 기준이 되는 마지막 **성공** 수동 수집.
+
+    ⚠️ partial_success는 제외한다(2026-09-23). 부분 응답은 저장 전에 버려져 **행이 0건**인데(08 §4-4),
+    이것을 성공으로 세면 아무것도 받지 못한 사용자가 1시간 동안 재시도조차 못 한다 — 복구 수단이
+    사라진다. 실패(failed)를 제한에 넣지 않는 것과 같은 이유다."""
     return (
         db.query(CostIngestionRun)
         .filter(
             CostIngestionRun.cloud_account_id == cloud_account_id,
             CostIngestionRun.trigger_type == "manual",
-            CostIngestionRun.status.in_(("success", "partial_success")),
+            CostIngestionRun.status == "success",
         )
         .order_by(CostIngestionRun.finished_at.desc())
         .first()

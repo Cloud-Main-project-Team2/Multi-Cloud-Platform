@@ -203,3 +203,41 @@ def test_running_keeps_previous_status_and_sets_ingestion_running(db_session, ma
 
     assert cap["status"] == "CONNECTED_OK"  # 이전 성공 상태를 유지
     assert cap["ingestion_running"] is True  # 금액을 비우지 않고 진행 표시만 더한다
+
+
+# --- partial_success는 "성공"으로 세지 않는다 (2026-09-23) ---------------------------------------
+# 부분 응답은 `replace_cost_rows()` 전에 버려져 **행이 0건**이다(08 §4-4). 그런데 as_of·1시간 제한·
+# covered_through가 partial_success를 성공으로 세고 있어, 아무것도 받지 못한 사용자가 "방금 수집됨"을
+# 보고 1시간 동안 재시도조차 못 했다. 아래 3개가 그 회귀를 막는다.
+
+
+def test_partial_success_does_not_update_as_of(db_session, make_user):
+    """`as_of`/`last_success_at`은 저장된 데이터가 있는 시각이어야 한다 — partial run은 갱신하지 않는다.
+
+    상태 자체는 CONNECTED_PARTIAL 그대로다(가장 최근 종결 run이 기준). 갱신되지 않아야 하는 것은
+    "마지막 수집 시각"뿐이며, 그래야 지연(staleness) 판정도 어긋나지 않는다."""
+    user = make_user()
+    account = _make_account(db_session, user)
+    _make_credential(db_session, account)
+    success = _make_run(db_session, account, status="success", records_replaced=5, finished_delta_hours=50)
+    _make_run(db_session, account, status="partial_success", error_code="PROVIDER_API_ERROR", finished_delta_hours=1)
+
+    cap = account_capability(db_session, account)
+
+    assert cap["status"] == "CONNECTED_PARTIAL"          # 최근 종결 run 기준 — 그대로
+    assert cap["as_of"] == success.finished_at           # 50시간 전 성공 run
+    assert cap["last_success_at"] == success.finished_at
+
+
+def test_partial_success_only_leaves_no_success_time(db_session, make_user):
+    """성공 이력이 한 번도 없고 partial만 있으면 '마지막 수집'은 비어 있어야 한다(0건을 수집으로 치지 않는다)."""
+    user = make_user()
+    account = _make_account(db_session, user)
+    _make_credential(db_session, account)
+    _make_run(db_session, account, status="partial_success", error_code="PROVIDER_RATE_LIMITED")
+
+    cap = account_capability(db_session, account)
+
+    assert cap["status"] == "CONNECTED_PARTIAL"
+    assert cap["as_of"] is None
+    assert cap["last_success_at"] is None

@@ -7,7 +7,9 @@ window.MCPCostState = (function () {
   var TEXT = {
     CONNECTED_OK:      function (b)    { return null; },
     CONNECTED_EMPTY:   function (b)    { return "정상 조회된 비용은 0입니다. 리소스 수로 계산한 값이 아닙니다."; },
-    CONNECTED_PARTIAL: function (b)    { return b + " 일부 범위가 빠진 부분 합계입니다. 제외된 범위를 확인하세요."; },
+    // 부분 응답은 저장 전에 버려진다(08 §4-4) — "부분 합계"가 아니라 "이번 수집은 없던 일"이다.
+    // 화면 금액은 이전 수집분이므로 그 사실을 말한다(2026-09-23).
+    CONNECTED_PARTIAL: function (b)    { return "이번 수집은 저장되지 않았습니다. 표시 금액은 이전 수집분입니다. 다시 수집해 주세요."; },
     NOT_CONNECTED:     function (b)    { return b + " 계정이 연결되지 않았습니다."; },
     PENDING:           function (b)    { return b + " 첫 수집을 기다리는 중입니다."; },
     SETUP_REQUIRED:    function (b)    { return b + " 조회에 필요한 설정이 되어 있지 않습니다."; },
@@ -41,7 +43,7 @@ window.MCPCostState = (function () {
   var LABEL = {
     CONNECTED_OK: "정상",
     CONNECTED_EMPTY: "수집 0건",
-    CONNECTED_PARTIAL: "부분 수집",
+    CONNECTED_PARTIAL: "부분 수신(저장 안 됨)",
     NOT_CONNECTED: "미연결",
     PENDING: "첫 수집 대기",
     SETUP_REQUIRED: "설정 필요",

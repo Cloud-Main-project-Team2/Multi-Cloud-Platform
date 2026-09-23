@@ -442,3 +442,26 @@ def test_category_breakdown_maps_real_cost_explorer_service_names(client, make_u
     # 어휘에 없는 계열만 미분류로 남는다(전액이 아니라 정확히 그 항목들만)
     assert Decimal(data["unallocated"]["amount"]) == Decimal(len(unmapped))
     assert data["unallocated"]["reason"] == "no_category_mapping"
+
+
+def test_partial_success_run_does_not_fill_covered_through(client, make_user, auth_header, db_session):
+    """`covered_through`("여기까지 수집됨")는 저장된 데이터가 있는 구간이어야 한다 — partial run은
+    행을 하나도 저장하지 않으므로(08 §4-4) 근거가 될 수 없다. `next_manual_allowed_at`도 마찬가지다
+    (2026-09-23). 상태는 CONNECTED_PARTIAL 그대로다."""
+    user = make_user()
+    acct = _account(db_session, user)
+    _run(db_session, user, acct, dt.date(2026, 9, 1), dt.date(2026, 9, 21), status="partial_success",
+         records=0, error_code="PROVIDER_API_ERROR")
+    db_session.commit()
+
+    resp = client.get(
+        "/api/v1/costs/collection-status",
+        params={"period_start": "2026-09-01", "period_end": "2026-09-22"},
+        headers=auth_header(user),
+    )
+    assert resp.status_code == 200, resp.text
+    item = [i for i in resp.json()["data"]["items"] if i["cloud_account_id"] == str(acct.id)][0]
+
+    assert item["covered_through"] is None
+    assert item["next_manual_allowed_at"] is None
+    assert item["coverage"]["covered"] == 0        # 수집 확인도 0 — 세 표시가 서로 모순되지 않는다

@@ -61,11 +61,16 @@ def account_capability(db: Session, account: CloudAccount) -> dict:
         is not None
     )
 
+    # ⚠️ partial_success는 "성공"이 아니다 — 부분 응답은 `replace_cost_rows()`를 부르기 전에 버려지므로
+    # 그 run은 **행을 하나도 저장하지 않는다**(routers/costs.py·cost/scheduler.py, 08 §4-4). 여기에
+    # partial_success를 넣으면 `as_of`/`last_success_at`이 "데이터가 없는 시각"을 가리켜 화면의 "마지막
+    # 수집"이 방금으로 보이고 지연(36시간) 판정도 최신으로 어긋난다. coverage(cost/coverage.py)는 이미
+    # status == "success"만 인정하므로 여기서도 같은 기준을 쓴다(2026-09-23).
     last_success = (
         db.query(CostIngestionRun)
         .filter(
             CostIngestionRun.cloud_account_id == account.id,
-            CostIngestionRun.status.in_(("success", "partial_success")),
+            CostIngestionRun.status == "success",
         )
         .order_by(CostIngestionRun.finished_at.desc())
         .first()

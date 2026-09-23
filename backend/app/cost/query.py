@@ -954,11 +954,13 @@ def collection_status(db: Session, user_id: int, q: CostQuery) -> list[dict]:
             .order_by(CostIngestionRun.requested_at.desc())
             .first()
         )
+        # partial_success 제외 — 저장된 행이 0건이라 "여기까지 수집됨"(covered_through)의 근거가 될 수
+        # 없고, 1시간 제한(next_manual_allowed_at)도 만들지 않는다(2026-09-23, capability.py와 같은 기준).
         last_success = (
             db.query(CostIngestionRun)
             .filter(
                 CostIngestionRun.cloud_account_id == account.id,
-                CostIngestionRun.status.in_(("success", "partial_success")),
+                CostIngestionRun.status == "success",
             )
             .order_by(CostIngestionRun.finished_at.desc())
             .first()
