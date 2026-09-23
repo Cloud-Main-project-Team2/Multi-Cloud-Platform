@@ -107,7 +107,9 @@ window.MCPCost = (function () {
   function defaultFilters() {
     return {
       periodStart: utcStartOfMonthISO(), periodEnd: utcTodayISO(),
-      providers: [], accountIds: [], currency: "USD", chargeCategory: "usage",
+      // 통화 기본값은 비워 둔다 — 서버가 "선택 범위에서 금액 비중이 가장 큰 통화"를 고른다(ADR-023 · 03 §10).
+      // USD를 하드코딩하면 KRW 계정만 가진 사용자는 추이·분포가 영원히 빈다.
+      providers: [], accountIds: [], currency: "", chargeCategory: "usage",
       granularity: "daily", compare: "previous_period"
     };
   }
