@@ -113,51 +113,67 @@
 
         <!-- ① 비용 개요 -->
         <section id="panel-overview" class="tab-panel grid" role="tabpanel" aria-labelledby="tab-overview">
-          <article id="CF-002" data-block="CF-002" class="block kpi">
-            <div class="block-head">
-              <div>
-                <span class="block-id">CF-002</span>
-                <h2>조회 기간 누적 비용</h2>
+          <!-- KPI 4장은 성격이 둘로 갈린다 — 실제로 청구된 값(실측)과 지금 구성으로 계산한 값(정가 추정).
+               카드를 늘리지 않고 그룹 제목으로만 구분한다. CF-007은 CF-004의 부분집합이라 같은 그룹에 둔다. -->
+          <section class="kpi-group" aria-labelledby="kpi-group-actual">
+            <h3 class="kpi-group-title" id="kpi-group-actual">실측 기반</h3>
+            <p class="kpi-group-note">CSP가 실제로 집계한 금액입니다. 아래 정가 추정과 더하지 않습니다.</p>
+            <div class="kpi-group-cards">
+            <article id="CF-002" data-block="CF-002" class="block kpi">
+              <div class="block-head">
+                <div>
+                  <span class="block-id">CF-002</span>
+                  <h2>누적 비용</h2>
+                  <span class="badge kpi-scope" data-scope-badge="CF-002">조회 기간</span>
+                </div>
               </div>
+              <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
+            </article>
+            <article id="CF-003" data-block="CF-003" class="block kpi">
+              <div class="block-head">
+                <div>
+                  <span class="block-id">CF-003</span>
+                  <h2>월말 예상 비용</h2>
+                  <span class="badge kpi-scope" data-scope-badge="CF-003" title="이번 달 1일부터 어제까지의 실측을 근거로 이달 말을 추정합니다 — 위 조회 기간과 다를 수 있습니다">이번 달</span>
+                </div>
+              </div>
+              <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
+            </article>
             </div>
-            <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
-          </article>
+          </section>
 
-          <article id="CF-003" data-block="CF-003" class="block kpi">
-            <div class="block-head">
-              <div>
-                <span class="block-id">CF-003</span>
-                <h2>월말 예상 비용</h2>
+          <section class="kpi-group" aria-labelledby="kpi-group-listprice">
+            <h3 class="kpi-group-title" id="kpi-group-listprice">현재 구성의 정가 월 예상 비용(상시 가동 가정)</h3>
+            <p class="kpi-group-note">청구서가 아니라 지금 구성으로 계산한 추정입니다 · 조회 기간·통화·요금 분류와 무관(CSP·계정 조건만 적용).</p>
+            <div class="kpi-group-cards">
+            <article id="CF-004" data-block="CF-004" class="block kpi">
+              <div class="block-head">
+                <div>
+                  <span class="block-id">CF-004</span>
+                  <h2 title="현재 구성의 정가 월 예상 비용(상시 가동 가정)">월 정가 추정 합계</h2>
+                  <span class="badge kpi-scope">정가 추정</span>
+                </div>
               </div>
-            </div>
-            <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
-          </article>
-
-          <article id="CF-004" data-block="CF-004" class="block kpi">
-            <div class="block-head">
-              <div>
-                <span class="block-id">CF-004</span>
-                <h2>현재 구성 예상 월 비용</h2>
+              <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
+            </article>
+            <article id="CF-007" data-block="CF-007" class="block kpi">
+              <div class="block-head">
+                <div>
+                  <span class="block-id">CF-007</span>
+                  <h2>그중 Owner 미지정</h2>
+                  <span class="badge kpi-scope">월 정가 추정 합계의 일부</span>
+                </div>
               </div>
+              <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
+            </article>
             </div>
-            <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
-          </article>
-
-          <article id="CF-007" data-block="CF-007" class="block kpi">
-            <div class="block-head">
-              <div>
-                <span class="block-id">CF-007</span>
-                <h2>미할당 비용 (Owner 태그 없음)</h2>
-              </div>
-            </div>
-            <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
-          </article>
+          </section>
 
           <article id="CF-009" data-block="CF-009" class="block wide">
             <div class="block-head">
               <div>
                 <span class="block-id">CF-009</span>
-                <h2>계정별 비용 및 수집 상태</h2>
+                <h2>계정 수집 상태</h2>
               </div>
             </div>
             <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
@@ -177,7 +193,7 @@
             <div class="block-head">
               <div>
                 <span class="block-id">CF-034</span>
-                <h2>비용 작업 큐</h2>
+                <h2>비용 검토 목록</h2>
               </div>
             </div>
             <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
@@ -186,11 +202,12 @@
 
         <!-- ② 비용 분석 -->
         <section id="panel-analysis" class="tab-panel grid" role="tabpanel" aria-labelledby="tab-analysis" hidden>
+          <!-- CF-024 — 와이어프레임에 없던 신규 블록(04 §8-1 마크업 그대로) -->
           <article id="CF-024" data-block="CF-024" class="block wide">
             <div class="block-head">
               <div>
                 <span class="block-id">CF-024</span>
-                <h2>기간 비교 (같은 길이)</h2>
+                <h2>이전 기간과 비교</h2>
               </div>
               <div class="button-row no-print">
                 <button type="button" class="btn" data-action="compare-basis" data-compare="previous_period">직전 동일 기간</button>
@@ -249,26 +266,26 @@
             <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
           </article>
 
-          <article id="CF-022" data-block="CF-022" class="block wide">
+          <article id="CF-018" data-block="CF-018" class="block wide">
             <div class="block-head">
               <div>
-                <span class="block-id">CF-022</span>
-                <h2>현재 구성의 예상 월 비용 상위 리소스 (정가 추정)</h2>
+                <span class="block-id">CF-018</span>
+                <h2>계정별 비용 분포</h2>
               </div>
             </div>
             <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
           </article>
 
-          <article id="CF-018" data-block="CF-018" class="block wide">
+          <article id="CF-022" data-block="CF-022" class="block wide">
             <div class="block-head">
               <div>
-                <span class="block-id">CF-018</span>
-                <h2>계정별 비용</h2>
+                <span class="block-id">CF-022</span>
+                <h2>현재 구성 정가 추정 리소스</h2>
               </div>
             </div>
             <div class="block-content" data-rendered-state="PENDING"><!-- 여기만 JS가 바꾼다 --></div>
           </article>
-          <!-- CF-024 — 와이어프레임에 없던 신규 블록(04 §8-1 마크업 그대로) -->        </section>
+        </section>
 
         <!-- ③ 예산·검토 -->
         <section id="panel-budget" class="tab-panel grid" role="tabpanel" aria-labelledby="tab-budget" hidden>

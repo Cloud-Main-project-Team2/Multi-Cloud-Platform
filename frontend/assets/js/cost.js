@@ -130,6 +130,7 @@ window.MCPCost = (function () {
   var filters = filtersFromUrl();
   var ctx = {};       // 조회 결과 {key: {ok, value|error}}
   var capAccounts = []; // CFL-01 select를 채우는 재료(costs/capabilities items)
+  var showUnknownAccounts = false; // CF-018 — 금액 확인 불가 계정 행이 많을 때만 접고, 펼침 여부를 기억한다
 
   function syncUrl() {
     var api = toApiRange(filters.periodStart, filters.periodEnd);
@@ -185,10 +186,10 @@ window.MCPCost = (function () {
   function stateActionHtml(status) {
     switch (status) {
       case "NOT_CONNECTED": return '<div class="button-row no-print"><a class="btn" href="mypage.html">계정 연결</a></div>';
-      case "PENDING": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">CSP 재수집 요청</button></div>';
+      case "PENDING": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">현재 조건 계정 다시 수집</button></div>';
       case "SETUP_REQUIRED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="open-setup-dialog">설정 안내</button></div>';
       case "PERMISSION_DENIED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="open-permission-dialog">필요 권한 보기</button></div>';
-      case "COLLECT_FAILED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">CSP 재수집 요청</button></div>';
+      case "COLLECT_FAILED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">현재 조건 계정 다시 수집</button></div>';
       default: return "";
     }
   }
@@ -213,6 +214,14 @@ window.MCPCost = (function () {
   function setBlockTitle(blockId, text) {
     var h = document.querySelector("#" + blockId + " .block-head h2");
     if (h && h.textContent !== text) h.textContent = text;
+  }
+
+  /** 카드 제목 아래 범위 배지(조회 기간 / 이번 달 …). 제목을 길게 만들지 않고 "이 값이 어느 범위인가"만 적는다. */
+  function setBlockBadge(blockId, text, title) {
+    var el = document.querySelector('#' + blockId + ' [data-scope-badge="' + blockId + '"]');
+    if (!el) return;
+    if (el.textContent !== text) el.textContent = text;
+    el.title = title || "";
   }
 
   /** ISO 시각 → "2026-09-19 17:51 (1시간 전 · 지연)" + title에 원본. 표시 시간대는 브라우저 로컬이고,
@@ -492,7 +501,7 @@ window.MCPCost = (function () {
     // 화면 값만 다시 읽는 것은 조건 '적용'이다.
     var targets = refreshTargets();
     var refreshDisabled = (nextAllowed != null && nextAllowed > Date.now()) || refreshPoll.active || running || !targets.length;
-    var refreshLabel = refreshPoll.active ? "수집 확인 중…" : (running ? "수집 진행 중…" : "CSP 재수집 (" + targets.length + "개 계정)");
+    var refreshLabel = refreshPoll.active ? "수집 확인 중…" : (running ? "수집 진행 중…" : "현재 조건 " + targets.length + "개 계정 다시 수집");
     var refreshHint = refreshPoll.active ? refreshPoll.text
       : (nextAllowed != null && nextAllowed > Date.now() ? "계정당 1시간 1회 · " + fmtWhen(new Date(nextAllowed).toISOString()).text.replace(/ \(.*\)$/, "") + " 이후 가능 · 대상 " + refreshScopeText(targets)
          : "재수집 대상: " + refreshScopeText(targets) + " · 조회 기간 " + esc(disp.start) + " ~ " + esc(disp.end) + " · CSP API 호출(과금 가능) · 화면 값만 다시 읽으려면 조건 '적용'");
@@ -622,7 +631,7 @@ window.MCPCost = (function () {
       "</span>" +
       "</div>" +
       '<p class="note filter-error" id="filter-period-note" role="alert" hidden></p>' +
-      '<p class="note">공통 조회 조건입니다. 예외 — 정가 추정(현재 구성 예상 월 비용·상위 리소스)은 기간·통화·요금 분류와 무관하고, 비용 작업 큐는 기간과 무관하며, 예산·검토 탭의 팀 예산은 팀 선택만 따릅니다.</p>' +
+      '<p class="note">공통 조회 조건입니다. 예외 — 정가 추정(현재 구성 예상 월 비용·상위 리소스)은 기간·통화·요금 분류와 무관하고, 비용 검토 목록은 기간과 무관하며, 예산·검토 탭의 팀 예산은 팀 선택만 따릅니다.</p>' +
       "</details>";
   }
 
@@ -824,7 +833,11 @@ window.MCPCost = (function () {
 
   function renderMtd() {
     var api = toApiRange(filters.periodStart, filters.periodEnd);
-    setBlockTitle("CF-002", isCurrentMonthToDate() ? "이번 달 누적 비용" : "조회 기간 누적 비용");
+    // 제목은 "누적 비용"으로 두고 범위는 배지가 말한다 — 그룹 제목("실측 기반")에 기간을 박으면 CF-003(이번 달 기준)이
+    // 조회 기간 값처럼 읽히기 때문이다. 이번 달 1일~오늘이면 배지에 그 사실을 덧붙인다.
+    var dispRange = toDisplayRange(api.period_start, api.period_end);
+    setBlockTitle("CF-002", "누적 비용");
+    setBlockBadge("CF-002", isCurrentMonthToDate() ? "조회 기간 · 이번 달" : "조회 기간", dispRange.start + " ~ " + dispRange.end + " (UTC 일 기준)");
     if (!ctx.summary || !ctx.summary.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.summary, "누적 비용") };
     var d = ctx.summary.value;
     if (!(d.accounts || []).length && capAccounts.length) {
@@ -849,7 +862,7 @@ window.MCPCost = (function () {
       '<p class="kpi-basis">' + esc(chargeCategoryLabel(filters.chargeCategory)) + " 기준 · 청구 확정 아님</p>" +
       coverageLineHtml(d) +
       deltaLineHtml(ctx.changes) +
-      '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="analysis" data-target="CF-024">기간 비교 보기</button></div>';
+      '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="analysis" data-target="CF-024">이전 기간과 비교 보기</button></div>';
     return { state: st, html: html };
   }
 
@@ -896,7 +909,9 @@ window.MCPCost = (function () {
     var d = ctx.summary.value;
     var rows = d.kpis.list_price_monthly || [];
     var totalResources = (ctx.resources && ctx.resources.ok) ? ctx.resources.value.items.length : null;
-    var basis = '<p class="kpi-basis">현재 구성 × 730h 정가(할인·부속 요금 미반영) · <strong>조회 기간과 무관</strong></p>';
+    // 확정 11이 지정한 전문("현재 구성의 정가 월 예상 비용(상시 가동 가정)")은 카드 제목에서 그룹 제목으로 옮겼고,
+    // 카드에서도 사라지지 않도록 이 안내 줄과 제목 title 속성에 전문을 남긴다(6단계 문서에 기록).
+    var basis = '<p class="kpi-basis">현재 구성의 정가 월 예상 비용(상시 가동 가정) · 730h 정가(할인·부속 요금 미반영) · <strong>조회 기간과 무관</strong></p>';
     if (!rows.length) {
       if (totalResources === 0) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">집계할 리소스가 없습니다.</p>' + basis };
       return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">정가표에 있는 리소스가 없어 산출하지 않습니다.</p>' + basis };
@@ -910,7 +925,7 @@ window.MCPCost = (function () {
     return { state: "CONNECTED_OK", html: html };
   }
 
-  // ── CF-009 계정별 비용 및 수집 상태 ─────────────────────────────────────────────────
+  // ── CF-009 계정 수집 상태 ─────────────────────────────────────────────────
   var PROVIDER_LABEL = { aws: "AWS", azure: "Azure", gcp: "GCP" };
   var PROVIDER_DOT = { aws: "", azure: "azure", gcp: "gcp" };
   // dashboard.js·inventory.js의 PROVIDER_ICON과 같은 에셋 — 표의 플랫폼 이름 앞에 로고를 붙인다(차트 범례는 색 점 유지).
@@ -967,12 +982,12 @@ window.MCPCost = (function () {
   }
 
   function renderPlatforms() {
-    if (!ctx.capabilities || !ctx.capabilities.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.capabilities, "계정별 비용") };
+    if (!ctx.capabilities || !ctx.capabilities.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.capabilities, "계정 수집 상태") };
     var caps = ctx.capabilities.value.items || [];
     var threshold = ctx.capabilities.value.staleness_threshold_hours;
     var accountsById = {};
     if (ctx.summary && ctx.summary.ok) ctx.summary.value.accounts.forEach(function (a) { accountsById[a.cloud_account_id] = a; });
-    if (!caps.length) return { state: "NOT_CONNECTED", html: stateViewHtml("NOT_CONNECTED", "계정별 비용") };
+    if (!caps.length) return { state: "NOT_CONNECTED", html: stateViewHtml("NOT_CONNECTED", "계정 수집 상태") };
 
     var order = { aws: 0, azure: 1, gcp: 2 };
     var scopeApi = toApiRange(filters.periodStart, filters.periodEnd);
@@ -982,22 +997,24 @@ window.MCPCost = (function () {
         var acc = accountsById[c.cloud_account_id];
         var selected = !!acc; // summary.accounts에 없으면 조회 조건(CSP·계정) 밖 — 결측으로 세지 않는다
         var detail = S.text(c.status, "", c.as_of); // 9종 문구 — cost-state.js 한 곳
+        // 열 순서는 이 블록의 질문 순서다 — "어느 계정인가 → 믿어도 되나(상태·수집 확인·마지막 수집) → 무엇을 하나".
+        // 기간 비용은 참고 정보라 행동 앞 마지막에 둔다(금액 순위·비중은 ② 탭 CF-018이 맡는다).
         return '<tr data-account-id="' + esc(c.cloud_account_id) + '"' + (selected ? "" : ' style="opacity:.5"') + ">" +
           '<td data-label="CSP">' + providerCellHtml(c.provider) + "</td>" +
           '<td data-label="계정">' + esc(c.account_label || c.external_account_id) + (c.account_label ? '<br><span class="tiny muted">' + esc(c.external_account_id) + "</span>" : "") + "</td>" +
-          '<td class="num" data-label="기간 비용">' + amountCellHtml(acc, c) + "</td>" +
-          '<td data-label="조회 기간 수집">' + coverageCellHtml(acc) + "</td>" +
           '<td data-label="수집 상태"><span class="status-cell">' + statusTagHtml(c.status) +
             (detail ? '<span class="tiny muted">' + esc(detail.replace(/^\s*/, "")) + "</span>" : "") +
             (c.ingestion_running ? '<span class="tiny muted">수집 진행 중…</span>' : "") + "</span></td>" +
+          '<td data-label="조회 기간 수집">' + coverageCellHtml(acc) + "</td>" +
           '<td data-label="마지막 수집">' + (c.as_of ? whenHtml(c.as_of, threshold) : '<span class="tiny muted">없음</span>') + "</td>" +
+          '<td class="num" data-label="기간 비용(참고)">' + amountCellHtml(acc, c) + "</td>" +
           '<td class="actions" data-label="">' + accountActionsHtml(c) + "</td></tr>";
       });
 
     var html = '<div class="table-wrap"><table class="account-table"><thead><tr>' +
-      '<th scope="col">CSP</th><th scope="col">계정</th><th scope="col">기간 비용</th><th scope="col">조회 기간 수집</th><th scope="col">수집 상태</th><th scope="col">마지막 수집</th><th scope="col"><span class="sr-only">행동</span></th>' +
+      '<th scope="col">CSP</th><th scope="col">계정</th><th scope="col">수집 상태</th><th scope="col">조회 기간 수집</th><th scope="col">마지막 수집</th><th scope="col" class="num">기간 비용 <span class="tiny muted">(참고)</span></th><th scope="col"><span class="sr-only">행동</span></th>' +
       "</tr></thead><tbody>" + rows.join("") + "</tbody></table></div>" +
-      '<p class="note">전체 연결 계정의 운영 상태 · 기간 비용 = 위 조회 조건의 ' + esc(chargeCategoryLabel(filters.chargeCategory)) + " 합(계정별) · \"조회 기간 수집\"은 " + esc(scopeDisp.start) + " ~ " + esc(scopeDisp.end) + " 기준(오늘·미래 제외) · \"수집 상태\"는 마지막 수집 실행 기준 · 통화가 다른 계정은 합치지 않습니다" +
+      '<p class="note">전체 연결 계정의 수집 상태와 조치 · 금액 순위·비중은 ② 비용 분석 탭의 계정별 비용 분포에서 봅니다 · 기간 비용(참고) = 위 조회 조건의 ' + esc(chargeCategoryLabel(filters.chargeCategory)) + " 합(계정별) · \"조회 기간 수집\"은 " + esc(scopeDisp.start) + " ~ " + esc(scopeDisp.end) + " 기준(오늘·미래 제외) · \"수집 상태\"는 마지막 수집 실행 기준 · 통화가 다른 계정은 합치지 않습니다" +
       (filters.providers.length || filters.accountIds.length ? " · 흐린 행은 조회 조건에서 제외된 계정(현재 합계와 무관)" : "") + "</p>";
     return { state: "CONNECTED_OK", html: html };
   }
@@ -1046,11 +1063,11 @@ window.MCPCost = (function () {
     return items.filter(isOwnerUnassigned);
   }
 
-  // ── CF-007 미할당 비용 · Owner 미지정 (04 §4-4) ────────────────────────────────────
+  // ── CF-007 Owner 미지정 리소스의 정가 추정 (04 §4-4) ────────────────────────────────────
   // CF-004와 같은 정가 기준(현재 구성 × 730h)이라 기간 필터와 무관하다 — /resources가 period_*를
   // 받지 않으므로 구조적으로도 안 변한다. 금액은 CF-004의 부분집합이지 CF-004에서 뺀 값이 아니다.
   function renderUnallocated() {
-    if (!ctx.resources || !ctx.resources.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.resources, "미할당 비용") };
+    if (!ctx.resources || !ctx.resources.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.resources, "Owner 미지정 리소스의 정가 추정") };
     var unassigned = unassignedResources();
     if (!unassigned.length) {
       // $0.00이 아니다 — 0원이 아니라 셀 대상이 없는 것이다.
@@ -1064,7 +1081,7 @@ window.MCPCost = (function () {
     });
     var guarded = F.sumWithGuard(priced); // 통화가 다르면 합치지 않고 줄을 늘린다
     var lines = guarded.groups.map(function (g) { return { amount: g.total, currency: g.currency }; });
-    var html = lines.length ? moneyBadgeLines(lines, "Estimated 중 미할당") : '<div class="value">—</div>';
+    var html = lines.length ? moneyBadgeLines(lines, "정가 추정 중 Owner 미지정") : '<div class="value">—</div>';
     var totalEst = (ctx.summary && ctx.summary.ok && (ctx.summary.value.kpis.list_price_monthly || [])[0]) || null;
     html += '<p class="kpi-basis">전체 예상 월 비용' + (totalEst ? "(" + esc(F.money(totalEst.amount, totalEst.currency)) + ")" : "") + " 중 담당자(" + esc(OWNER_TAG_KEY) + " 태그) 미지정 리소스 " + unassigned.length + "개의 금액 · 조회 기간과 무관</p>" +
       (noPrice > 0 ? '<p class="kpi-note">' + noPrice + "개는 정가표에 없어 금액 제외(개수엔 포함)</p>" : "") +
@@ -1088,7 +1105,7 @@ window.MCPCost = (function () {
       var n = unassignedResources().length;
       if (n > 0) {
         warnings.push(esc(OWNER_TAG_KEY) + " 태그가 없는 리소스 " + n + "개 — 태그 기준 검토 후보입니다. 담당자를 정하면 정가 추정치를 나눠 볼 수 있습니다." +
-          ' <button type="button" class="btn no-print" data-action="nav-scroll" data-tab="overview" data-target="CF-007">미할당 비용 보기</button>');
+          ' <button type="button" class="btn no-print" data-action="nav-scroll" data-tab="overview" data-target="CF-007">Owner 미지정 정가 추정 보기</button>');
       }
     } else {
       notes.push("리소스 목록을 가져오지 못해 " + esc(OWNER_TAG_KEY) + " 미지정 개수를 판정하지 못했습니다.");
@@ -1295,8 +1312,10 @@ window.MCPCost = (function () {
     if (!incRows.length && !decRows.length && !noPrev.length) {
       return { state: "CONNECTED_OK", html: '<p class="note">두 기간 모두 비교할 실측 항목이 없습니다.</p>' };
     }
-    var head = '<thead><tr><th scope="col">서비스</th><th scope="col" class="num">이전(' + esc(prev.start) + "~" + esc(prev.end) + ')</th><th scope="col" class="num">현재(' + esc(cur.start) + "~" + esc(cur.end) + ')</th><th scope="col" class="num">증가액</th><th scope="col" class="num">증가율</th></tr></thead>';
-    var html = '<p class="note">' + esc(d.currency || "") + " · 사용료 기준(요금 분류 필터 미적용) · 증가액 내림차순 · 증가율은 이전 금액 대비 비율(증가액과 다른 정보)" +
+    // 열 이름에 두 기간을 통째로 적으면 반폭 카드에서 표가 넘쳐 가로로 스크롤된다(4단계 실측 120px).
+    // 날짜는 블록 안내 줄에 한 번만 적고, 열 이름은 "이전/현재"로 두되 각 열의 title에 정확한 범위를 남긴다.
+    var head = '<thead><tr><th scope="col">서비스</th><th scope="col" class="num" title="' + esc(prev.start) + " ~ " + esc(prev.end) + '">이전</th><th scope="col" class="num" title="' + esc(cur.start) + " ~ " + esc(cur.end) + '">현재</th><th scope="col" class="num">증가액</th><th scope="col" class="num">증가율</th></tr></thead>';
+    var html = '<p class="note">이전 ' + esc(prev.start) + "~" + esc(prev.end) + " · 현재 " + esc(cur.start) + "~" + esc(cur.end) + " · " + esc(d.currency || "") + " · 사용료 기준(요금 분류 필터 미적용) · 증가액 내림차순 · 증가율은 이전 금액 대비 비율(증가액과 다른 정보)" +
       ((d.increases || []).concat(d.decreases || [], d.new_items || []).some(function (it) { return it.key === "__unallocated__"; }) ? " · \"미분류\"는 서비스가 지정되지 않은 금액으로 합계에 포함(상위 항목 밖 \"기타\"와 다름)" : "") + "</p>" +
       '<div class="table-wrap"><table class="changes-table">' + head + "<tbody>" +
       (incRows.length ? incRows.join("") : '<tr><td colspan="5" class="tiny muted">이전 기간보다 늘어난 서비스가 없습니다</td></tr>') +
@@ -1311,9 +1330,9 @@ window.MCPCost = (function () {
     return { state: "CONNECTED_OK", html: html };
   }
 
-  // ── CF-024 같은 길이 기간 비교 ────────────────────────────────────────────────────
+  // ── CF-024 이전 기간과 비교(같은 길이) ────────────────────────────────────────────────────
   function renderPeriodCompare() {
-    if (!ctx.changes || !ctx.changes.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.changes, "기간 비교") };
+    if (!ctx.changes || !ctx.changes.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.changes, "이전 기간과 비교") };
     var d = ctx.changes.value;
     var basis = filters.compare === "previous_month" ? "전월 같은 구간" : "직전 동일 기간";
     var prevDisp = toDisplayRange(d.previous.start, d.previous.end);
@@ -1366,54 +1385,72 @@ window.MCPCost = (function () {
     return '<span title="' + esc(st) + '">' + esc(RESOURCE_STATUS_LABEL[k] || st) + "</span>";
   }
 
+  /** CF-022 — 통화별 섹션, 각 통화 안에서만 상위 5개(03 §10 "표·카드는 통화가 다르면 줄을 나눠 나란히" · ADR-023).
+      예전엔 통화별로 정렬한 뒤 전체에서 slice(0,5)를 해서 KRW 5개 + USD 1개면 USD가 통째로 사라졌다(4단계에서 수정).
+      통화가 없는(확정되지 않은) 리소스는 순위에 넣지 않고 개수로만 알린다. CF-004·CF-007도 통화별 줄(sumWithGuard)이라 같은 모양. */
+  var TOP_RESOURCES_N = 5;
   function renderTopResources() {
     if (!ctx.resources || !ctx.resources.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.resources, "비용 상위 리소스") };
     var items = ctx.resources.value.items || [];
     var withCost = items.filter(function (r) { return r.cost_summary && r.cost_summary.estimated_monthly_cost != null; });
-    var currencies = {};
-    withCost.forEach(function (r) { currencies[r.cost_summary.currency || "?"] = true; });
-    var mixed = Object.keys(currencies).length > 1;
-    // 정렬은 표시용 문자열이 아니라 원값(Number)으로. 통화가 섞이면 환산 없이 통화별로 묶은 뒤 그 안에서 내림차순 —
-    // 다른 통화를 한 줄로 세우면 "하나의 순위"처럼 읽힌다.
-    var sorted = withCost.slice().sort(function (a, b) {
-      if (mixed && (a.cost_summary.currency || "") !== (b.cost_summary.currency || "")) return String(a.cost_summary.currency || "").localeCompare(String(b.cost_summary.currency || ""));
-      return Number(b.cost_summary.estimated_monthly_cost) - Number(a.cost_summary.estimated_monthly_cost);
-    });
-    var top = sorted.slice(0, 5);
-    var restCount = Math.max(withCost.length - top.length, 0); // "기타"는 정가가 있는 나머지만 — 정가 없는 것은 따로 센다
     var noCostCount = items.length - withCost.length;
-    // Owner 태그는 리소스 태그에서 읽을 뿐 여기서 설정하는 기능은 없다 — 하나도 없으면 열을 감추고 한 줄로 알린다.
-    var anyOwner = top.some(function (r) { return r.tags && r.tags[OWNER_TAG_KEY]; });
-
-    var rows = top.map(function (r) {
-      var stopped = !!(r.status && RESOURCE_STOPPED[String(r.status).toUpperCase()]);
-      var owner = (r.tags && r.tags[OWNER_TAG_KEY]) || "";
-      return "<tr><td>" + providerCellHtml(r.cloud_account.provider) + " " + esc(r.name || r.external_resource_id) + '<br><span class="tiny muted">' + esc(r.service && r.service.display_name || "") + (r.region ? " · " + esc(r.region) : "") + "</span></td>" +
-        '<td class="num">' + esc(mixed ? F.money(r.cost_summary.estimated_monthly_cost, null) : F.money(r.cost_summary.estimated_monthly_cost, r.cost_summary.currency)) +
-          (stopped ? '<br><span class="tiny muted">상시 가동 가정 · 현재 중지됨</span>' : "") + "</td>" +
-        (mixed ? "<td>" + esc(r.cost_summary.currency || "—") + "</td>" : "") +
-        "<td>" + resourceStatusHtml(r.status) + "</td>" + (anyOwner ? "<td>" + (owner ? esc(owner) : '<span class="tiny muted">태그 없음</span>') + "</td>" : "") +
-        '<td><button type="button" class="btn no-print" data-action="open-resource-detail" data-resource-id="' + esc(r.id) + '">인벤토리에서 보기</button></td></tr>';
+    // 통화별로 묶는다 — 정렬은 표시용 문자열이 아니라 원값(Number)으로, 같은 통화 안에서만.
+    var groups = {}, noCurrencyCount = 0;
+    withCost.forEach(function (r) {
+      var cur = r.cost_summary.currency;
+      if (!cur) { noCurrencyCount++; return; } // 통화가 확정되지 않은 금액은 순위에 넣지 않는다
+      (groups[cur] = groups[cur] || []).push(r);
     });
+    // 섹션 순서: 정가 있는 리소스가 많은 통화부터(환산 없이 비교할 수 있는 유일한 크기), 같으면 통화 코드순.
+    var currencies = Object.keys(groups).sort(function (a, b) { return (groups[b].length - groups[a].length) || a.localeCompare(b); });
+    var mixed = currencies.length > 1;
+    var sections = currencies.map(function (cur) {
+      var sorted = groups[cur].slice().sort(function (a, b) { return Number(b.cost_summary.estimated_monthly_cost) - Number(a.cost_summary.estimated_monthly_cost); });
+      var top = sorted.slice(0, TOP_RESOURCES_N);
+      return { currency: cur, top: top, restCount: sorted.length - top.length, count: sorted.length }; // "기타"는 정가가 있는 나머지만 — 정가 없는 것은 따로 센다
+    });
+    var allTop = sections.reduce(function (acc, sct) { return acc.concat(sct.top); }, []);
+    // Owner 태그는 리소스 태그에서 읽을 뿐 여기서 설정하는 기능은 없다 — 하나도 없으면 열을 감추고 한 줄로 알린다.
+    var anyOwner = allTop.some(function (r) { return r.tags && r.tags[OWNER_TAG_KEY]; });
+    var colCount = 4 + (mixed ? 1 : 0) + (anyOwner ? 1 : 0);
+
+    var rowsHtml = "";
+    sections.forEach(function (sct) {
+      if (mixed) rowsHtml += '<tr class="group-head"><td colspan="' + colCount + '">' + esc(sct.currency) + " · 정가 있는 리소스 " + sct.count + "개 중 상위 " + sct.top.length + "개</td></tr>";
+      sct.top.forEach(function (r) {
+        var stopped = !!(r.status && RESOURCE_STOPPED[String(r.status).toUpperCase()]);
+        var owner = (r.tags && r.tags[OWNER_TAG_KEY]) || "";
+        rowsHtml += "<tr><td>" + providerCellHtml(r.cloud_account.provider) + " " + esc(r.name || r.external_resource_id) + '<br><span class="tiny muted">' + esc(r.service && r.service.display_name || "") + (r.region ? " · " + esc(r.region) : "") + "</span></td>" +
+          '<td class="num">' + esc(mixed ? F.money(r.cost_summary.estimated_monthly_cost, null) : F.money(r.cost_summary.estimated_monthly_cost, r.cost_summary.currency)) +
+            (stopped ? '<br><span class="tiny muted">상시 가동 가정 · 현재 중지됨</span>' : "") + "</td>" +
+          (mixed ? "<td>" + esc(r.cost_summary.currency) + "</td>" : "") +
+          "<td>" + resourceStatusHtml(r.status) + "</td>" + (anyOwner ? "<td>" + (owner ? esc(owner) : '<span class="tiny muted">태그 없음</span>') + "</td>" : "") +
+          '<td><button type="button" class="btn no-print" data-action="open-resource-detail" data-resource-id="' + esc(r.id) + '">인벤토리에서 보기</button></td></tr>';
+      });
+    });
+    var restNotes = sections.filter(function (sct) { return sct.restCount > 0; }).map(function (sct) { return (mixed ? sct.currency + " " : "") + "상위 " + sct.top.length + "개 외 정가 있는 리소스 " + sct.restCount + "개"; });
     var html = '<p class="note"><strong>실측 지출 순위가 아닙니다.</strong> 지금 구성이 한 달(730h) 내내 켜져 있다고 가정한 정가 추정이며 <strong>조회 기간·통화·요금 분류와 무관</strong>합니다(CSP·계정 필터만 적용). 실측·월말 전망과 더하지 않습니다. 리소스 단위 실측은 이번 범위에서 제공하지 않습니다.</p>' +
       '<div class="table-wrap"><table class="changes-table"><thead><tr><th scope="col">플랫폼 / 리소스</th><th scope="col" class="num">예상 월 비용(정가)</th>' + (mixed ? '<th scope="col">통화</th>' : "") + '<th scope="col">상태</th>' + (anyOwner ? '<th scope="col">담당(Owner 태그)</th>' : "") + '<th scope="col"><span class="sr-only">행동</span></th></tr></thead><tbody>' +
-      (rows.length ? rows.join("") : '<tr><td colspan="6" class="tiny muted">정가표에 있는 리소스가 없습니다</td></tr>') +
+      (rowsHtml || '<tr><td colspan="' + colCount + '" class="tiny muted">정가표에 있는 리소스가 없습니다</td></tr>') +
       "</tbody></table></div>" +
-      (restCount > 0 ? '<p class="note">상위 5개 외 정가 있는 리소스 ' + restCount + "개 · 부분합이 아니라 개수만</p>" : "") +
+      (restNotes.length ? '<p class="note">' + esc(restNotes.join(" · ")) + " · 부분합이 아니라 개수만</p>" : "") +
       (noCostCount > 0 ? '<p class="note">정가표에 없어 금액이 없는 리소스 ' + noCostCount + "개 — 0원이 아닙니다(사용량 기반 서비스 등)</p>" : "") +
-      (!anyOwner && rows.length ? '<p class="note">Owner 태그가 있는 리소스가 없어 담당 열을 표시하지 않습니다(태그는 각 CSP 콘솔에서 붙입니다).</p>' : "") +
-      (mixed ? '<p class="note">통화가 섞여 있어 통화 열을 따로 두었고 환산 없이 각 통화 그대로입니다 — 하나의 순위로 읽지 마세요.</p>' : "");
+      (noCurrencyCount > 0 ? '<p class="note">통화가 확인되지 않은 리소스 ' + noCurrencyCount + "개는 순위에 넣지 않았습니다</p>" : "") +
+      (!anyOwner && rowsHtml ? '<p class="note">Owner 태그가 있는 리소스가 없어 담당 열을 표시하지 않습니다(태그는 각 CSP 콘솔에서 붙입니다).</p>' : "") +
+      (mixed ? '<p class="note">통화 ' + currencies.length + "종 — 통화별로 상위 " + TOP_RESOURCES_N + "개씩 따로 세웠고 환산 없이 각 통화 그대로입니다. 하나의 순위로 읽지 마세요.</p>" : "");
     return { state: "CONNECTED_OK", html: html };
   }
 
-  // ── CF-018 계정별 비용 ────────────────────────────────────────────────────────────
-  /** CF-018 계정별 비용 — 금액·비중 모두 summary.accounts[] 하나에서 낸다(같은 요금 분류·같은 통화·같은 대상 계정).
+  // ── CF-018 계정별 비용 분포 ────────────────────────────────────────────────────────────
+  /** CF-018 계정별 비용 분포 — "어느 계정에서 얼마나 쓰고 있나". 수집 상태·조치는 CF-009가 맡는다.
+      금액·비중 모두 summary.accounts[] 하나에서 낸다(같은 요금 분류·같은 통화·같은 대상 계정).
       breakdown?dimension=account는 쓰지 않는다 — top_n 상한(20) 밖 계정의 정상 금액이 사라진다.
       비중은 요금 분류가 usage(사용료)일 때만 낸다(05 §4-4 "share_pct는 usage 기준"). 분모(같은 통화 금액 합)가 0이거나
       없으면 0%가 아니라 값 없음. 통화가 둘 이상이면 통화별로 묶고 하나의 순위로 세우지 않는다.
-      금액을 확인할 수 없는 계정(미지원·통화 조건 제외·수집 기록 없음)은 지우지 않고 접이식 목록에 이름·사유를 남긴다(04 §5-6 의도 유지). */
+      금액을 확인할 수 없는 계정(미지원·통화 조건 제외·수집 기록 없음)은 지우지 않고 표 맨 뒤에 "—" 행으로 남긴다
+      (03 §8 "금액 없는 행은 맨 뒤" · 04 §5-6 "목록에서 지우지 않는다"). 5개를 넘을 때만 접는다. */
   function renderByAccount() {
-    if (!ctx.summary || !ctx.summary.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.summary, "계정별 비용") };
+    if (!ctx.summary || !ctx.summary.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.summary, "계정별 비용 분포") };
     var accounts = ctx.summary.value.accounts || [];
     var capById = {};
     capAccounts.forEach(function (c) { capById[c.cloud_account_id] = c; });
@@ -1426,7 +1463,7 @@ window.MCPCost = (function () {
       if (a.actual != null) return confirmed.push({ a: a, amount: a.actual, partial: !!(cov && cov.missing_count) });
       if (cov && cov.days > 0 && cov.missing_count === 0) return confirmed.push({ a: a, amount: "0.000000", zero: true });
       if (!cov) return unknown.push({ a: a, why: S.kind(a.status) === "unsupported" ? S.exclusionLabel("UNSUPPORTED") : (S.label(a.status) || "확인 불가") });
-      if (cov.covered > 0) return unknown.push({ a: a, why: cov.missing_count + "일 미수집(확인된 날은 0원)" });
+      if (cov.covered > 0) return unknown.push({ a: a, why: cov.missing_count + "일 미수집" });
       unknown.push({ a: a, why: cov.days === 0 ? "완료된 날 없음" : S.exclusionLabel("PERIOD_NOT_COVERED") });
     });
     // 통화별 묶음 — 같은 통화 안에서만 내림차순·비중
@@ -1457,18 +1494,34 @@ window.MCPCost = (function () {
           '<td class="actions account-actions-cell"><button type="button" class="btn no-print" data-action="account-filter-set" data-account-id="' + esc(a.cloud_account_id) + '">이 계정만 보기</button></td></tr>';
       });
     });
+    // 금액을 확인할 수 없는 계정은 지우지 않고 표 맨 뒤에 "—" 행으로 둔다(03 §8 "금액 없는 행은 맨 뒤", 04 §5-6
+    // "UNSUPPORTED 계정도 목록에서 지우지 않는다"). 사유는 한 마디만 적고 운영 상세는 CF-009로 보낸다.
+    // 다섯 줄을 넘을 때만 접어서, 금액 순위가 확인 불가 행에 밀리지 않게 한다.
+    var unknownRows = unknown.map(function (u) {
+      return '<tr class="no-amount" data-account-id="' + esc(u.a.cloud_account_id) + '"><td class="account-name-cell" data-label="계정">' + label(u.a) + "</td>" +
+        '<td class="num account-period-cell" data-label="기간 비용">—<br><span class="tiny muted">' + esc(u.why) + "</span></td>" +
+        '<td class="num account-share-col" data-label="비중"><span class="tiny muted">—</span></td>' +
+        '<td class="num account-team-cell" data-label="팀">' + esc(u.a.team_id ? teamNameOf(u.a.team_id) : "미배정") + "</td>" +
+        '<td class="actions account-actions-cell"><button type="button" class="btn no-print" data-action="nav-scroll" data-tab="overview" data-target="CF-009">수집 상태 보기</button></td></tr>';
+    }).join("");
+    var UNKNOWN_FOLD_AT = 5;
+    var folded = unknown.length > UNKNOWN_FOLD_AT;
+    if (unknownRows && folded) {
+      rowsHtml += '<tr class="group-head no-amount-fold"><td colspan="5"><button type="button" class="btn no-print" data-action="toggle-unknown-accounts" aria-expanded="' + (showUnknownAccounts ? "true" : "false") + '">금액 확인 불가 계정 ' + unknown.length + "개 " + (showUnknownAccounts ? "접기" : "보기") + "</button></td></tr>";
+      if (showUnknownAccounts) rowsHtml += unknownRows;
+    } else {
+      rowsHtml += unknownRows;
+    }
+
     // "기간 비용"·"비중"·"팀" 헤더에 num을 줘서 제목이 값과 같은 오른쪽 기준으로 맞는다(전에는
     // 헤더만 왼쪽 정렬이라 제목·값 위치가 어긋나 보였다). "계정" 헤더는 account-name-cell로 폭을
     // 잡아 옆 "기간 비용" 칼럼이 붙어 보이게 한다(계정 열이 불필요하게 넓어 둘 사이가 크게
     // 벌어졌었다).
     var html = '<div class="table-wrap"><table class="account-table account-cost-table"><thead><tr><th scope="col" class="account-name-cell">계정</th><th scope="col" class="num account-period-cell">기간 비용</th><th scope="col" class="num account-share-col">비중' + (shareOk ? "" : ' <span class="tiny muted">(사용료 기준만)</span>') + '</th><th scope="col" class="num account-team-cell">팀</th><th scope="col" class="account-actions-cell"><span class="sr-only">행동</span></th></tr></thead><tbody>' +
       (rowsHtml || '<tr><td colspan="5" class="tiny muted">' + (accounts.length ? "조회 조건에서 금액이 확인된 계정이 없습니다" : "조회 조건에 맞는 계정이 없습니다") + "</td></tr>") + "</tbody></table></div>";
-    if (unknown.length) {
-      html += '<details class="note"><summary style="cursor:pointer">금액을 확인할 수 없는 계정 ' + unknown.length + "개</summary>" +
-        unknown.map(function (u) { return label(u.a) + ' — <span class="muted">' + esc(u.why) + "</span> · " + statusTagHtml(u.a.status); }).join("<br>") + "</details>";
-    }
     html += '<p class="note">금액·비중 모두 조회 조건의 ' + esc(chargeCategoryLabel(filters.chargeCategory)) + " 합(계정별) 기준 · 비중 = 계정 금액 ÷ 같은 통화 계정 합계" +
       (shareOk ? "" : " — 사용료가 아닌 분류에서는 비중을 내지 않습니다") + (multi ? " · 통화가 달라 통화별로 나눠 보며 하나의 순위로 세우지 않습니다" : "") +
+      (unknown.length ? " · 금액을 확인할 수 없는 계정 " + unknown.length + "개는 맨 뒤에 사유와 함께 둡니다(수집 상태는 ① 개요 탭)" : "") +
       " · 계정 합계와 리소스 정가를 더하지 않습니다</p>";
     return { state: "CONNECTED_OK", html: html };
   }
@@ -1569,7 +1622,7 @@ window.MCPCost = (function () {
           '<li><strong>예산 설정</strong> — 월간·분기·연간·사용자 지정 중 하나로 한도를 둡니다</li>' +
         "</ol>" +
         '<div class="button-row no-print"><button type="button" class="btn primary" data-action="open-team-dialog">팀 만들기</button></div>' +
-        '<p class="note">팀은 조직 권한이나 구성원 초대가 아니라, 내가 연결한 클라우드 계정을 묶는 단위입니다. 아래 급증 탐지·AI 비용 상담은 팀 없이도 동작하고, 비용 작업 큐는 ① 비용 개요 탭에 있습니다.</p>' +
+        '<p class="note">팀은 조직 권한이나 구성원 초대가 아니라, 내가 연결한 클라우드 계정을 묶는 단위입니다. 아래 급증 탐지·AI 비용 상담은 팀 없이도 동작하고, 비용 검토 목록은 ① 비용 개요 탭에 있습니다.</p>' +
         "</div>";
     } else {
       setBlockTitle("CFL-03", "팀 선택");
@@ -1968,7 +2021,7 @@ window.MCPCost = (function () {
     (d.held || []).forEach(function (h) { reasons.push(esc(accountLabelOf(h.cloud_account_id)) + ": 기준선 " + d.rule.baseline_days + "일 중 미수집일이 있어 " + h.days.length + "일 보류"); });
     (d.unsupported_currency || []).forEach(function (u) { reasons.push(esc(accountLabelOf(u.cloud_account_id)) + ": " + esc(u.currency || "통화 미확인") + " 임계값 미정 — 보류"); });
     if (reasons.length) html += '<details class="note"><summary style="cursor:pointer">평가하지 못한 계정 사유 ' + reasons.length + "건</summary>" + reasons.join("<br>") + "</details>";
-    html += '<p class="note">적용 조건: 상단 기간·CSP·계정 필터 · 팀 선택은 이 블록에 적용되지 않음 · 통화 ' + esc(d.rule.currency) + " 계정만 판정 · 검토 등록 항목은 ① 비용 개요 탭의 비용 작업 큐에서 상태를 바꿉니다</p>";
+    html += '<p class="note">적용 조건: 상단 기간·CSP·계정 필터 · 팀 선택은 이 블록에 적용되지 않음 · 통화 ' + esc(d.rule.currency) + " 계정만 판정 · 검토 등록 항목은 ① 비용 개요 탭의 비용 검토 목록에서 상태를 바꿉니다</p>";
     return { state: "CONNECTED_OK", html: html };
   }
 
@@ -1997,14 +2050,14 @@ window.MCPCost = (function () {
         : '<p class="tiny muted">같은 날 프로비저닝 기록 없음</p>') +
       '<p class="note">원인을 단정하지 않습니다 — "원인 확인 필요"입니다. 태그 기준 검토 후보이며 조직 소유권을 뜻하지 않습니다.</p>' +
       (withActions ? '<div class="button-row">' +
-        (it.review ? '<span class="badge">이미 검토 등록됨 · ' + esc(REVIEW_STATUS_LABEL[it.review.status] || it.review.status) + '</span> <button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-034">작업 큐에서 보기</button>' : '<button type="button" class="btn primary" data-action="anomaly-add-queue" data-source-key="' + esc(it.source_key) + '">검토 등록</button>') +
+        (it.review ? '<span class="badge">이미 검토 등록됨 · ' + esc(REVIEW_STATUS_LABEL[it.review.status] || it.review.status) + '</span> <button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-034">검토 목록에서 보기</button>' : '<button type="button" class="btn primary" data-action="anomaly-add-queue" data-source-key="' + esc(it.source_key) + '">검토 등록</button>') +
         '<a class="btn" href="inventory.html?cloud_account_id=' + encodeURIComponent(it.cloud_account_id) + '" title="인벤토리는 아직 계정 파라미터를 읽지 않습니다 — 열린 뒤 계정 필터를 직접 고르세요">인벤토리 열기(계정 필터는 직접 선택)</a></div>' +
         '<p id="anomaly-feedback" class="note" role="status"></p>' : "");
   }
 
-  // ── CF-034 비용 작업 큐 ────────────────────────────────────────────────────────────
+  // ── CF-034 비용 검토 목록 ────────────────────────────────────────────────────────────
   function renderReviewQueue() {
-    if (!ctx.reviewItems || !ctx.reviewItems.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.reviewItems, "비용 작업 큐") };
+    if (!ctx.reviewItems || !ctx.reviewItems.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.reviewItems, "비용 검토 목록") };
     var items = ctx.reviewItems.value.items || [];
     var rows = items.map(function (r) {
       var an = anomalyByKey(r.source_key);
@@ -2015,7 +2068,7 @@ window.MCPCost = (function () {
         "<td>" + esc(r.note || "—") + "</td>" +
         '<td><span class="badge">' + esc(REVIEW_STATUS_LABEL[r.status] || r.status) + "</span>" + (r.resolution ? "<br><span class=\"tiny muted\">" + esc(RESOLUTION_LABEL[r.resolution] || r.resolution) + "</span>" : "") + "</td>" +
         '<td><button type="button" class="btn no-print" data-action="open-review-dialog" data-item-id="' + esc(r.id) + '">검토</button> ' +
-        '<button type="button" class="btn no-print" data-action="open-price-compare">비교하기</button></td></tr>';
+        '<button type="button" class="btn no-print" data-action="open-price-compare">유사 사양 정가 비교</button></td></tr>';
     });
     var html = '<div class="table-wrap"><table><thead><tr><th scope="col">문제 / 근거</th><th scope="col">증가액</th><th scope="col">메모</th><th scope="col">검토 상태</th><th scope="col">행동</th></tr></thead><tbody>' +
       (rows.length ? rows.join("") : '<tr><td colspan="5" class="tiny muted">확인이 필요한 항목이 없습니다</td></tr>') + "</tbody></table></div>" +
@@ -2207,7 +2260,7 @@ window.MCPCost = (function () {
         window.MCPApi.request("/cost-review-items", { method: "POST", body: { source_type: "cost_anomaly", source_key: key, note: null } })
           .then(function () {
             // POST는 멱등(있으면 그대로 200)이라 응답만으로 신규/중복을 구분할 수 없다 — 누르기 전 화면 상태로 안내한다.
-            toast(known && known.review ? "이미 등록된 항목입니다 — ① 비용 개요 탭의 비용 작업 큐에서 확인하세요." : "검토 항목으로 등록했습니다. 상태 변경은 ① 비용 개요 탭의 비용 작업 큐에서 합니다.");
+            toast(known && known.review ? "이미 등록된 항목입니다 — ① 비용 개요 탭의 비용 검토 목록에서 확인하세요." : "검토 항목으로 등록했습니다. 상태 변경은 ① 비용 개요 탭의 비용 검토 목록에서 합니다.");
             if (window.MCPModal) window.MCPModal.close("#cost-dialog");
             return load();
           })
@@ -2540,6 +2593,10 @@ window.MCPCost = (function () {
           renderFilters();
           syncUrl();
           load();
+          break;
+        case "toggle-unknown-accounts":
+          showUnknownAccounts = !showUnknownAccounts;
+          renderBlock("CF-018");
           break;
         case "account-filter-clear":
           filters.accountIds = [];
