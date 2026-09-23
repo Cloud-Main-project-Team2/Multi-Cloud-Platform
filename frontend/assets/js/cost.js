@@ -133,6 +133,10 @@ window.MCPCost = (function () {
   var ctx = {};       // 조회 결과 {key: {ok, value|error}}
   var capAccounts = []; // CFL-01 select를 채우는 재료(costs/capabilities items)
   var showUnknownAccounts = false; // CF-018 — 금액 확인 불가 계정 행이 많을 때만 접고, 펼침 여부를 기억한다
+  var TAB_KEYS = ["overview", "analysis", "budget"];
+  var activeTab = TAB_KEYS.indexOf(qs("tab")) >= 0 ? qs("tab") : "overview";  // 링크로 받은 탭까지 복원한다
+  var reviewStatus = "open";   // CF-034 — open(미처리=open+investigating) | resolved(종결) | all(전체)
+  var reviewLoadSeq = 0;       // 상태 전환을 빠르게 누르면 늦게 온 응답이 최신 화면을 덮지 않게(trendLoadSeq와 같은 방식)
 
   function syncUrl() {
     var api = toApiRange(filters.periodStart, filters.periodEnd);
@@ -285,7 +289,7 @@ window.MCPCost = (function () {
       // PR 7·8(③ 탭). 팀 목록은 필터와 무관, 급증·검토 큐는 CSP·계정만 따른다(04 §4-7·§6-6).
       teams:            "/teams",
       anomalies:        "/cost-anomalies" + apiQuery("status=open"),
-      reviewItems:      "/cost-review-items" + scopeQuery("status=open"),
+      reviewItems:      "/cost-review-items" + scopeQuery("status=" + encodeURIComponent(reviewStatus)),
       // CF-034가 큐 항목에 금액을 붙일 때 쓰는 짝 — 큐는 기간 필터가 없으므로 최근 90일을 넓게 본다
       anomaliesAll:     "/cost-anomalies" + scopeQuery("status=all&period_start=" + addDaysISO(utcTodayISO(), -90) + "&period_end=" + addDaysISO(utcTodayISO(), 1))
       // notifications는 팀 종속 조회(loadTeamScoped)에서 예산 상태와 함께 읽는다 — 쓰기 뒤 재조회와 같은 경로
@@ -2058,24 +2062,59 @@ window.MCPCost = (function () {
   }
 
   // ── CF-034 비용 검토 목록 ────────────────────────────────────────────────────────────
+  /** CF-034 비용 검토 목록 — 04 §4-7의 최소 요구는 "미처리 전부"다. 여기에 **종결 이력 조회**를 더했다
+      (기존 `GET /cost-review-items?status=` 재사용, 백엔드 변경 0). status=open은 서버에서
+      open+investigating 둘 다를 뜻한다(routers/cost_review.py). 종결 항목을 되돌리는 기능은 두지 않는다 —
+      서버가 409로 막고(확정 14) 재발은 새 항목이다. */
+  var REVIEW_FILTERS = [
+    { key: "open", label: "미처리", empty: "미처리 항목이 없습니다" },
+    { key: "resolved", label: "종결", empty: "종결된 항목이 없습니다" },
+    { key: "all", label: "전체", empty: "등록된 검토 항목이 없습니다" }
+  ];
+  function reviewFilterBarHtml() {
+    return '<div class="button-row no-print" role="group" aria-label="검토 상태 필터">' +
+      REVIEW_FILTERS.map(function (f) {
+        return '<button type="button" class="btn' + (reviewStatus === f.key ? " primary" : "") + '" data-action="review-status" data-status="' + f.key + '" aria-pressed="' + (reviewStatus === f.key ? "true" : "false") + '">' + f.label + "</button>";
+      }).join("") + "</div>";
+  }
   function renderReviewQueue() {
-    if (!ctx.reviewItems || !ctx.reviewItems.ok) return { state: "COLLECT_FAILED", html: fetchFailedHtml(ctx.reviewItems, "비용 검토 목록") };
+    var f = REVIEW_FILTERS.filter(function (x) { return x.key === reviewStatus; })[0] || REVIEW_FILTERS[0];
+    // 조회 실패와 "없음"은 다른 사건이다 — 실패는 재시도 안내(fetchFailedHtml), 없음은 상태별 문구.
+    if (!ctx.reviewItems || !ctx.reviewItems.ok) return { state: "COLLECT_FAILED", html: reviewFilterBarHtml() + fetchFailedHtml(ctx.reviewItems, "비용 검토 목록") };
     var items = ctx.reviewItems.value.items || [];
     var rows = items.map(function (r) {
       var an = anomalyByKey(r.source_key);
       var parts = r.source_key.split(":");
       var accId = parts[0], day = parts[parts.length - 1], svc = parts.slice(1, -1).join(":");
+      var closed = r.status === "resolved";
       return "<tr><td>" + (an ? esc(an.label) : "검토 항목") + "<br><span class=\"tiny muted\">" + esc(accountLabelOf(accId)) + " · " + esc(svc) + " · " + esc(day) + "</span></td>" +
         '<td class="num">' + (an ? '<span class="money-positive">+' + esc(F.money(an.delta, an.currency)) + "</span><br><span class=\"tiny muted\">" + anomalyPctText(an) + " · 그 날의 증가액 (정가 노출액 / 절감액이 아님)</span>" : '— <br><span class="tiny muted">현재 규칙으로 급증이 아니거나 기간 밖 — 금액 없음</span>') + "</td>" +
         "<td>" + esc(r.note || "—") + "</td>" +
-        '<td><span class="badge">' + esc(REVIEW_STATUS_LABEL[r.status] || r.status) + "</span>" + (r.resolution ? "<br><span class=\"tiny muted\">" + esc(RESOLUTION_LABEL[r.resolution] || r.resolution) + "</span>" : "") + "</td>" +
-        '<td><button type="button" class="btn no-print" data-action="open-review-dialog" data-item-id="' + esc(r.id) + '">검토</button> ' +
+        '<td><span class="badge">' + esc(REVIEW_STATUS_LABEL[r.status] || r.status) + "</span></td>" +
+        "<td>" + (r.resolution ? esc(RESOLUTION_LABEL[r.resolution] || r.resolution) : '<span class="tiny muted">' + (closed ? "사유 없음" : "—") + "</span>") + "</td>" +
+        '<td><button type="button" class="btn no-print" data-action="open-review-dialog" data-item-id="' + esc(r.id) + '">' + (closed ? "내용 보기" : "검토") + "</button> " +
         '<button type="button" class="btn no-print" data-action="open-price-compare">유사 사양 정가 비교</button></td></tr>';
     });
-    var html = '<div class="table-wrap"><table><thead><tr><th scope="col">문제 / 근거</th><th scope="col">증가액</th><th scope="col">메모</th><th scope="col">검토 상태</th><th scope="col">행동</th></tr></thead><tbody>' +
-      (rows.length ? rows.join("") : '<tr><td colspan="5" class="tiny muted">확인이 필요한 항목이 없습니다</td></tr>') + "</tbody></table></div>" +
-      '<p class="note">미처리 항목 전부(기간 필터 없음) · 이 화면에서 리소스를 중지·삭제하지 않습니다.</p>';
+    var html = reviewFilterBarHtml() +
+      '<div class="table-wrap"><table><thead><tr><th scope="col">문제 / 근거</th><th scope="col" class="num">증가액</th><th scope="col">메모</th><th scope="col">검토 상태</th><th scope="col">종결 사유</th><th scope="col">행동</th></tr></thead><tbody>' +
+      (rows.length ? rows.join("") : '<tr><td colspan="6" class="tiny muted">' + esc(f.empty) + "</td></tr>") + "</tbody></table></div>" +
+      '<p class="note">' + esc(f.label) + " 항목 " + items.length + "건 · 기간 필터 없음(CSP·계정 조건만 적용) · 종결된 항목은 되돌릴 수 없습니다(재발은 새 항목) · 이 화면에서 리소스를 중지·삭제하지 않습니다.</p>";
     return { state: "CONNECTED_OK", html: html };
+  }
+
+  /** 검토 상태 필터만 다시 읽는다 — 다른 블록까지 전부 다시 조회하지 않는다(load()와 달리 요청 1건). */
+  function reloadReviewItems() {
+    var seq = ++reviewLoadSeq;
+    var host = document.querySelector("#CF-034 .block-content");
+    if (host) host.setAttribute("aria-busy", "true");
+    return settle(window.MCPApi.request("/cost-review-items" + scopeQuery("status=" + encodeURIComponent(reviewStatus))))
+      .then(function (res) {
+        if (seq !== reviewLoadSeq) return;   // 늦게 온 응답은 버린다
+        ctx.reviewItems = res;
+        renderBlock("CF-034");
+        var h2 = document.querySelector("#CF-034 .block-content");
+        if (h2) h2.removeAttribute("aria-busy");
+      });
   }
 
   var REVIEW_STATUS_LABEL = { open: "열림", investigating: "조사 중", resolved: "종결" };
@@ -2088,11 +2127,18 @@ window.MCPCost = (function () {
   function reviewDialogHtml(r) {
     var an = anomalyByKey(r.source_key);
     return (an ? anomalyDialogHtml(an, false) : '<p class="tiny muted">현재 급증 목록에 짝이 없어 금액을 표시하지 않습니다(0원이 아니라 미확인).</p>') +
-      '<div class="filter-grid" style="margin-top:12px">' +
+      // 종결된 항목은 읽기 전용이다 — 되돌리는 선택지를 화면에 두지 않는다(서버도 409로 막는다, 확정 14).
+      (r.status === "resolved"
+        ? '<p class="note">종결된 항목입니다 — 상태·사유·메모를 바꿀 수 없습니다. 같은 문제가 다시 나면 새 항목으로 등록됩니다.</p>' +
+          '<dl class="meta-grid" style="grid-template-columns:1fr 1fr;margin-top:8px">' +
+            metaItem("검토 상태", esc(REVIEW_STATUS_LABEL[r.status] || r.status)) +
+            metaItem("종결 사유", r.resolution ? esc(RESOLUTION_LABEL[r.resolution] || r.resolution) : "기록 없음") +
+            metaItem("메모", r.note ? esc(r.note) : "없음") + "</dl>"
+        : '<div class="filter-grid" style="margin-top:12px">' +
       '<label class="filter-box">상태<select id="review-status">' + ["open", "investigating", "resolved"].map(function (k) { return '<option value="' + k + '"' + (r.status === k ? " selected" : "") + ">" + REVIEW_STATUS_LABEL[k] + "</option>"; }).join("") + "</select></label>" +
       '<label class="filter-box">종결 사유<select id="review-resolution"><option value="">—</option>' + ["too_small", "expected", "unexpected"].map(function (k) { return '<option value="' + k + '"' + (r.resolution === k ? " selected" : "") + ">" + RESOLUTION_LABEL[k] + "</option>"; }).join("") + "</select></label>" +
       '<label class="filter-box" style="flex-basis:260px">메모<input id="review-note" type="text" maxlength="2000" value="' + esc(r.note || "") + '"></label>' +
-      '<span class="button-row" style="margin-top:0"><button type="button" class="btn primary" data-action="review-patch" data-item-id="' + esc(r.id) + '">저장</button></span></div>' +
+      '<span class="button-row" style="margin-top:0"><button type="button" class="btn primary" data-action="review-patch" data-item-id="' + esc(r.id) + '">저장</button></span></div>') +
       '<p class="note">resolved로 닫힌 항목은 되돌릴 수 없습니다 — 재발은 새 항목입니다. 검토 상태는 금액·합계에 영향을 주지 않습니다.</p>' +
       '<div class="button-row"><a class="btn" href="inventory.html?cloud_account_id=' + encodeURIComponent(r.source_key.split(":")[0]) + '" title="인벤토리는 아직 계정 파라미터를 읽지 않습니다 — 열린 뒤 계정 필터를 직접 고르세요">인벤토리 열기(계정 필터는 직접 선택)</a></div>' +
       '<p id="review-feedback" class="note" role="status"></p>';
@@ -2269,12 +2315,46 @@ window.MCPCost = (function () {
           .catch(function (e) { btn.disabled = false; btn.textContent = "검토 등록"; setFeedback("anomaly-feedback", serverErrorText(e), true); });
         return true;
       }
+      case "copy-conditions-link": {
+        // URL에는 조회 조건(기간·CSP·계정 id·통화·요금 분류·집계 단위·비교 기준·탭·팀)만 담긴다 —
+        // 토큰·자격증명 같은 비밀값은 원래 주소에 없다. 다른 사용자가 열면 "같은 조건"이 적용될 뿐
+        // 그 사용자의 계정 범위로 보인다(접근 권한을 넘겨주지 않는다).
+        syncUrl();
+        var shareUrl = window.location.href;
+        var note = document.getElementById("share-link-note");
+        var showNote = function (text, showUrl) {
+          if (!note) return;
+          note.hidden = false;
+          note.innerHTML = esc(text) + (showUrl ? '<br><input type="text" class="share-url" readonly value="' + esc(shareUrl) + '">' : "");
+          var input = note.querySelector(".share-url");
+          if (input) { input.focus(); input.select(); }
+        };
+        var ok = "링크를 복사했습니다 — 같은 조건으로 열립니다. 다른 사용자가 열면 그 사용자의 계정 범위로 보입니다(접근 보장 아님).";
+        var fail = "자동 복사가 막혀 있습니다 — 아래 주소를 직접 복사하세요. 다른 사용자가 열면 그 사용자의 계정 범위로 보입니다(접근 보장 아님).";
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(shareUrl).then(function () { showNote(ok, false); toast("조건 링크를 복사했습니다."); },
+                                                      function () { showNote(fail, true); });
+        } else {
+          showNote(fail, true);
+        }
+        return true;
+      }
+      case "review-status": {
+        var nextStatus = btn.getAttribute("data-status");
+        if (nextStatus === reviewStatus) return true;
+        reviewStatus = nextStatus;
+        renderBlock("CF-034");      // 버튼 선택 상태를 먼저 반영(응답을 기다리지 않는다)
+        reloadReviewItems();
+        return true;
+      }
       case "open-review-dialog": {
         var r = reviewItemById(btn.getAttribute("data-item-id"));
         if (r) openDialog("검토 · " + r.source_key, reviewDialogHtml(r));
         return true;
       }
       case "review-patch": {
+        if (btn.disabled) return true;
+        btn.disabled = true; btn.textContent = "저장 중…";   // 중복 PATCH 방지 — 기존 검토 등록 버튼과 같은 방식
         var st = (document.getElementById("review-status") || {}).value;
         var res = (document.getElementById("review-resolution") || {}).value || null;
         var note = (document.getElementById("review-note") || {}).value;
