@@ -17,12 +17,30 @@ from app.cost.coverage import covered_days, utc_today
 from app.errors import validation_error
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Resource
 
-# CSP 원본 서비스 이름 -> service_catalog.category. CE는 "AmazonEC2"를 주고 카탈로그는 "ec2"라
-# 1:1이 아니다(05_API계약.md §4-4) — 매핑표는 여기 한 곳에만 둔다. AWS만 구현했다(이번 라운드
-# 실측 수집이 AWS뿐이라 Azure·GCP 서비스 이름은 아직 모른다). 매핑에 없는 서비스는 "기타"가
-# 아니라 "unallocated"로 보낸다 — "기타"는 상위 N을 넘긴 것이고 "unallocated"는 분류 규칙
-# 자체가 없는 것이다(QA-09).
+# CSP 원본 서비스 이름 -> service_catalog.category. 매핑표는 여기 한 곳에만 둔다(05_API계약.md
+# §4-4). AWS만 구현했다(이번 라운드 실측 수집이 AWS뿐이라 Azure·GCP 서비스 이름은 아직 모른다).
+# 매핑에 없는 서비스는 "기타"가 아니라 "unallocated"로 보낸다 — "기타"는 상위 N을 넘긴 것이고
+# "unallocated"는 분류 규칙 자체가 없는 것이다(QA-09).
+#
+# ⚠️ 2026-09-23: 원래는 "AmazonEC2" 같은 짧은 코드만 키로 뒀는데, 실제 Cost Explorer(GroupBy:
+# SERVICE)는 "Amazon Elastic Compute Cloud - Compute"처럼 **정식 명칭**을 준다. 개발 DB의 실수집
+# 데이터 15종 중 매칭이 0건이라 dimension="category"가 전액 미분류로 빠지고 있었다(대시보드
+# 카테고리 카드가 실측 대신 조용히 정가 추정으로 내려갔다). 정식 명칭을 키로 추가하고 짧은 코드는
+# 하위호환으로 남긴다. 값은 `app/report_cost.py::_SERVICE_TO_CATEGORY`(보고서가 같은 이유로 따로
+# 두고 있던 우회 표)와 대조해 일치시켰다 — 두 표를 하나로 합치는 것은 소유가 갈려 있어 후속 과제.
+#
+# 카테고리 어휘는 service_catalog의 4종(compute·db_rdbms·storage_object·cdn)이 전부다. 네트워크·
+# 보안·분석 등 그 밖의 서비스(VPC·KMS·Secrets Manager·CloudWatch·Glue·Cost Explorer·Tax 등)는
+# 넣을 칸이 없어 계속 unallocated로 남는다 — 어휘를 늘리면 대시보드(CATEGORY_LABEL 4종)가 모르는
+# 키를 조용히 버리므로, 어휘 확장은 화면 담당자와 함께 정한다.
 _AWS_SERVICE_TO_CATEGORY = {
+    # 실제 Cost Explorer 정식 명칭
+    "Amazon Elastic Compute Cloud - Compute": "compute",
+    "EC2 - Other": "compute",  # EBS·데이터 전송 등 EC2 부속 비용
+    "Amazon Relational Database Service": "db_rdbms",
+    "Amazon Simple Storage Service": "storage_object",
+    "Amazon CloudFront": "cdn",
+    # 하위호환 — 짧은 코드로 저장된 기존/시드 데이터
     "AmazonEC2": "compute",
     "AmazonRDS": "db_rdbms",
     "AmazonS3": "storage_object",
