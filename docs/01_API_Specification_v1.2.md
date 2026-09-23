@@ -1159,22 +1159,31 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
       "list_price_monthly": [ { "cost_kind": "list_price_estimate", "currency": "USD", "amount": "204.700000",
                                  "assumptions": ["730 hours/month"], "missing_count": 3 } ],
       "forecast_month_end": [ { "cost_kind": "actual", "currency": "USD", "amount": "241.900000",
-                                 "method": "mtd_prorated", "based_through": "2026-09-16" } ]
+                                 "method": "mtd_prorated", "based_through": "2026-09-16" } ],
+      "forecast_status": { "state": "computed", "based_through": "2026-09-16",
+                            "required_accounts": 2, "incomplete_accounts": [] }
     },
     "accounts": [
       { "cloud_account_id": "31", "provider": "aws", "account_label": "운영 AWS", "team_id": "7",
         "status": "CONNECTED_OK", "as_of": "2026-09-17T06:00:00Z", "ingestion_running": false,
         "currency": "USD", "actual": "128.400000", "list_price_estimate": "160.200000",
-        "resource_count": 12, "resources_synced_at": "2026-09-17T05:12:00Z", "is_estimated": true },
+        "resource_count": 12, "resources_synced_at": "2026-09-17T05:12:00Z", "is_estimated": true,
+        "filter_excluded": null,
+        "coverage": { "start": "2026-09-01", "end": "2026-09-17", "days": 17, "covered": 15,
+                      "missing_count": 2, "missing_days": ["2026-09-14", "2026-09-15"],
+                      "truncated": false, "pending_days": 1 } },
       { "cloud_account_id": "33", "provider": "azure", "account_label": "개발 Azure", "team_id": null,
         "status": "UNSUPPORTED", "as_of": null, "ingestion_running": false, "currency": null,
         "actual": null, "list_price_estimate": "44.500000", "resource_count": 3,
-        "resources_synced_at": "2026-09-17T05:12:00Z", "is_estimated": false }
+        "resources_synced_at": "2026-09-17T05:12:00Z", "is_estimated": false,
+        "filter_excluded": null, "coverage": null }
     ],
     "excluded": { "accounts": 1, "reason_counts": { "UNSUPPORTED": 1 } },
     "warnings": [ { "code": "PARTIAL_PERIOD",
                      "message": "2026-09-14 ~ 2026-09-15 구간이 수집되지 않았습니다.",
-                     "missing_days": ["2026-09-14", "2026-09-15"] } ]
+                     "missing_days": ["2026-09-14", "2026-09-15"],
+                     "missing_count": 2,
+                     "accounts": [ { "cloud_account_id": "31", "missing_count": 2 } ] } ]
   }
 }
 ```
@@ -1190,8 +1199,40 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
   수집되지 않은 날은 0원으로 채우지 않고 합계에서 뺀다. 대상 계정 일부가 이달 수집을 빠짐없이
   마치지 못했어도 계산 자체는 막지 않는다(2026-09-22 결정) — `kpis.forecast_status.incomplete_accounts`가
   어느 계정에서 며칠이 빠졌는지 안내만 한다.
-- `excluded`는 합계에서 빠진 계정 수와 사유다. 조용히 빼지 않는다.
+- `excluded`는 합계에서 빠진 계정 수와 사유다. 조용히 빼지 않는다. `reason_counts`는 **계정당 한 번만**
+  세며 우선순위는 `UNSUPPORTED` > `CURRENCY_FILTERED` > 상태/`PERIOD_NOT_COVERED`다(같은 계정이 두 사유로
+  두 번 세어지지 않는다).
 - 데이터가 전혀 없어도 `200`이다. `COST_DATA_UNAVAILABLE`을 던지지 않고 `status`로 표현한다.
+
+**2026-09-18 추가 필드 (구현됨 — 화면이 "0원"과 "모름"을 구분하는 근거, PR #118)**
+
+- `accounts[].coverage` — 조회 기간에서 **수집이 확인된 날**을 센다. `null`이면 이 기간에 판정 대상이
+  아니라는 뜻이다(미지원 계정 등). 확인 기준은 "그 날 행이 있거나, 성공한 수집 run의 범위에 든 날"이다
+  — $0인 날은 행이 생기지 않으므로 행 유무만 보면 정상 0원 계정이 영원히 결측으로 보인다.
+  - `days` 조회 기간의 판정 대상 일수 · `covered` 확인된 날 수 · `missing_count` **정확한 결측 일수**
+  - `missing_days` 결측일 목록이지만 **최대 31개까지만** 담기고 잘리면 `truncated: true`다 — 개수는
+    반드시 `missing_count`를 쓴다.
+  - `pending_days` 오늘·미래처럼 아직 끝나지 않아 결측으로 세지 않는 날 수.
+  - 날짜 경계는 **UTC**다(§11-1). 서버 로컬 시각이 아니다.
+- `accounts[].filter_excluded` — `"currency"`이면 **통화 조건 때문에** 합계에서 빠졌다는 뜻이다(수집
+  문제가 아니다). 그 밖에는 `null`. 계정을 목록에서 지우지 않는다.
+- `kpis.forecast_status` — 전망을 **왜 냈는지/못 냈는지**를 응답 전체 단위로 알린다(통화별이 아니다).
+  - `state`: `computed` \| `not_current_month` \| `first_day` \| `no_accounts` \| `insufficient_coverage`
+    \| `currency_unknown`. 화면은 모르는 값이 와도 "이 조건에서는 전망을 내지 않습니다"로 표시한다.
+  - `based_through` 근거 마지막 날 · `required_accounts` 전망 대상 계정 수 ·
+    `incomplete_accounts[] {cloud_account_id, missing_count}` 이달 수집이 빠진 계정.
+  - ⚠️ **`insufficient_coverage`의 의미가 2026-09-22(#128)에 바뀌었다** — 아래 "전망 계약" 참고.
+- `warnings[PARTIAL_PERIOD]`에 `missing_count`(정확한 개수)와 `accounts[]`(계정별 결측 수)가 있다.
+- 전망 창: `period_start`가 이달 1일이고 `period_end`가 **UTC 오늘 또는 오늘+1**일 때만 계산한다
+  (화면이 "오늘까지"를 exclusive 경계로 보내는 경우와 inclusive로 보내는 경우를 모두 받아들인다).
+
+> ⚠️ **전망 계약 상충 — 확인 필요(2026-09-23, 이승현)**
+> 위 "계산 자체를 막지 않는다"(2026-09-22, #128)는 **1단계에서 승인받은 결정과 반대**다. 원래 계약은
+> "대상 계정 전부가 이달 1일~어제를 빠짐없이 수집 확인했을 때만 계산하고, 하나라도 빠지면
+> `insufficient_coverage`로 값을 내지 않는다"였다(`docs/비용_개발문서/03` §5 · `10` QA-08 ⑤
+> "미수집일을 0으로 평균 내지 않는다"). 지금 구현은 분모를 **달력 경과일**로 쓰므로, 수집이 빠진 날이
+> 있으면 전망이 **실제보다 낮게** 나온다(빠진 날의 비용이 분자에서만 빠지고 분모에는 남는다).
+> 어느 쪽을 최종 계약으로 할지 정해야 하며, 정할 때까지 이 값은 **참고치**로 본다.
 
 ### 11-5. `GET /costs/trend`
 
@@ -1288,6 +1329,28 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
 - 새로 생긴 항목은 `increases`가 아니라 `new_items`로 분리한다.
 - `previous`가 0 이하이면 `delta_pct`는 `null`이다.
 
+**2026-09-18 추가 (구현됨, PR #118)**
+
+- query에 `currency`를 받는다(조회 6종 공통 필터와 같은 의미).
+- `comparability` — `comparable`이 `false`인 **이유**를 담는다. 화면이 "왜 비교를 못 하는지"를 말할 수
+  있어야 하기 때문이다. `comparable`은 `reasons`가 빈 배열인 것과 같은 뜻이다.
+
+```json
+"comparability": {
+  "same_length": true, "completed_period": true, "current_covered": true, "previous_covered": false,
+  "currency": "USD", "charge_category": "usage",
+  "reasons": ["PREVIOUS_COVERAGE"],
+  "accounts": [ { "cloud_account_id": "31", "current_missing_count": 0, "previous_missing_count": 21 } ]
+}
+```
+
+  - `reasons` 값: `LENGTH_MISMATCH`(일수가 다름) · `INCOMPLETE_PERIOD`(아직 끝나지 않은 날 포함) ·
+    `NO_ACCOUNTS` · `CURRENT_COVERAGE`(조회 기간 결측) · `PREVIOUS_COVERAGE`(이전 기간 결측) ·
+    `NO_CURRENCY`(비교할 통화 없음). 화면은 모르는 값이 와도 일반 문구로 표시한다.
+  - `charge_category`는 `usage` 고정이다 — 비교는 요금 분류 필터를 따르지 않는다.
+- 서비스가 지정되지 않은 금액은 키 `__unallocated__`(라벨 `미분류`)로 내려간다. 합계에 포함되며,
+  상위 N을 넘겨 묶인 `기타`와는 다른 것이다.
+
 ### 11-8. `GET /costs/collection-status`
 
 **200**
@@ -1310,6 +1373,10 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
 
 화면 상단 수집 불가 배너와 '비용 새로고침' 버튼의 활성/비활성이 이 응답만 보고 결정된다.
 `next_manual_allowed_at`이 미래면 버튼을 비활성화한다(계정당 1시간 1회).
+
+**2026-09-18 추가 (구현됨, PR #118)**: `period_start`·`period_end`·`currency` query를 받고, 각 항목에
+`coverage`(§11-4와 같은 모양)를 함께 내려준다 — 기간을 바꿀 때마다 summary와 다른 기준으로 결측을 세면
+화면의 두 블록이 서로 다른 숫자를 말하게 되기 때문이다.
 
 ### 11-9. 수집 실행 API (제안 3개)
 
