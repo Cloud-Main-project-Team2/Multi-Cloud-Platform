@@ -1443,6 +1443,7 @@ window.MCPCost = (function () {
       (noCostCount > 0 ? '<p class="note">정가표에 없어 금액이 없는 리소스 ' + noCostCount + "개 — 0원이 아닙니다(사용량 기반 서비스 등)</p>" : "") +
       (noCurrencyCount > 0 ? '<p class="note">통화가 확인되지 않은 리소스 ' + noCurrencyCount + "개는 순위에 넣지 않았습니다</p>" : "") +
       (!anyOwner && rowsHtml ? '<p class="note">Owner 태그가 있는 리소스가 없어 담당 열을 표시하지 않습니다(태그는 각 CSP 콘솔에서 붙입니다).</p>' : "") +
+      '<div class="button-row no-print"><button type="button" class="btn" data-action="open-price-compare" title="사양을 직접 입력해 3사 정가를 비교합니다 — 이 표의 리소스 사양을 자동으로 채우지 않습니다">유사 사양 정가 비교</button></div>' +
       (mixed ? '<p class="note">통화 ' + currencies.length + "종 — 통화별로 상위 " + TOP_RESOURCES_N + "개씩 따로 세웠고 환산 없이 각 통화 그대로입니다. 하나의 순위로 읽지 마세요.</p>" : "");
     return { state: "CONNECTED_OK", html: html };
   }
@@ -2147,6 +2148,7 @@ window.MCPCost = (function () {
   // ── CF-035 변경 영향 검토(가격 비교) ────────────────────────────────────────────────────
   function priceCompareDialogHtml() {
     return '<p class="small">유사 사양 3사 월 정가 비교 — 당월 영향은 산출하지 않습니다.</p>' +
+      '<p class="note">사양은 <strong>직접 입력</strong>합니다(선택한 리소스의 사양을 자동으로 채우지 않습니다) · 정가표 기준 추정이며 <strong>실제 리소스의 검증된 절감액이 아닙니다</strong>.</p>' +
       '<div class="filter-grid" style="margin-top:8px">' +
       '<label class="filter-box">vCPU<input id="pc-vcpu" type="number" min="1" max="256" value="2"></label>' +
       '<label class="filter-box">메모리(GiB)<input id="pc-mem" type="number" min="0.5" step="0.5" value="4"></label>' +
@@ -2362,7 +2364,7 @@ window.MCPCost = (function () {
         if (res) body2.resolution = res;
         window.MCPApi.request("/cost-review-items/" + encodeURIComponent(btn.getAttribute("data-item-id")), { method: "PATCH", body: body2 })
           .then(function () { toast("검토 상태를 저장했습니다."); if (window.MCPModal) window.MCPModal.close("#cost-dialog"); return load(); })
-          .catch(function (e) { setFeedback("review-feedback", serverErrorText(e), true); });
+          .catch(function (e) { btn.disabled = false; btn.textContent = "저장"; setFeedback("review-feedback", serverErrorText(e), true); });
         return true;
       }
       case "open-price-compare":
