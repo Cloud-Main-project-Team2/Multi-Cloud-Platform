@@ -390,3 +390,55 @@ def test_forecast_window_accepts_period_end_today_or_tomorrow(client, make_user,
     future = _summary(client, user, auth_header, period_start="2026-09-01", period_end="2026-09-23")
     assert future["kpis"]["forecast_status"]["state"] == "not_current_month" and future["kpis"]["forecast_month_end"] == []
 
+
+
+# --- G: CE 정식 서비스 명칭 → 카테고리 매핑 -----------------------------------------------------
+
+
+def test_category_breakdown_maps_real_cost_explorer_service_names(client, make_user, auth_header, db_session):
+    """실제 Cost Explorer(GroupBy: SERVICE)가 주는 **정식 명칭**이 카테고리로 분류된다.
+
+    예전 매핑표는 "AmazonEC2" 같은 짧은 코드만 키로 둬서, 실수집 데이터(개발 DB 15종)와 매칭이
+    0건이었고 `dimension=category`가 전액 미분류로 빠졌다(대시보드 카테고리 카드가 실측 대신
+    정가 추정으로 내려갔다). 카테고리 어휘는 service_catalog의 4종뿐이라 네트워크·보안·분석 계열
+    (VPC·Secrets Manager·Cost Explorer·CloudWatch·Glue·KMS·SNS·EFS·Backup·Data Transfer·Tax)은
+    넣을 칸이 없어 계속 미분류다 — 그 사실도 함께 고정한다."""
+    user = make_user()
+    acct = _account(db_session, user)
+    day = dt.date(2026, 9, 1)
+    mapped = {
+        "Amazon Elastic Compute Cloud - Compute": "compute",
+        "EC2 - Other": "compute",
+        "Amazon Relational Database Service": "db_rdbms",
+        "Amazon Simple Storage Service": "storage_object",
+        "Amazon CloudFront": "cdn",
+    }
+    # 어휘(4종)에 칸이 없어 미분류로 남는 것들 — 개발 DB 실수집 데이터에 실제로 나오는 이름이다.
+    unmapped = [
+        "Amazon Virtual Private Cloud", "AWS Secrets Manager", "AWS Cost Explorer", "AmazonCloudWatch",
+        "Amazon Simple Notification Service", "AWS Backup", "Amazon Elastic File System",
+        "AWS Key Management Service", "AWS Glue", "AWS Data Transfer",
+    ]
+    for name in list(mapped) + unmapped:
+        _row(db_session, acct, day, "1.000000", service=name)
+    _run(db_session, user, acct, day, day + dt.timedelta(days=1))
+    db_session.commit()
+
+    resp = client.get(
+        "/api/v1/costs/breakdown",
+        params={"period_start": "2026-09-01", "period_end": "2026-09-02", "dimension": "category", "top_n": 10},
+        headers=auth_header(user),
+    )
+    assert resp.status_code == 200, resp.text
+    data = resp.json()["data"]
+    by_key = {it["key"]: Decimal(it["amount"]) for it in data["items"]}
+
+    assert by_key.get("compute") == Decimal("2.000000")  # 두 EC2 항목이 한 칸으로 합쳐진다
+    assert by_key.get("db_rdbms") == Decimal("1.000000")
+    assert by_key.get("storage_object") == Decimal("1.000000")
+    assert by_key.get("cdn") == Decimal("1.000000")
+    # 짧은 코드(기존/시드 데이터)도 계속 분류된다 — 하위호환
+    assert q_mod._AWS_SERVICE_TO_CATEGORY["AmazonEC2"] == "compute"
+    # 어휘에 없는 계열만 미분류로 남는다(전액이 아니라 정확히 그 항목들만)
+    assert Decimal(data["unallocated"]["amount"]) == Decimal(len(unmapped))
+    assert data["unallocated"]["reason"] == "no_category_mapping"

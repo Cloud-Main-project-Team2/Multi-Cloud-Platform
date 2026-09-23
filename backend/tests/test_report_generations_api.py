@@ -285,11 +285,15 @@ def test_cost_snapshot_category_uses_real_aws_service_names(client, make_user, a
     assert category["unallocated"]["reason"] == "no_category_mapping"
     assert category["total"] == "58.000000"
 
-    # cost/query.py::breakdown(dimension="category")는 여전히 원래 버그 그대로다 — 이 수정이
-    # 그 파일을 안 건드렸다는 증거(대시보드 등 다른 화면에 영향 없음).
+    # 2026-09-23(이승현, 5단계): cost/query.py::_AWS_SERVICE_TO_CATEGORY에 CE 정식 명칭 키를
+    # 추가해 원래 버그를 고쳤다. 그래서 "비용 쪽은 여전히 전액 미분류"라는 예전 단언(=버그가
+    # 남아 있다는 증거)은 더 이상 참이 아니다 — 이제 두 경로가 **같은 결과**를 낸다는 것으로
+    # 바꾼다(보고서 우회표와 비용 매핑표의 값이 어긋나지 않는지 지키는 역할은 그대로).
+    # 두 표를 하나로 합치는 것은 소유가 갈려 있어 후속 과제(6단계 "단일 소스 통합 검토").
     from app.cost.query import CostQuery, breakdown
 
     q = CostQuery(period_start=dt.date(2026, 9, 13), period_end=dt.date(2026, 9, 20), providers=["aws"])
-    untouched = breakdown(db_session, user.id, q, "category", 6, None)
-    assert untouched["items"] == []
-    assert untouched["unallocated"]["amount"] == "58.000000"
+    via_query = breakdown(db_session, user.id, q, "category", 6, None)
+    assert {item["key"]: item["amount"] for item in via_query["items"]} == by_key
+    assert via_query["unallocated"]["amount"] == "3.000000"
+    assert via_query["unallocated"]["reason"] == "no_category_mapping"
