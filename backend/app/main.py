@@ -64,11 +64,22 @@ app.include_router(cost_review.router)  # PR 8 — 급증 탐지·검토 큐
 app.include_router(price_comparisons.router)  # PR 8 — /provisioning/price-comparisons (routers/provisioning.py 미수정)
 # cost_reports.router(보고서 부품 3종)는 보고서 담당(안권형님)과 필요 계약을 맞춘 뒤 만든다 — 2026-09-19 결정.
 
-# 프론트(:8080, nginx 정적 서빙)와 API(:8000)가 서로 다른 오리진이라 브라우저 fetch에는
-# CORS 허용이 필요하다. Bearer 토큰만 쓰고 쿠키는 쓰지 않으므로 allow_credentials는 False로 둔다.
+# 배포(EC2)에서는 nginx가 /api/를 같은 오리진으로 프록시하므로(`nginx/default.conf`) 아래 목록은
+# 실제로 쓰이지 않는다 — preflight 자체가 발생하지 않는다. 그래도 남겨 두는 이유는 컨테이너 밖에서
+# uvicorn을 직접 띄우고 프론트만 nginx로 보는 개발 방식(프론트 8080/80 → API 8000)이 여전히 유효하기
+# 때문이다. Bearer 토큰만 쓰고 쿠키는 쓰지 않으므로 allow_credentials는 False로 둔다.
+#
+# `http://localhost`(포트 없음)가 따로 있는 이유: WEB_PORT=80으로 띄우면 브라우저가 보내는 Origin에
+# 포트가 생략된다 — `http://localhost:8080`과는 다른 문자열이라 둘 다 필요하다.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8080"],
+    allow_origins=[
+        "http://localhost:8080",
+        "http://127.0.0.1:8080",
+        "http://localhost",
+        "http://127.0.0.1",
+        "http://mcp.greatsounds.me",
+    ],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],

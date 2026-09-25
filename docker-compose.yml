@@ -9,7 +9,10 @@ services:
     volumes:
       - db_data:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      # 운영(EC2)은 .env에 DB_BIND_HOST=127.0.0.1을 넣어 외부에서 닿지 않게 한다 — api는 compose
+      # 네트워크로 붙으므로 퍼블리시 자체가 필요 없고, 이 값은 호스트에서 psql로 들여다볼 때만 쓴다.
+      # 로컬은 미설정 → 0.0.0.0(지금까지와 동일, DBeaver/pytest가 localhost:5432로 붙는다).
+      - "${DB_BIND_HOST:-0.0.0.0}:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -71,16 +74,21 @@ services:
       db:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      # 운영은 .env에 API_BIND_HOST=127.0.0.1 — 외부 접근은 nginx의 /api/ 프록시로만 받는다
+      # (보안 그룹에서 8000을 열지 않는 것과 같은 의도를 호스트 쪽에서 한 번 더 건다).
+      - "${API_BIND_HOST:-0.0.0.0}:8000:8000"
 
   # 로컬/데모 전용 가짜 SMTP — 나가는 메일을 가로채 웹 UI(:8025)에서 확인한다.
-  # 운영에서는 이 서비스를 빼고 api의 MAIL_* env를 실제 SMTP로 지정한다.
+  # 운영에서는 이 서비스를 띄우지 않는다 — `docker compose up -d db api web`처럼 서비스를 명시하거나,
+  # 띄우더라도 .env의 MAILHOG_BIND_HOST=127.0.0.1로 외부 노출만 막는다(MAIL_*가 실제 SMTP를 가리키면
+  # 컨테이너가 떠 있어도 아무도 쓰지 않는다). ⚠️ MAIL_HOST 기본값이 `mailhog`이므로, 운영 .env에
+  # MAIL_HOST를 지정하지 않으면 메일이 조용히 MailHog로 들어가거나(떠 있을 때) 실패한다(없을 때).
   mailhog:
     image: mailhog/mailhog:v1.0.1
     restart: unless-stopped
     ports:
-      - "1025:1025"
-      - "8025:8025"
+      - "${MAILHOG_BIND_HOST:-0.0.0.0}:1025:1025"
+      - "${MAILHOG_BIND_HOST:-0.0.0.0}:8025:8025"
 
   web:
     image: nginx:1.27-alpine
@@ -94,7 +102,12 @@ services:
       # 엣지 로그도 같은 자리에 모은다 — logs/nginx/access.log (JSON Lines, api와 동일 포맷)
       - ./logs/nginx:/var/log/nginx
     ports:
-      - "8080:80"
+      # 운영(.env): WEB_PORT=80 → http://mcp.greatsounds.me 로 포트 없이 접속.
+      # 로컬은 미설정 시 8080 그대로. 80으로 쓰고 싶으면 각자 .env에 WEB_PORT=80만 넣으면 되고
+      # (이미지 재빌드 불필요, `docker compose up -d`로 컨테이너만 재생성되면 반영된다),
+      # 그때는 브라우저 Origin이 http://localhost가 되므로 app/main.py의 CORS 목록에 이미 넣어 뒀다.
+      # ⚠️ 80번을 이미 쓰는 프로세스가 있으면 `bind: address already in use`로 기동에 실패한다.
+      - "${WEB_PORT:-8080}:80"
     depends_on:
       - api
 

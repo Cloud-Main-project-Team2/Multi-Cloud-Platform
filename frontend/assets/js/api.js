@@ -1,13 +1,16 @@
 /* 백엔드 API 공용 클라이언트 (fetch 래퍼) + 세션 저장.
  *
- * API 서버는 다른 오리진(:8000)에서 떠 있다 — API_BASE 한 곳만 바꾸면 배포 시 전체 반영된다.
+ * API는 nginx가 같은 오리진의 /api/로 프록시한다(`nginx/default.conf`) — 그래서 절대경로가
+ * 아니라 상대경로를 쓴다. 배포 주소가 바뀌어도 고칠 곳이 없고, 브라우저 입장에서 동일 출처라
+ * CORS preflight 자체가 발생하지 않으며, 외부에 8000 포트를 열 필요도 없다. 컨테이너 밖에서
+ * uvicorn을 직접 띄워 8000으로 붙고 싶으면 이 값만 절대 URL로 바꾼다.
  * 세션은 실제 로그인(POST /auth/login)이 반환한 access token + refresh token(JWT/opaque)을 저장한다.
  * access token이 만료돼 401이 나면 refresh token으로 자동 재발급 후 원 요청을 1회 재시도한다.
  */
 window.MCPApi = (function () {
   "use strict";
 
-  var API_BASE = "http://localhost:8000/api/v1";
+  var API_BASE = "/api/v1";
   var SESSION_KEY = "mcp_session";
   // refresh 엔드포인트는 401 자동 재시도 대상에서 제외한다(무한 루프 방지).
   var NO_REFRESH_PATHS = ["/auth/login", "/auth/refresh", "/auth/sign-up"];

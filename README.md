@@ -20,6 +20,10 @@ docker compose up -d --build           # db · api · web · mailhog 기동
 ```
 
 - 프론트: http://localhost:8080 · API: http://localhost:8000 · 메일 확인(MailHog): http://localhost:8025
+- 프론트 포트를 바꾸려면 레포 루트 `.env`에 `WEB_PORT=80`처럼 넣는다(미설정 시 8080). 80으로
+  띄우면 메일 링크가 어긋나지 않게 `FRONTEND_BASE_URL=http://localhost`도 같이 넣는다.
+  API는 nginx가 같은 오리진의 `/api/`로 프록시하므로(`nginx/default.conf`) 프론트 JS는
+  절대 URL이 아니라 `/api/v1` 상대경로를 쓴다 — 배포 주소가 바뀌어도 고칠 코드가 없다.
 - `api` 컨테이너는 기동 시 Alembic 마이그레이션 + 목업 시딩을 자동 실행한다.
 - 환경변수 목록·기본값은 [`backend/.env.example`](./backend/.env.example) 참고.
 
