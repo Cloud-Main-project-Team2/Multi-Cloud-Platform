@@ -12,7 +12,7 @@
 window.MCPErrorReporter = (function () {
   "use strict";
 
-  var API_BASE = (window.MCPApi && window.MCPApi.API_BASE) || "http://localhost:8000/api/v1";
+  var API_BASE = (window.MCPApi && window.MCPApi.API_BASE) || "/api/v1";
   var ENDPOINT = API_BASE + "/client-logs";
   var SESSION_KEY = "mcp_session";
   var MAX_PER_PAGE = 20;

@@ -54,7 +54,7 @@ window.MCProvTracker = (function () {
   // ── 폴링용 최소 fetch (MCPApi가 없는 intro 페이지에서도 동작) ─────────────────
   function fetchJob(id) {
     if (window.MCPApi && MCPApi.request) return MCPApi.request("/provisioning/jobs/" + id);
-    var base = (window.MCPApi && MCPApi.API_BASE) || "http://localhost:8000/api/v1";
+    var base = (window.MCPApi && MCPApi.API_BASE) || "/api/v1";
     var token = null;
     try { var s = JSON.parse(localStorage.getItem(SESSION_KEY) || "null"); token = s && s.accessToken; } catch (e) {}
     var headers = {};

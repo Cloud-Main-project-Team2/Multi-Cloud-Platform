@@ -95,69 +95,50 @@ init/apply와 이미지 빌드 시간용이다. t3의 버스터블 크레딧이 
 
 ---
 
-## 3. ⚠️ 배포 전 반드시 고쳐야 할 코드 2곳
+## 3. ✅ 배포용 코드 수정 — 2026-09-25 레포에 반영 완료
 
-현재 코드는 **로컬 전용 주소가 하드코딩**돼 있어 그대로 배포하면 로그인조차 안 된다.
+이 문서 최초 작성(2026-09-20) 시점에는 **로컬 전용 주소가 하드코딩**돼 있어 그대로 배포하면
+로그인조차 되지 않았다. 아래 수정이 `main`에 들어가 있으므로 **서버에서는 clone 후 따로 고칠 것이
+없다.** 무엇이 왜 그렇게 돼 있는지만 남겨 둔다.
 
-### 3-1. 증상
+### 3-1. 원래 무엇이 문제였나
 
-- `frontend/assets/js/api.js:10` → `var API_BASE = "http://localhost:8000/api/v1";`
-- `backend/app/main.py:66` → `allow_origins=["http://localhost:8080"]`
+- `frontend/assets/js/api.js` → `var API_BASE = "http://localhost:8000/api/v1";`
+- `backend/app/main.py` → `allow_origins=["http://localhost:8080"]`
 
 브라우저가 EC2에서 받은 페이지를 열고 **사용자 자기 PC의 localhost:8000**으로 API를 호출한다.
 당연히 전부 실패한다.
 
-### 3-2. 해결 — nginx가 `/api`를 프록시하게 한다 (권장)
+### 3-2. 해결 — nginx가 `/api/`를 프록시한다
 
 퍼블릭 IP를 코드에 박는 방법도 있지만, 그러면 IP가 바뀔 때마다 코드를 고쳐야 하고 CORS 설정도
 같이 따라다녀야 한다. **같은 오리진으로 합치면 두 문제가 동시에 사라진다.**
 
-**(1) `nginx/default.conf` — `location /` 블록 앞에 추가**
+- `nginx/default.conf`에 `location /api/ { proxy_pass http://api:8000/api/; ... }` 블록이 있다
+  (`proxy_read_timeout 120s` — 프로비저닝 요청이 길다. `X-Forwarded-For`는 `main.py`의
+  `_client_ip()`가 로그에 쓴다).
+- `frontend/assets/js/api.js`의 `API_BASE`는 **상대경로 `"/api/v1"`**. `error-reporter.js`·
+  `prov-tracker.js`의 fallback 문자열도 같은 값으로 맞춰 뒀다.
+- **이 둘은 반드시 같이 간다.** 하나만 적용하면 로컬(8080)이 깨진다 — nginx 설정은 로컬 compose에도
+  똑같이 마운트되므로, 둘 다 있으면 로컬·운영이 동일하게 동작한다.
+- `backend/app/main.py`의 CORS 목록에는 `http://mcp.greatsounds.me`와 `http://localhost`(포트 없음)를
+  추가해 뒀다. 프록시를 쓰면 preflight 자체가 발생하지 않아 실제로는 쓰이지 않지만, 컨테이너 밖에서
+  uvicorn을 직접 띄우는 개발 방식이 여전히 유효해서 남겨 둔다.
 
-```nginx
-    # API를 같은 오리진으로 합친다 — 브라우저 입장에서 동일 출처라 CORS 자체가 불필요해지고,
-    # 외부에 8000 포트를 열 필요도 없어진다.
-    location /api/ {
-        proxy_pass http://api:8000/api/;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        # 프로비저닝 job 생성 등 terraform을 타는 요청은 응답이 늦을 수 있다.
-        proxy_read_timeout 120s;
-    }
-```
+> 다른 도메인에 올릴 때 고칠 곳: `.env`의 `FRONTEND_BASE_URL` 하나. (CORS 목록은 프록시를 쓰는 한
+> 건드리지 않아도 된다. HTTPS를 붙이면 스킴이 달라지므로 그때 추가한다 — §11.)
 
-**(2) `frontend/assets/js/api.js:10` — 상대 경로로**
+### 3-3. `FRONTEND_BASE_URL`은 여전히 `.env`에서 바꿔야 한다
 
-```js
-  var API_BASE = "/api/v1";
-```
-
-`error-reporter.js:15`와 `prov-tracker.js:57`은 `window.MCPApi.API_BASE`를 참조하므로
-(fallback만 따로 있음) 이 한 곳만 고치면 같이 따라온다. fallback 문자열도 `"/api/v1"`로
-맞춰두면 깔끔하다.
-
-**(3) `backend/app/main.py:66` — 동일 오리진이면 CORS가 필요 없지만, 안전하게 배포 주소를 추가**
-
-```python
-    allow_origins=["http://localhost:8080", "http://mcp.greatsounds.me"],
-```
-
-nginx 프록시를 쓰면 preflight 자체가 발생하지 않으므로 실제로는 안 건드려도 동작한다.
-로컬 개발(8080 → 8000 직접 호출)을 계속 쓸 것이므로 기존 항목은 **지우지 않는다**.
-나중에 HTTPS를 붙이면(§11) `https://mcp.greatsounds.me`를 추가한다 — 스킴이 다르면 별개 오리진이다.
-
-### 3-3. `FRONTEND_BASE_URL`도 같이 바꾼다
-
-`backend/app/routers/auth.py:383`이 비밀번호 재설정 링크를 이렇게 만든다:
+`backend/app/routers/auth.py`가 비밀번호 재설정 링크를, `backend/app/report_email.py`가 보고서
+메일의 링크를 이 값으로 만든다:
 
 ```python
 reset_link = f"{settings.frontend_base_url}/password-reset.html?token={token}"
 ```
 
 기본값이 `http://localhost:8080`이라 그대로 두면 **메일은 정상 발송되는데 링크를 누르면 사용자
-자기 PC로 간다.** `.env`에서 실제 도메인으로 바꾼다(§6):
+자기 PC로 간다.**
 
 ```bash
 FRONTEND_BASE_URL=http://mcp.greatsounds.me
@@ -348,8 +329,10 @@ JWT_SECRET_KEY=<openssl rand -base64 48>
 # --- 배포 주소 (§3-3) ---
 FRONTEND_BASE_URL=http://mcp.greatsounds.me
 
-# --- 프론트 노출 포트 (§7-4) ---
+# --- 포트 노출 (§7) ---
 WEB_PORT=80
+API_BIND_HOST=127.0.0.1
+DB_BIND_HOST=127.0.0.1
 
 # --- 메일 (§5) ---
 MAIL_HOST=email-smtp.ap-northeast-2.amazonaws.com
@@ -364,10 +347,26 @@ PLATFORM_AWS_ACCOUNT_ID=123456789012
 PLATFORM_AWS_ACCESS_KEY_ID=
 PLATFORM_AWS_SECRET_ACCESS_KEY=
 
+# --- 스케줄러 (2026-09-23 보고서 기능 추가분) ---
+COST_SCHEDULER_ENABLED=true      # 매일 비용 수집
+COST_INGEST_HOUR_UTC=6           # 06 UTC = 15 KST
+REPORT_SCHEDULER_ENABLED=true    # 정기 보고서 메일 발송
+REPORT_SEND_HOUR_UTC=7           # 07 UTC = 16 KST
+COST_STALE_AFTER_HOURS=36
+
 # --- 선택 ---
-OPENAI_API_KEY=<비우면 /agent/chat이 503>
+OPENAI_API_KEY=<AI 비용 상담 + 보고서 "AI 분석 요약"에 쓴다>
+OPENAI_MODEL=gpt-4o-mini
 TZ=Asia/Seoul
 ```
+
+> **`OPENAI_API_KEY`의 영향 범위가 넓어졌다(2026-09-23).** 예전에는 `/agent/chat`만 503이 됐는데,
+> 이제 보고서의 "AI 분석 요약" 섹션도 같은 키를 쓴다(`app/report_summary.py`). 비우면 보고서 생성은
+> 되지만 요약이 `null`로 남는다 — 목업 문구로 채우지 않는다.
+
+> **스케줄러 둘 다 compose 기본값이 `true`다.** 즉 배포하면 바로 매일 돈다. 보고서 정기 발송은
+> 실제 SMTP가 동작해야 하므로 §5를 먼저 끝내 둔다. 단일 프로세스 전제(§0)라 api replica를 늘리면
+> 중복 수집·중복 발송이 된다.
 
 > ⚠️ **`CREDENTIAL_ENCRYPTION_KEY`와 기존 데이터.** 이 키는 등록된 클라우드 자격증명을
 > AES-256-GCM으로 암호화하는 데 쓴다. **기존 DB를 옮겨올 계획이면 그때 쓰던 키와 같은 값이어야
@@ -376,57 +375,43 @@ TZ=Asia/Seoul
 
 ---
 
-## 7. `docker-compose.yml` 변경
+## 7. 포트 노출 — `.env`로 제어한다 (코드 수정 불필요)
 
-운영에서는 세 가지를 바꾼다.
+2026-09-25부터 `docker-compose.yml`의 포트 퍼블리시가 전부 환경변수로 빠져 있다. **운영/로컬이
+같은 파일을 쓰고 `.env`만 다르다.** 기본값은 종전과 동일해서 아무것도 넣지 않은 팀원 로컬은
+지금까지와 똑같이 뜬다.
 
-**(1) `mailhog` 서비스 블록을 제거한다** (또는 `docker compose up` 시 제외).
-`MAIL_HOST` 기본값이 `mailhog`라서 `.env`에 지정하지 않으면 **없는 호스트로 붙어 조용히 실패**한다.
+| 서비스 | compose | 로컬 기본 | 운영 `.env` |
+|---|---|---|---|
+| `web` | `"${WEB_PORT:-8080}:80"` | 8080 | `WEB_PORT=80` |
+| `api` | `"${API_BIND_HOST:-0.0.0.0}:8000:8000"` | 전체 | `API_BIND_HOST=127.0.0.1` |
+| `db` | `"${DB_BIND_HOST:-0.0.0.0}:5432:5432"` | 전체 | `DB_BIND_HOST=127.0.0.1` |
+| `mailhog` | `"${MAILHOG_BIND_HOST:-0.0.0.0}:1025\|8025"` | 전체 | 띄우지 않음(아래) |
 
-**(2) `db`의 포트 퍼블리시를 제거한다.**
+- **포트는 이미지에 구워지지 않는다** — 바꾼 뒤 `docker compose up -d`로 컨테이너만 재생성하면
+  된다. `docker compose build`가 필요한 건 `backend/` 소스 변경뿐이다(프론트·nginx conf는 바인드
+  마운트라 그것도 필요 없다).
+- `api`/`db`를 루프백에 묶는 건 보안 그룹(8000·5432 미개방) 위에 한 겹 더 거는 것이다. 외부 접근은
+  nginx의 `/api/` 프록시로만 받는다.
+- **MailHog는 운영에서 띄우지 않는다**: `docker compose up -d db api web`처럼 서비스를 명시한다.
+  ⚠️ `MAIL_HOST` 기본값이 `mailhog`라서, 운영 `.env`에 `MAIL_HOST`를 지정하지 않으면 메일이
+  조용히 사라진다(컨테이너가 떠 있으면 MailHog로 들어가고, 없으면 발송 실패).
 
-```yaml
-  db:
-    ...
-    # ports:              # ← 운영에서는 제거. api가 같은 compose 네트워크로 접근한다.
-    #   - "5432:5432"
-```
+### 7-4. `web`을 80번으로
 
-**(3) `api`의 포트 퍼블리시를 localhost로 묶는다** (§3의 nginx 프록시를 쓰는 경우).
+compose 기본값은 8080이라 `http://mcp.greatsounds.me:8080`으로만 접속된다. 운영 `.env`에
+`WEB_PORT=80`을 넣으면 포트 없이 들어온다.
 
-```yaml
-  api:
-    ...
-    ports:
-      - "127.0.0.1:8000:8000"   # 외부 노출 불필요. 디버깅용으로만 남긴다.
-```
-
-### 7-4. `web`을 80번 포트로 노출한다
-
-compose 기본값은 `"8080:80"`이라 `http://mcp.greatsounds.me:8080`으로만 접속된다. 도메인으로
-포트 없이 들어오게 하려면 호스트 쪽을 80으로 바꾼다.
-
-**포트 번호를 그냥 박지 말고 환경변수로 뺀다** — 팀원들의 로컬 환경에서는 80번이 이미 쓰이고
-있을 수 있고(특히 Windows), 로컬은 8080 그대로 두는 편이 낫다. compose가 이미 곳곳에서 쓰는
-`${VAR:-기본값}` 패턴과 같은 방식이다.
-
-```yaml
-  web:
-    image: nginx:1.27-alpine
-    ...
-    ports:
-      - "${WEB_PORT:-8080}:80"   # 운영(.env): WEB_PORT=80 / 로컬: 미설정 → 8080 유지
-```
-
-- 운영 EC2의 `.env`에 `WEB_PORT=80`을 넣는다(§6).
-- 로컬 개발자는 `.env`에 이 값을 넣지 않으면 **지금과 똑같이 8080**으로 뜬다. `main.py`의 CORS
-  `http://localhost:8080`도 그대로 유효하다.
+- 로컬에서도 80번으로 쓰고 싶으면 각자 `.env`에 `WEB_PORT=80`만 넣으면 된다. 이때 브라우저가 보내는
+  Origin이 `http://localhost`(포트 생략)가 되는데 `main.py`의 CORS 목록에 이미 들어 있고,
+  **`FRONTEND_BASE_URL=http://localhost`도 같이 바꿔야** 메일 링크가 맞는다.
 - 80번은 특권 포트지만 도커 데몬이 root로 돌아 바인딩에 문제가 없다. `sudo` 불필요.
 - ⚠️ 80번을 이미 쓰는 프로세스가 있으면 `bind: address already in use`로 기동에 실패한다.
-  `sudo ss -tlnp | grep :80`으로 확인한다(Ubuntu에 apache2가 딸려 오는 경우가 있다).
+  `sudo ss -tlnp | grep :80`으로 확인한다(Ubuntu에 apache2가 딸려 오는 경우가 있다. Windows는
+  IIS/“World Wide Web Publishing Service”가 흔한 범인이다).
 
 `nginx/default.conf`의 `server_name _;`는 **그대로 둔다** — 모든 호스트명을 받으므로 도메인과
-IP(`http://43.200.50.51`) 양쪽으로 접속된다. 도메인만 허용하고 싶을 때만 바꾼다.
+IP 양쪽으로 접속된다. 도메인만 허용하고 싶을 때만 바꾼다.
 
 ---
 
@@ -448,7 +433,7 @@ mkdir -p logs/nginx && sudo chown -R 1000:1000 logs
 
 # 5) 빌드 & 기동
 docker compose build api
-docker compose up -d
+docker compose up -d db api web   # mailhog는 운영에서 띄우지 않는다(§7)
 
 # 6) 마이그레이션은 docker-entrypoint.sh가 자동 실행한다. 로그로 확인:
 docker compose logs -f api
