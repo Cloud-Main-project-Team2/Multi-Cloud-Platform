@@ -20,7 +20,7 @@
 - `AWS_Delegation_Role_Setup_Guide.md` — 역할 위임 연결 IAM 설정 가이드(콘솔에서 실제로 뭘 만드는지)
 - `Security_Group_Management_Design_2026-09-17.md` — 보안그룹 관리 기능 설계 결정(DB 미저장, GCP 비대칭 등)
 - `AWS_Azure_GCP_Permission_Reference_2026-09-17.md` — 기능별 필요 권한 참조(AWS/Azure/GCP)
-- `EC2_Deployment_Guide.md` — EC2 단일 인스턴스 배포 가이드(사양·IAM 인스턴스 역할·메일 SMTP·배포 전 필수 수정)
+- `EC2_Deployment_Guide.md` — EC2 단일 인스턴스 배포 가이드(사양·IAM 인스턴스 역할·메일 SMTP·HTTPS(호스트 nginx+certbot)·배포 절차·트러블슈팅)
 - `design/` — 디자인 스크린샷(색·타이포·컴포넌트 룩 참고용), `design/extensions/` — 확장 기능 시안
 
 > WBS·프로토타입 개발 프롬프트·Tier2 확장 프롬프트 등 일부 문서는 아직 이 레포가 아니라
