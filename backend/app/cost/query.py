@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.cost import is_cost_supported
-from app.cost.coverage import covered_days, utc_today
+from app.cost.coverage import BASIS_COMPLETE_RANGE, day_basis_map, resolve_basis, utc_today
 from app.errors import validation_error
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Resource
 
@@ -306,9 +306,14 @@ def account_coverage(
     db: Session, cloud_account_id: int, start: dt.date, end: dt.date, *, today: dt.date | None = None
 ) -> dict:
     """[start, end) 중 **완료된 날**(UTC 오늘·미래 제외)의 수집 확인 결과.
-    days=완료된 날 수 · covered=확인된 날 수 · missing_count=전체 결측 수(판정은 이 값으로) ·
+    days=완료된 날 수 · covered=**관측된** 날 수 · missing_count=전체 결측 수(판정은 이 값으로) ·
     missing_days=앞에서 31개까지(표시용) · truncated=목록이 잘렸는가 · pending_days=오늘·미래라
-    아직 판정할 수 없는 날 수."""
+    아직 판정할 수 없는 날 수. `covered + missing_count = days`가 항상 성립한다.
+
+    `basis`는 관측된 날들의 **근거 요약**이다 — `complete_range`(전부 강한 근거) ·
+    `observed_only`(하나라도 약한 근거) · `None`(관측된 날 없음). `analysis_ready`는 이 기간을
+    판정(전망·비교·예산·급증)에 쓸 수 있는지이며 **`basis == complete_range` AND `missing_count == 0`**
+    이다 — 모든 날짜에 행이 있어도(missing 0) 근거가 약하면 판정하지 않는다(A-2)."""
     today = today or utc_today()
     end_done = min(end, today)
     if end_done <= start:
@@ -316,8 +321,10 @@ def account_coverage(
             "start": start.isoformat(), "end": start.isoformat(), "days": 0, "covered": 0,
             "missing_count": 0, "missing_days": [], "truncated": False,
             "pending_days": max((end - max(start, today)).days, 0),
+            "basis": None, "analysis_ready": False,
         }
-    have = covered_days(db, cloud_account_id, start, end_done)
+    basis_by_day = day_basis_map(db, cloud_account_id, start, end_done)
+    have = set(basis_by_day)
     missing: list[str] = []
     missing_count = 0
     d = start
@@ -328,11 +335,15 @@ def account_coverage(
                 missing.append(d.isoformat())
         d += dt.timedelta(days=1)
     days = (end_done - start).days
+    values = set(basis_by_day.values())
+    basis = None if not values else (BASIS_COMPLETE_RANGE if values == {BASIS_COMPLETE_RANGE} else "observed_only")
     return {
         "start": start.isoformat(), "end": end_done.isoformat(), "days": days,
         "covered": days - missing_count, "missing_count": missing_count,
         "missing_days": missing, "truncated": missing_count > len(missing),
         "pending_days": max((end - end_done).days, 0),
+        "basis": basis,
+        "analysis_ready": basis == BASIS_COMPLETE_RANGE and missing_count == 0,
     }
 
 
@@ -371,7 +382,7 @@ def period_coverage(
             union.update(c["missing_days"])
         elif c["missing_count"]:
             # 잘린 목록으로 합집합을 만들면 안 된다 — 전체 결측일을 다시 읽는다(31일 초과는 드물다).
-            have = covered_days(db, a.id, start, min(end, today))
+            have = set(day_basis_map(db, a.id, start, min(end, today)))
             d = start
             while d < min(end, today):
                 if d not in have:
@@ -407,14 +418,20 @@ def forecast_month_end(
     db: Session, user_id: int, q: CostQuery, *, accounts: list[CloudAccount] | None = None,
     coverage_by_account: dict[int, dict] | None = None, currency_map: dict[int, str] | None = None,
 ) -> tuple[list[dict], dict]:
-    """CF-003 — 이번 달 진행 중일 때만 낸다(§4-2). 계산식: 이번 달 **실제로 수집된 날짜**의 누적
-    실측 ÷ **오늘까지의 달력 경과일수** × 이달 총일수(mtd_prorated). 수집이 안 된 날은 0원으로
-    채우지 않고 그냥 합계에서 빠진다(03 §5 · QA-08 ⑤ "미수집일을 0으로 평균 내지 않는다") — 다만
-    분모는 "수집된 날 수"가 아니라 "오늘이 이달 며칠째인가"다(2026-09-22 결정). 이전에는 대상
-    계정 중 하나라도 이달 1일~UTC 어제를 빠짐없이 수집하지 못하면 계산 자체를 하지 않았지만,
-    그러면 수집 지연이 흔한 상황에서 전망이 아예 안 뜨는 문제가 있었다 — 이제는 수집 누락이
-    있어도 항상 계산하고, 어느 계정이 얼마나 빠졌는지는 forecast_status.incomplete_accounts로
-    안내만 한다(계산을 막지 않는다). 반환: (forecast rows, forecast_status)."""
+    """CF-003 — 이번 달 진행 중일 때만 낸다(§4-2). 계산식은 그대로 (이달 1일~UTC 어제의 실측 ÷
+    경과일수 × 이달 총일수, `mtd_prorated`)이고, **대상 계정 전부가 그 기간을 빠짐없이 수집
+    확인했을 때만** 계산한다 — 하나라도 미수집일이 있으면 `state="insufficient_coverage"`로
+    값을 내지 않는다(03 §5 · 10 QA-08 ⑤ "미수집일을 0으로 평균 내지 않는다").
+
+    2026-09-22(#128)에 "누락이 있어도 계산하고 안내만 한다"로 바뀐 적이 있는데, 분모가 달력
+    경과일이라 **빠진 날의 비용이 분자에서만 빠져 전망이 실제보다 낮게** 나왔다. 낮은 전망은
+    "아직 예산에 여유가 있다"로 읽히므로 값을 내지 않는 쪽이 안전하다(2026-09-23 복구).
+    ⚠️ 이 선택은 사용자(이승현)의 정책 결정이며 **조은솔 님(#128 작성자)의 확인은 아직 받지
+    않았다** — `docs/Cost_Round_Handover_2026-09-23.md` §1-1에 확인 대기로 남아 있다.
+
+    판정 대상은 `evaluable_accounts()`가 고른 계정뿐이다 — 미지원 CSP·통화 필터로 빠진 계정의
+    결측은 다른 계정의 전망을 막지 않는다. 상태는 **응답 전체 기준**이다(통화별 상태를 만들지
+    않는다). 반환: (forecast rows, forecast_status)."""
     today = utc_today()
     this_month_start = today.replace(day=1)
     # 전망 창은 어차피 이달 1일~어제(UTC)다. period_end가 '오늘'(어제까지 포함)이든 '오늘+1'(오늘 포함)이든
@@ -448,13 +465,32 @@ def forecast_month_end(
             c = account_coverage(db, a.id, this_month_start, today, today=today)
         if c["missing_count"]:
             incomplete.append({"cloud_account_id": str(a.id), "missing_count": c["missing_count"]})
-    status["incomplete_accounts"] = incomplete  # 안내용 — 더 이상 계산을 막지 않는다
+    status["incomplete_accounts"] = incomplete
+    # 근거가 약한 계정(observed_only) — 모든 날짜에 행이 있어도 판정에 쓰지 않는다(A-2).
+    unverified = [
+        {"cloud_account_id": str(a.id)}
+        for a in accounts
+        if not ((coverage_by_account or {}).get(a.id) or account_coverage(db, a.id, this_month_start, today, today=today))["analysis_ready"]
+        and not any(x["cloud_account_id"] == str(a.id) for x in incomplete)
+    ]
+    status["unverified_accounts"] = unverified
+    if incomplete:
+        # 수집이 빠진 계정이 하나라도 있으면 계산하지 않는다. 빠진 날을 0원으로 평균 내면
+        # 전망이 실제보다 낮게 나오고, 그 값은 "여유 있다"로 읽힌다. 사유(어느 계정이 며칠)는
+        # incomplete_accounts로 그대로 전달한다 — 값을 못 내는 것과 이유를 모르는 것은 다르다.
+        # 우선순위: 결측(사람이 고칠 수 있는 문제) > 근거 부족(CSP가 근거를 주지 않는 문제).
+        status["state"] = "insufficient_coverage"
+        return [], status
+    if unverified:
+        status["state"] = "coverage_unverified"
+        return [], status
 
     days_elapsed = today.day - 1  # 달력 기준 경과일수 — 오늘은 미완성 구간이라 분모에 넣지 않는다
     days_in_month = _days_in_month(today.year, today.month)
     rows = sum_by_currency(db, user_id, q, period_end_override=today)
     if not rows:
-        # 이번 달 수집된 실측 행이 하나도 없다. 통화를 아는 계정이 있으면 그 통화로 0을 낸다(확인된 0원).
+        # 여기까지 왔다면 대상 계정 전부가 이달 1일~어제를 수집 확인했는데 행이 없는 것 —
+        # 즉 **확인된 0원**이다(미수집은 위 insufficient_coverage에서 이미 걸러졌다).
         currencies = sorted({currency_map.get(a.id) for a in accounts if currency_map.get(a.id)})
         if q.currency:
             currencies = [q.currency] if q.currency in currencies or not currencies else []
@@ -633,6 +669,11 @@ def changes(
         reasons.append("CURRENT_COVERAGE")
     if targets and not previous_covered:
         reasons.append("PREVIOUS_COVERAGE")
+    # 결측이 없어도 근거가 약하면(observed_only) 비교하지 않는다 — "결측 있음"과 다른 사유로 적는다(A-2).
+    if targets and current_covered and previous_covered and not (
+        all(c["analysis_ready"] for c in cur_cov.values()) and all(c["analysis_ready"] for c in prev_cov.values())
+    ):
+        reasons.append("COVERAGE_UNVERIFIED")
     if chosen_currency is None:
         reasons.append("NO_CURRENCY")
     comparable = not reasons
@@ -968,8 +1009,10 @@ def collection_status(db: Session, user_id: int, q: CostQuery) -> list[dict]:
         next_allowed = None
         if last_success is not None and last_success.trigger_type == "manual" and last_success.finished_at:
             next_allowed = last_success.finished_at + dt.timedelta(hours=1)
+        # covered_through는 "여기까지 확인됐다"로 읽힌다 — 근거가 약한 CSP(observed_only)에서는
+        # 요청 종료일을 확인 범위처럼 돌려주지 않는다. 근거가 없으면 null이다(A-2).
         covered_through = None
-        if last_success is not None:
+        if last_success is not None and resolve_basis(last_success.coverage_basis, account.provider) == BASIS_COMPLETE_RANGE:
             covered_through = (last_success.period_end - dt.timedelta(days=1)).isoformat()
         # 조회 기간(요청 period_start/end) 기준 계정별 수집 확인 — 지원·통화 필터 안 계정만. 미지원은 None.
         coverage = coverage_by_account.get(account.id)

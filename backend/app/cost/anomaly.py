@@ -31,7 +31,7 @@ from sqlalchemy import cast, Date, func
 from sqlalchemy.orm import Session
 
 from app.cost import is_cost_supported
-from app.cost.coverage import covered_days, covered_days_since_first, utc_today
+from app.cost.coverage import analysis_ready_days_since_first, covered_days_since_first, utc_today
 from app.cost.query import accounts_currency_map, money
 from app.models import CloudAccount, CloudAccountCost, CostReviewItem, Credential, ProvisioningJob, ServiceCatalog
 
@@ -49,6 +49,8 @@ MIN_DELTA_BY_CURRENCY: dict[str, Decimal] = {"USD": Decimal("5")}
 
 HELD_BASELINE_INCOMPLETE = "baseline_incomplete"
 HELD_DAY_NOT_COLLECTED = "day_not_collected"
+# 금액은 관측됐는데 완전성 근거가 없어 판정하지 못한 날 — "수집이 안 됐다"와 다르다(A-2).
+HELD_COVERAGE_UNVERIFIED = "coverage_unverified"
 
 
 def rule_dict(currency: str = "USD") -> dict:
@@ -164,16 +166,25 @@ def evaluate_account(
         return result
     min_delta = MIN_DELTA_BY_CURRENCY[currency]
 
-    covered_all = covered_days_since_first(db, account.id, eval_end)
+    # 판정에는 **근거가 있는 날**만 쓴다(A-2). 모든 날짜에 행이 있어도 완전성 근거가 없으면
+    # (observed_only) 기준선·이력이 채워지지 않아 held로 남는다 — 가짜 급증을 만들지 않기 위해서다.
+    covered_all = analysis_ready_days_since_first(db, account.id, eval_end)
     covered_sorted = sorted(covered_all)
+    # 관측된 날(행이 있거나 근거가 약해도 들어온 날) — "수집이 안 됐다"와 "근거가 없다"를 가르는 데 쓴다.
+    observed_all = covered_days_since_first(db, account.id, eval_end)
+    observed_sorted = sorted(observed_all)
     usage, sample = _usage_by_service_day(db, account, currency, eval_start - dt.timedelta(days=BASELINE_DAYS), eval_end)
     result.is_sample_data = sample
     services = sorted({svc for svc, _ in usage})
 
     def history_through(day: dt.date) -> int:
-        # 판정일 이하의 수집 확인 날 수 — 이후 날짜는 세지 않는다
+        # 판정일 이하의 **판정 가능한** 날 수 — 이후 날짜는 세지 않는다
         import bisect
         return bisect.bisect_right(covered_sorted, day)
+
+    def observed_through(day: dt.date) -> int:
+        import bisect
+        return bisect.bisect_right(observed_sorted, day)
 
     last_days_available = 0
     d = eval_start
@@ -181,15 +192,22 @@ def evaluate_account(
         days_available = history_through(d)
         last_days_available = days_available
         if days_available < MIN_HISTORY_DAYS:
+            # 이력이 모자란 이유가 "아직 안 쌓였다"인지 "쌓였는데 근거가 없다"인지 구분한다 —
+            # 관측 이력은 충분한데 판정 가능한 날만 모자라면 그건 이력 부족이 아니라 근거 부족이다.
+            if observed_through(d) >= MIN_HISTORY_DAYS:
+                result.held.append({"date": d, "reason": HELD_COVERAGE_UNVERIFIED})
             d += dt.timedelta(days=1)
             continue
         if d not in covered_all:
-            result.held.append({"date": d, "reason": HELD_DAY_NOT_COLLECTED})
+            reason = HELD_COVERAGE_UNVERIFIED if d in observed_all else HELD_DAY_NOT_COLLECTED
+            result.held.append({"date": d, "reason": reason})
             d += dt.timedelta(days=1)
             continue
         window = [d - dt.timedelta(days=i) for i in range(BASELINE_DAYS, 0, -1)]
         if any(w not in covered_all for w in window):
-            result.held.append({"date": d, "reason": HELD_BASELINE_INCOMPLETE})
+            unverified_window = all(w in observed_all for w in window)   # 관측은 다 됐는데 근거만 없다
+            result.held.append({"date": d,
+                                "reason": HELD_COVERAGE_UNVERIFIED if unverified_window else HELD_BASELINE_INCOMPLETE})
             d += dt.timedelta(days=1)
             continue
         for svc in services:
@@ -211,6 +229,8 @@ def evaluate_account(
             ))
         d += dt.timedelta(days=1)
 
+    # 이력 부족은 **관측 이력까지 모자랄 때만** 말한다 — 근거 부족을 "이력 0일"이라고 설명하면
+    # 사용자가 "아직 데이터가 없구나"로 잘못 읽는다(A-2 보완).
     if not result.items and not result.held and last_days_available < MIN_HISTORY_DAYS:
         result.insufficient_history = {"days_available": last_days_available, "days_required": MIN_HISTORY_DAYS}
     return result
@@ -222,10 +242,14 @@ def evaluate_account_all_stored(db: Session, account: CloudAccount, today: dt.da
     매번 전부 본다 — 장기 중단 뒤에도 빠짐없이 따라잡기 위해서다(2026-09-19 결정)."""
     today = today or utc_today()
     end = eligible_end(today)
-    covered = covered_days_since_first(db, account.id, end)
-    if not covered:
+    # 판정 가능한 날이 하나도 없어도, **관측된 날이 있으면** 평가를 돌린다 — 그래야 "근거 부족"이라는
+    # 사유가 held로 남는다. 그냥 건너뛰면 화면이 "이력 0일"로만 보여 사용자가 데이터가 없는 줄 안다.
+    covered = analysis_ready_days_since_first(db, account.id, end)
+    observed = covered_days_since_first(db, account.id, end)
+    start_from = covered or observed
+    if not start_from:
         return AccountEvaluation(account=account, currency=None)
-    return evaluate_account(db, account, min(covered), end)
+    return evaluate_account(db, account, min(start_from), end)
 
 
 # --- 조회 응답 조립 ---------------------------------------------------------------------------

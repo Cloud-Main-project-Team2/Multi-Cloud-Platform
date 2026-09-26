@@ -638,6 +638,10 @@ class CostIngestionRun(CreatedAtMixin, Base):
     records_replaced: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0", default=0)
     error_code: Mapped[str | None] = mapped_column(String(100), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # 이 run이 저장한 구간을 무엇을 근거로 "확인"이라 부를 수 있는지(app/cost/coverage.py).
+    # complete_range = 요청 범위를 확인 근거로 인정(기존 AWS 정책) · observed_only = 받은 금액만 관측.
+    # NULL = 컬럼 추가 이전 run → provider가 aws일 때만 complete_range로 읽는다(레거시 호환).
+    coverage_basis: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     __table_args__ = (
         sa.CheckConstraint("trigger_type IN ('auto','manual')", name="ck_cost_ingestion_runs_trigger_type"),
