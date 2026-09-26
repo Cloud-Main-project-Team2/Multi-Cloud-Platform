@@ -864,9 +864,17 @@ window.MCPCost = (function () {
       // 결측일이 있으면 0원이라 말하지 않는다.
       var gaps = (d.warnings || []).some(function (w) { return w.code === "PARTIAL_PERIOD"; });
       var acc0 = (d.accounts || []).filter(function (a) { return a.status === "CONNECTED_EMPTY" || a.status === "CONNECTED_OK"; })[0];
+      // 대상 계정 **전부**가 이 기간을 강한 근거로 확인했을 때만 "확인된 0원"이다. 하나라도 근거가
+      // 약하거나(basis!=complete_range) 결측이면 0원이라 말하지 않는다(A-2).
+      var judged = (d.accounts || []).filter(function (a) { return a.coverage; });
+      var allConfirmed = judged.length > 0 && judged.every(function (a) {
+        return a.coverage.basis === "complete_range" && a.coverage.missing_count === 0;
+      });
       lines = gaps
         ? '<div class="value">—</div><p class="kpi-note">이 기간에 수집된 행이 없고 미수집일이 있어 0원이라 표시하지 않습니다.</p>'
-        : '<div class="value">' + esc(F.money("0.000000", acc0 ? acc0.currency : null)) + ' <span class="badge">실측 · 수집 확인된 0원</span></div>';
+        : (allConfirmed
+            ? '<div class="value">' + esc(F.money("0.000000", acc0 ? acc0.currency : null)) + ' <span class="badge">실측 · 수집 확인된 0원</span></div>'
+            : '<div class="value">—</div><p class="kpi-note">이 기간에 수집된 행이 없습니다. 도착 범위를 확인할 수 없어 0원이라 표시하지 않습니다.</p>');
     }
     var html = lines +
       '<p class="kpi-basis">' + esc(chargeCategoryLabel(filters.chargeCategory)) + " 기준 · 청구 확정 아님</p>" +
@@ -891,25 +899,28 @@ window.MCPCost = (function () {
       if (!isCurrentMonthToDate()) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">' + esc(S.forecastText("not_current_month")) + "</p>" + btn };
       if (!rows.length) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">전망 값이 없습니다(사유 미제공).</p>' + btn };
     } else if (fs.state !== "computed") {
+      // 계산하지 않은 전망을 금액처럼 보여주지 않는다 — "—"와 사유만 낸다. 수집 부족이면 어느
+      // 계정에서 며칠이 빠졌는지까지 적고 CF-009로 보낸다(사용자가 고칠 수 있는 유일한 경로).
       var why = S.forecastText(fs.state);
-      return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">' + esc(why) + "</p>" + btn };
+      var hold = (fs.incomplete_accounts || []);
+      var holdNote = "";
+      if (fs.state === "insufficient_coverage" && hold.length) {
+        var holdDays = hold.reduce(function (n, a) { return n + (a.missing_count || 0); }, 0);
+        // holdDays는 계정별 missing_count를 **더한 값**이다 — 같은 날짜가 여러 계정에서 빠지면
+        // 그만큼 중복해서 세어진다(달력상 며칠이 비었는지가 아니다). 계산은 그대로 두고 말만 정확히 한다.
+        holdNote = '<p class="kpi-note">대상 ' + fs.required_accounts + "개 계정 중 " + hold.length + "개에서 이달 1일~" + esc(fs.based_through || "어제") + " 사이 계정별 미수집일 합계 " + holdDays + "일 — " +
+          esc(hold.slice(0, 3).map(function (a) { return accountLabelOf(a.cloud_account_id) + " " + a.missing_count + "일"; }).join(", ")) + (hold.length > 3 ? " 외" : "") + "</p>" +
+          '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-009">수집 상태 보기</button></div>';
+      }
+      return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">' + esc(why) + "</p>" + holdNote + btn };
     }
     if (!rows.length) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">전망 값이 없습니다.</p>' + btn };
-    // computed = 계산됨. 2026-09-22부터 대상 계정 일부가 이달 수집을 못 마쳤어도 계산은 계속하고
-    // (수집 안 된 날은 0원으로 채우지 않고 합계에서만 뺀다), incomplete_accounts로 안내만 한다.
+    // computed = 대상 계정 **전부**가 이달 1일~어제를 수집 확인한 상태다(하나라도 빠지면 서버가
+    // insufficient_coverage로 값을 내지 않는다, 2026-09-23). 그래서 여기서는 "일부 누락" 안내가 없다.
     var lastAsOf = d.as_of ? fmtWhen(d.as_of).text.replace(/ \(.*\)$/, "") : "없음";
-    var inc = (fs && fs.incomplete_accounts) || [];
-    var partialNote = "";
-    if (inc.length) {
-      var days = inc.reduce(function (n, a) { return n + (a.missing_count || 0); }, 0);
-      partialNote = '<p class="kpi-note">일부 날짜 데이터가 누락되어 추정치입니다 — 대상 ' + fs.required_accounts + "개 계정 중 " + inc.length + "개에서 이달 1일~" + esc(fs.based_through || "어제") + " 사이 " + days + "일이 수집되지 않았습니다" +
-        (" — " + esc(inc.slice(0, 3).map(function (a) { return accountLabelOf(a.cloud_account_id) + " " + a.missing_count + "일"; }).join(", ")) + (inc.length > 3 ? " 외" : "")) + "</p>" +
-        '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-009">수집 상태 보기</button></div>';
-    }
     var html = moneyBadgeLines(rows, "전망") +
-      '<p class="kpi-basis">이달 1일 ~ ' + esc(rows[0].based_through || (fs && fs.based_through) || "어제") + "까지 실측(수집된 날만 합산)을 남은 일수로 늘린 값 · 마지막 수집 " + esc(lastAsOf) + "</p>" +
-      partialNote +
-      (fs ? '<p class="tiny muted">대상 계정 ' + fs.required_accounts + "개" + (inc.length ? " 중 " + inc.length + "개 부분 수집" : " 전부 수집 확인") + " · 실측·정가 추정과 합치지 않음</p>" : "") + btn;
+      '<p class="kpi-basis">이달 1일 ~ ' + esc(rows[0].based_through || (fs && fs.based_through) || "어제") + "까지 실측(수집 확인된 날)을 남은 일수로 늘린 값 · 마지막 수집 " + esc(lastAsOf) + "</p>" +
+      (fs ? '<p class="tiny muted">대상 계정 ' + fs.required_accounts + "개 전부 수집 확인 · 실측·정가 추정과 합치지 않음</p>" : "") + btn;
     return { state: "CONNECTED_OK", html: html };
   }
 
@@ -960,7 +971,19 @@ window.MCPCost = (function () {
       return esc(F.money(acc.actual, acc.currency)) + (cov && cov.missing_count ? '<br><span class="tiny" style="color:var(--cost-warn)">부분 · ' + cov.missing_count + "일 미수집</span>" : "");
     }
     if (cov) {
-      if (cov.days > 0 && cov.missing_count === 0) return esc(F.money("0.000000", acc.currency)) + '<br><span class="tiny muted">수집 확인된 0원</span>';
+      // "확인된 0원"은 **이 조회 기간에 강한 근거(complete_range)가 있고 결측이 없을 때만** 말한다.
+      // basis가 없거나 약하면 마지막 수집이 성공(CONNECTED_EMPTY/OK)이어도 0원이라 하지 않는다.
+      if (cov.days > 0 && cov.missing_count === 0 && cov.basis === "complete_range") {
+        return esc(F.money("0.000000", acc.currency)) + '<br><span class="tiny muted">수집 확인된 0원</span>';
+      }
+      if (cov.days > 0 && cov.missing_count === 0) {   // 모든 날 관측됐지만 근거가 약하다
+        return '—<br><span class="tiny muted">금액 관측됨 · 이 기간 0원 여부 미확인</span>';
+      }
+      // 이 기간에 확인된 날이 없다 — 마지막 수집이 성공했는지로 문구를 가른다(수집 실패로 위장하지 않는다).
+      if (cov.days > 0 && cov.covered === 0) {
+        var okLately = lastRunSucceeded(acc, cap);
+        return '—<br><span class="tiny muted">' + (okLately ? "수집 정상 완료 · 이 기간 0원 여부 미확인" : "이 기간 수집 기록 없음") + "</span>";
+      }
       if (cov.covered > 0) return '—<br><span class="tiny muted">' + cov.missing_count + "일 미수집 · 확인된 날은 0원</span>";
       if (cov.days === 0) return '—<br><span class="tiny muted">완료된 날 없음</span>';
       return '—<br><span class="tiny muted">이 기간 수집 기록 없음</span>';
@@ -970,6 +993,13 @@ window.MCPCost = (function () {
     var why = S.kind(st) === "data" ? "이 기간 행 없음" : (st === "COLLECT_FAILED" ? "0 아님" : "");
     return "—" + (why ? '<br><span class="tiny muted">' + esc(why) + "</span>" : "");
   }
+  /** 마지막 수집이 성공했는가(상태 기준) — "요청은 정상인데 이 기간 근거가 없다"와
+      "한 번도/최근에 못 받았다"를 가르는 데만 쓴다. basis만으로 정상 수집을 추정하지 않는다. */
+  function lastRunSucceeded(acc, cap) {
+    var st = (cap && cap.status) || (acc && acc.status);
+    return st === "CONNECTED_OK" || st === "CONNECTED_EMPTY";
+  }
+
   /** "조회 기간 수집" 칸 — coverage=null(미지원·범위 밖)과 결측 0건을 구분한다. */
   function coverageCellHtml(acc) {
     if (!acc) return '<span class="tiny muted">조회 조건 밖</span>';
@@ -977,7 +1007,12 @@ window.MCPCost = (function () {
     var cov = acc.coverage;
     if (!cov) return '<span class="tiny muted">해당 없음</span>';
     if (cov.days === 0) return '<span class="tiny muted">완료된 날 없음</span>';
+    if (cov.missing_count === 0 && cov.basis === "observed_only") {
+      // covered를 "완전히 도착한 날"이라고 설명하지 않는다 — 금액이 관측된 날일 뿐이다.
+      return '<span class="status-tag waiting" title="이 CSP는 도착 범위를 알려 주지 않아 기간 판정(전망·비교·예산·급증)을 보류합니다">' + cov.covered + "/" + cov.days + "일 금액 관측 · 범위 미확인</span>";
+    }
     if (cov.missing_count === 0) return '<span class="status-tag data">' + cov.covered + "/" + cov.days + "일 확인</span>";
+    if (cov.basis === "observed_only") return '<span class="status-tag waiting" title="금액이 들어온 날만 관측 — 나머지 날은 0원인지 미확인">' + cov.covered + "/" + cov.days + "일 금액 관측 · 나머지 미확인</span>";
     var listed = cov.missing_days || [];
     return '<span class="status-tag waiting" title="' + esc(listed.slice(0, 10).join(", ")) + (cov.truncated || listed.length < cov.missing_count ? " …" : "") + '">' +
       cov.missing_count + "일 미수집 / " + cov.days + "일</span>";
@@ -1128,8 +1163,22 @@ window.MCPCost = (function () {
         var pv = esc((PROVIDER_LABEL[a.provider] || a.provider || "").toString());
         var hasData = a.status === "CONNECTED_OK" || a.status === "CONNECTED_PARTIAL";
         if (a.status === "CONNECTED_EMPTY") {
-          // ㉰ 정상 0 — 경고가 아니다
-          notes.push(pv + " · " + label + ": 조회 기간에 실측 비용이 0입니다(정상 0 · 수집은 정상).");
+          // ㉰ 경고가 아니다. 다만 "마지막 수집이 0건"과 "이 조회 기간이 0원"은 다른 말이다 —
+          // 이 기간에 강한 근거가 있고 결측이 없을 때만 0원이라고 적는다(A-2).
+          // 상태(CONNECTED_EMPTY)는 **마지막 수집**이 0건이라는 뜻이고, 조회 기간 금액과 다른 값이다 —
+          // 마지막 수집이 조회 기간 밖일 수 있다. "정상 0"은 ① 이 기간의 강한 근거(complete_range·결측 0)와
+          // ② 이 기간 금액이 실제로 0일 때만 말한다. actual=null은 "행이 없다"는 뜻이고 근거가 있을 때만
+          // 0원으로 읽는다(숫자 0으로 변환하지 않는다).
+          var periodEvidence = a.coverage && a.coverage.basis === "complete_range" && a.coverage.missing_count === 0;
+          var periodZero = a.actual == null || isZeroAmount(a.actual);
+          if (periodEvidence && periodZero) {
+            notes.push(pv + " · " + label + ": 조회 기간에 실측 비용이 0입니다(정상 0 · 수집은 정상).");
+          } else if (!periodZero) {
+            notes.push(pv + " · " + label + ": 마지막 수집은 0건이지만 이 조회 기간에는 실측 " +
+              esc(F.money(a.actual, a.currency)) + "이 있습니다(마지막 수집 결과와 조회 기간 금액은 다릅니다).");
+          } else {
+            notes.push(pv + " · " + label + ": 마지막 수집은 정상(0건)이지만 이 조회 기간의 0원 여부는 확인되지 않았습니다.");
+          }
         } else if (hasData && a.resource_count > 0 && isZeroAmount(a.actual)) {
           // ㉮ 실행 중 + 실측 0원
           warnings.push(pv + " · " + label + ": 리소스 " + a.resource_count + "개가 있는데 조회 기간 실측이 " +
@@ -1749,7 +1798,9 @@ window.MCPCost = (function () {
     MISSING_DAYS: "기간 안에 수집되지 않은 날이 있어 소진률을 판정하지 않습니다.",
     CURRENCY_MISMATCH: "팀 통화와 다른 통화의 계정이 있어 합산하지 않습니다.",
     UNSUPPORTED: "이 팀의 계정은 아직 비용 수집을 지원하지 않습니다.",
-    NO_COMPLETED_DAYS: "이 예산 구간에 완료된 날이 아직 없습니다(월초). 이전 구간의 예산을 대신 보여주지 않습니다."
+    NO_COMPLETED_DAYS: "이 예산 구간에 완료된 날이 아직 없습니다(월초). 이전 구간의 예산을 대신 보여주지 않습니다.",
+    // 결측은 없지만 도착 범위를 확인할 수 없는 계정이 이 팀에 있다 — 금액·한도는 그대로 보인다(A-2).
+    COVERAGE_UNVERIFIED: "이 팀에 도착 범위를 확인할 수 없는 CSP 계정이 있어 소진률을 판정하지 않습니다(받은 금액은 그대로 표시합니다)."
   };
   var REASON_ACTION = {
     NO_BUDGET: '<button type="button" class="btn no-print" data-action="nav-scroll" data-tab="budget" data-target="CF-025">예산 설정</button>',
@@ -1780,7 +1831,14 @@ window.MCPCost = (function () {
     if (!d.computable) {
       html += '<div class="state-view" role="status"><span class="dash">—</span><p>' + esc(REASON_TEXT[d.reason_code] || "판정하지 않습니다.") + "</p>" +
         (d.reason_code === "CURRENCY_MISMATCH" && d.excluded_accounts.length ? "<p>제외 계정: " + d.excluded_accounts.map(function (a) { return esc(PROVIDER_LABEL[a.provider] || a.provider) + " " + esc(a.account_label || a.cloud_account_id) + " (" + esc(a.currency || "통화 미확인") + ")"; }).join(", ") + "</p>" : "") +
-        (d.usage && d.reason_code === "MISSING_DAYS" ? '<p class="tiny muted">' + (Number(d.usage.amount) > 0 ? "지금까지 합산된 사용액 " + esc(F.money(d.usage.amount, d.usage.currency)) : "아직 합산된 사용액이 없습니다(수집된 날 없음)") + " — 결측일이 채워지면 소진율을 냅니다(0%가 아닙니다)</p>" : "") +
+        // 금액은 보류 사유와 무관하게 보여 준다 — 두 사유 모두 "판정만 미루는 것"이지 금액이 없다는 뜻이
+        // 아니다. 특히 COVERAGE_UNVERIFIED는 안내 문구 자체가 "받은 금액은 그대로 표시합니다"라고 말한다.
+        (d.usage && (d.reason_code === "MISSING_DAYS" || d.reason_code === "COVERAGE_UNVERIFIED")
+          ? '<p class="tiny muted">' +
+            (Number(d.usage.amount) > 0 ? "지금까지 합산된 사용액 " + esc(F.money(d.usage.amount, d.usage.currency))
+              : (d.reason_code === "MISSING_DAYS" ? "아직 합산된 사용액이 없습니다(수집된 날 없음)" : "아직 합산된 사용액이 없습니다")) +
+            (d.reason_code === "MISSING_DAYS" ? " — 결측일이 채워지면 소진율을 냅니다(0%가 아닙니다)"
+              : " — 도착 범위가 확인되면 소진율을 냅니다(0%가 아닙니다)") + "</p>" : "") +
         (REASON_ACTION[d.reason_code] || "") + "</div>";
       if (b) html += budgetScopeNote(b);
       html += '<div class="button-row no-print"><button type="button" class="btn" data-action="open-budget-basis-dialog">계산 근거</button></div>';
@@ -2001,14 +2059,32 @@ window.MCPCost = (function () {
   /** 표 위에 먼저 말할 판정 상태. "탐지된 급증 없음"과 "평가하지 못함"을 섞지 않고, API가 주지 않는
       "판정 완료"·"모든 계정 정상"은 말하지 않는다. 대상 범위는 전역 capabilities가 아니라 현재 필터의
       summary.accounts(같은 CSP·계정 조건)다. 보류 개수는 계정 id로 중복 제거해 계정 수로 센다. */
+  // held[].days[].reason — 서버가 주는 사유를 그대로 가른다. "수집이 안 됐다"와 "금액은 왔는데 도착
+  // 범위 근거가 없다"는 사용자가 할 일이 다르다(전자는 재수집, 후자는 기다리거나 CSP 설정).
+  var HELD_REASON_LABEL = {
+    day_not_collected: "기준선 미수집", baseline_incomplete: "기준선 미수집",
+    coverage_unverified: "수집 범위 근거 부족"
+  };
   function anomalyStatusHtml(d) {
-    var heldIds = {};
-    (d.held || []).forEach(function (h) { heldIds[h.cloud_account_id] = "기준선 미수집"; });
-    (d.insufficient_history || []).forEach(function (h) { heldIds[h.cloud_account_id] = "이력 부족"; });
-    (d.unsupported_currency || []).forEach(function (u) { heldIds[u.cloud_account_id] = "통화 정책 미정"; });
-    var heldCount = Object.keys(heldIds).length;
+    // 계정 → 사유 집합(한 계정에 여러 사유가 있으면 모두 보존한다)
+    var reasonsByAccount = {};
+    var addReason = function (id, label) {
+      var key = String(id);
+      (reasonsByAccount[key] = reasonsByAccount[key] || {})[label] = true;
+    };
+    (d.held || []).forEach(function (h) {
+      var days = h.days || [];
+      if (!days.length) addReason(h.cloud_account_id, "기준선 미수집");
+      days.forEach(function (x) { addReason(h.cloud_account_id, HELD_REASON_LABEL[x && x.reason] || "기준선 미수집"); });
+    });
+    (d.insufficient_history || []).forEach(function (h) { addReason(h.cloud_account_id, "이력 부족"); });
+    (d.unsupported_currency || []).forEach(function (u) { addReason(u.cloud_account_id, "통화 정책 미정"); });
+    // 계정 수는 사유가 몇 개든 **계정별로 한 번만** 센다.
+    var heldCount = Object.keys(reasonsByAccount).length;
     var reasonCounts = {};
-    Object.keys(heldIds).forEach(function (id) { reasonCounts[heldIds[id]] = (reasonCounts[heldIds[id]] || 0) + 1; });
+    Object.keys(reasonsByAccount).forEach(function (id) {
+      Object.keys(reasonsByAccount[id]).forEach(function (label) { reasonCounts[label] = (reasonCounts[label] || 0) + 1; });
+    });
     var reasonText = Object.keys(reasonCounts).map(function (k) { return k + " " + reasonCounts[k]; }).join(" · ");
     var scoped = (ctx.summary && ctx.summary.ok && ctx.summary.value.accounts) || [];
     var supported = scoped.filter(function (a) { return S.kind(a.status) !== "unsupported"; });
@@ -2041,7 +2117,16 @@ window.MCPCost = (function () {
     // 계정별 사유 — 위 배지가 "왜"를 요약했으니 여기는 어느 계정인지만
     var reasons = [];
     (d.insufficient_history || []).forEach(function (h) { reasons.push(esc(accountLabelOf(h.cloud_account_id)) + ": 이력 " + h.days_available + "/" + h.days_required + "일 — 판정 전"); });
-    (d.held || []).forEach(function (h) { reasons.push(esc(accountLabelOf(h.cloud_account_id)) + ": 기준선 " + d.rule.baseline_days + "일 중 미수집일이 있어 " + h.days.length + "일 보류"); });
+    // 배지와 같은 기준으로 사유를 가른다 — 여기서 뭉뚱그리면 "재수집하면 된다"고 잘못 읽힌다
+    // (금액은 다 왔는데 도착 범위 근거가 없는 경우는 재수집으로 풀리지 않는다).
+    (d.held || []).forEach(function (h) {
+      var byReason = {};
+      (h.days || []).forEach(function (x) { var k = (x && x.reason) || "day_not_collected"; byReason[k] = (byReason[k] || 0) + 1; });
+      var parts = Object.keys(byReason).map(function (k) {
+        return (k === "coverage_unverified" ? "도착 범위 근거가 없어 " : "기준선 " + d.rule.baseline_days + "일 중 미수집일이 있어 ") + byReason[k] + "일 보류";
+      });
+      reasons.push(esc(accountLabelOf(h.cloud_account_id)) + ": " + (parts.join(" · ") || "보류"));
+    });
     (d.unsupported_currency || []).forEach(function (u) { reasons.push(esc(accountLabelOf(u.cloud_account_id)) + ": " + esc(u.currency || "통화 미확인") + " 임계값 미정 — 보류"); });
     if (reasons.length) html += '<details class="note"><summary style="cursor:pointer">평가하지 못한 계정 사유 ' + reasons.length + "건</summary>" + reasons.join("<br>") + "</details>";
     html += '<p class="note">적용 조건: 상단 기간·CSP·계정 필터 · 팀 선택은 이 블록에 적용되지 않음 · 통화 ' + esc(d.rule.currency) + " 계정만 판정 · 검토 등록 항목은 ① 비용 개요 탭의 비용 검토 목록에서 상태를 바꿉니다</p>";
@@ -2514,7 +2599,12 @@ window.MCPCost = (function () {
     var how = filters.accountIds.length ? "선택한 계정" : (filters.providers.length ? filters.providers.join("/").toUpperCase() + " 계정" : "실측 지원 계정 전체");
     return how + " " + targets.length + "개: " + targets.slice(0, 3).map(function (c) { return c.account_label || c.external_account_id; }).join(", ") + (targets.length > 3 ? " 외" : "");
   }
-  var SKIP_REASON = { JOB_ALREADY_RUNNING: "이미 수집 진행 중", RATE_LIMITED: "1시간 제한", UNSUPPORTED: "미지원 CSP" };
+  // 서버가 모르는 코드를 보내도 원문을 그대로 보여준다(아래 SKIP_REASON[...] || code) — 새 사유가
+  // 생겨도 화면이 깨지지 않는다. "미지원"(구현 없음)과 "수집 꺼짐"(구현은 있고 설정으로 꺼둠)은 다른 말이다.
+  var SKIP_REASON = {
+    JOB_ALREADY_RUNNING: "이미 수집 진행 중", RATE_LIMITED: "1시간 제한", UNSUPPORTED: "미지원 CSP",
+    INGEST_DISABLED: "이 CSP는 수집이 꺼져 있음(설정)", ACCOUNT_NOT_ENABLED: "이 계정은 수집 허용 목록에 없음(설정)"
+  };
 
   /** CSP에 실제 수집을 요청한다(과금 가능). 화면 데이터 재조회(load)와는 다른 일이다.
       accountIds: 내부 계정 id 목록(필수, 빈 배열이면 요청하지 않음). label: 토스트에 붙일 대상 설명. */
@@ -2719,8 +2809,8 @@ window.MCPCost = (function () {
             metaItem("날짜 경계", "날짜는 CSP 청구 기준(UTC)으로 집계됩니다. 화면의 시각 표시는 브라우저 시간대로 바꿔 보여줄 뿐 집계를 바꾸지 않습니다.") + "</dl>");
           break;
         case "open-forecast-dialog":
-          openDialog("예측 방법", '<p>방법: 이번 달 1일부터 어제(UTC)까지 실제로 수집된 날짜의 실측 비용 합계 ÷ 오늘까지의 경과일(달력 기준) × 이달 총일수(<code>mtd_prorated</code>).</p>' +
-            '<p class="note">수집되지 않은 날은 0원으로 채우지 않고 합계에서 그냥 뺍니다. 대상 계정 중 일부가 이달 수집을 빠짐없이 마치지 못했어도 계산 자체는 막지 않으며, 그 경우 어느 계정에서 며칠이 빠졌는지 안내가 함께 표시됩니다. 이번 달 1일부터 오늘까지를 조회할 때만 제공하며, 저장하지 않는 값입니다.</p>');
+          openDialog("예측 방법", '<p>방법: 이번 달 1일부터 어제(UTC)까지의 실측 비용 합계 ÷ 경과일(달력 기준) × 이달 총일수(<code>mtd_prorated</code>).</p>' +
+            '<p class="note">대상 계정 <strong>전부가 그 기간을 빠짐없이 수집 확인했을 때만</strong> 계산합니다. 하루라도 빠지면 그 날을 0원으로 평균 내지 않고 <strong>전망을 내지 않으며</strong>(낮게 나온 값이 "여유 있다"로 읽히기 때문), 어느 계정에서 며칠이 빠졌는지를 대신 표시합니다. 이번 달 1일부터 오늘까지를 조회할 때만 제공하며, 저장하지 않는 값입니다.</p>');
           break;
         case "open-setup-dialog": {
           var st = btn.getAttribute("data-status");

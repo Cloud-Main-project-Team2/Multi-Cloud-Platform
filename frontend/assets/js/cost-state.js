@@ -6,7 +6,9 @@ window.MCPCostState = (function () {
 
   var TEXT = {
     CONNECTED_OK:      function (b)    { return null; },
-    CONNECTED_EMPTY:   function (b)    { return "정상 조회된 비용은 0입니다. 리소스 수로 계산한 값이 아닙니다."; },
+    // 상태는 "마지막 수집이 성공했고 저장할 행이 0건"이라는 뜻이다 — 조회 기간이 0원이라는 뜻이 아니다.
+    // 기간의 0원 여부는 coverage(basis·결측)를 함께 봐야 알 수 있어, 그 판단은 화면(cost.js)이 한다.
+    CONNECTED_EMPTY:   function (b)    { return "마지막 수집은 정상이고 저장된 행이 0건입니다. 조회 기간의 0원 여부는 수집 확인 범위에 따라 다릅니다."; },
     // 부분 응답은 저장 전에 버려진다(08 §4-4) — "부분 합계"가 아니라 "이번 수집은 없던 일"이다.
     // 화면 금액은 이전 수집분이므로 그 사실을 말한다(2026-09-23).
     CONNECTED_PARTIAL: function (b)    { return "이번 수집은 저장되지 않았습니다. 표시 금액은 이전 수집분입니다. 다시 수집해 주세요."; },
@@ -84,7 +86,13 @@ window.MCPCostState = (function () {
     not_current_month: "이번 달 1일부터 오늘까지를 조회할 때만 전망을 냅니다.",
     first_day: "1일에는 아직 근거가 될 실측이 없어 전망을 내지 않습니다.",
     no_accounts: "조회 조건에 전망 대상 계정(실측 지원 계정)이 없습니다.",
-    currency_unknown: "이번 달 수집은 확인됐지만(0원) 통화를 알 수 없어 전망을 내지 않습니다."
+    currency_unknown: "이번 달 수집은 확인됐지만(0원) 통화를 알 수 없어 전망을 내지 않습니다.",
+    // 빠진 날을 0원으로 평균 내면 전망이 실제보다 낮게 나온다 — 낮은 값은 "여유 있다"로 읽히므로
+    // 값을 내지 않고 사유만 말한다(2026-09-23 복구). 누가 며칠 빠졌는지는 CF-003이 덧붙인다.
+    insufficient_coverage: "이번 달 수집이 빠진 계정이 있어 전망을 내지 않습니다(빠진 날을 0원으로 평균 내지 않습니다).",
+    // 결측은 없지만 그 CSP가 "어디까지 왔는지"를 알려 주지 않는 경우 — 받은 금액은 그대로 보여 주되
+    // 기간 판정만 보류한다. 수집 실패가 아니다(A-2).
+    coverage_unverified: "받은 금액은 표시하지만, 이 CSP는 어느 범위까지 도착했는지 알려 주지 않아 전망을 내지 않습니다."
   };
   function forecastText(state) {
     if (state === "computed") return null;
@@ -93,6 +101,7 @@ window.MCPCostState = (function () {
 
   /* changes.comparability.reasons — 비교하지 않은 이유. 여러 개면 REASON_ORDER 앞의 것을 먼저 말한다. */
   var COMPARE_REASON = {
+    COVERAGE_UNVERIFIED: "받은 금액은 있지만 도착 범위를 확인할 수 없어 비교하지 않습니다",
     LENGTH_MISMATCH: "두 기간의 일수가 달라 같은 길이로 비교할 수 없습니다",
     NO_ACCOUNTS: "비교 대상 계정(실측 지원 계정)이 없습니다",
     NO_CURRENCY: "두 기간 모두 실측이 없어 비교할 통화가 없습니다",

@@ -1,0 +1,11 @@
+{
+  "name": "mcp-cost-dom-tests",
+  "private": true,
+  "type": "commonjs",
+  "scripts": {
+    "test": "node coverage_basis.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

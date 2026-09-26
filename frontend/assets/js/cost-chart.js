@@ -160,7 +160,7 @@ window.MCPCostChart = (function () {
   var REASON_TEXT = {
     UNSUPPORTED: "미지원", NOT_CONNECTED: "미연결", PENDING: "수집 대기",
     SETUP_REQUIRED: "설정 필요", PERMISSION_DENIED: "권한 부족", COLLECT_FAILED: "조회 실패",
-    CONNECTED_EMPTY: "0원", CONNECTED_PARTIAL: "부분", CONNECTED_OK: ""
+    CONNECTED_EMPTY: "수집 0건", CONNECTED_PARTIAL: "부분", CONNECTED_OK: ""   // "0원"이라 단정하지 않는다(A-2)
   };
   function reasonText(code) { return REASON_TEXT[code] || code; }
 
