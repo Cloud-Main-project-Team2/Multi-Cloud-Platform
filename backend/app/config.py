@@ -76,6 +76,29 @@ class Settings(BaseSettings):
     # 비용 자동 수집이 매일 도는 시각(UTC, 0-23). PR 4의 스케줄러가 읽는다.
     cost_ingest_hour_utc: int = Field(default=6, alias="COST_INGEST_HOUR_UTC")
 
+    # app/cost/gating.py — "어댑터가 있다"와 "이 CSP를 실제로 수집한다"를 분리한다. 어댑터 등록
+    # (app/cost/__init__.py의 COST_ADAPTERS)은 **구현 지원** 표시일 뿐이고, 실제 CSP 호출 여부는
+    # 아래 두 값이 정한다. 새 CSP를 추가해도 이 값을 바꾸지 않으면 호출이 0건이다.
+    #   COST_INGEST_PROVIDERS       수동 수집(POST /cost-ingestion-runs)을 허용할 provider 목록
+    #   COST_AUTO_INGEST_PROVIDERS  자동 수집(하루 1회 스케줄러)을 허용할 provider 목록
+    # 둘은 독립이다 — 테스트 계정 하나를 수동으로 허용해도 자동 수집은 켜지지 않는다.
+    cost_ingest_providers: str = Field(default="aws", alias="COST_INGEST_PROVIDERS")
+    cost_auto_ingest_providers: str = Field(default="aws", alias="COST_AUTO_INGEST_PROVIDERS")
+    # 계정 단위 허용 목록 — `provider:cloud_account_id` 쌍을 쉼표로 나열한다(예: "azure:42,gcp:7").
+    # gating.ACCOUNT_SCOPED_PROVIDERS에 든 provider는 **여기에 적힌 계정만** 수집한다(비어 있으면
+    # 그 provider는 한 계정도 수집하지 않는다 — 빈 목록을 "전체 허용"으로 읽지 않는다).
+    cost_ingest_account_ids: str = Field(default="", alias="COST_INGEST_ACCOUNT_IDS")
+
+    # app/cost/azure_cost.py — 실수집 상한. 승인된 범위를 코드로 강제하기 위한 값이며, 초과가
+    # 예상되면 **성공으로 끝내지 않는다**(부분 데이터도 저장하지 않는다).
+    #   COST_AZURE_MAX_PAGES     따라갈 nextLink 페이지 수 상한
+    #   COST_AZURE_MAX_REQUESTS  비용 조회 HTTP 요청 총량(첫 페이지 + 다음 페이지 + 429 재시도)
+    # 제한 실수집 때는 예: COST_AZURE_MAX_PAGES=2, COST_AZURE_MAX_REQUESTS=3.
+    cost_azure_max_pages: int = Field(default=50, alias="COST_AZURE_MAX_PAGES")
+    cost_azure_max_requests: int = Field(default=60, alias="COST_AZURE_MAX_REQUESTS")
+    # 429에서 서버가 요구한 대기시간이 이 값을 넘으면 기다리지 않고 종료한다(초).
+    cost_azure_max_retry_wait_seconds: int = Field(default=30, alias="COST_AZURE_MAX_RETRY_WAIT_SECONDS")
+
     # app/report_scheduler.py — 보고서 정기 메일 발송 체크가 매일 도는 시각(UTC, 0-23).
     # "일간" 주기까지만 지원하므로 하루 1회 체크로 충분하다(cost 스케줄러와 동일 패턴).
     report_send_hour_utc: int = Field(default=7, alias="REPORT_SEND_HOUR_UTC")

@@ -354,8 +354,9 @@ def test_status_no_accounts_and_unsupported(client, make_user, auth_header, db_s
     t = _team(client, h)
     assert _budget(client, h, t["id"]).status_code == 201
     assert _status(client, h, t["id"])["reason_code"] == "NO_ACCOUNTS"
-    azure = _account(db_session, user, provider="azure", ext="sub-1")
-    _assign(client, h, t["id"], [azure.id])
+    # 2026-09-23: Azure 수집기가 생겨 "미지원" 예시를 아직 수집기가 없는 GCP로 바꿨다.
+    gcp = _account(db_session, user, provider="gcp", ext="proj-1")
+    _assign(client, h, t["id"], [gcp.id])
     s = _status(client, h, t["id"])
     assert s["computable"] is False and s["reason_code"] == "UNSUPPORTED"
 

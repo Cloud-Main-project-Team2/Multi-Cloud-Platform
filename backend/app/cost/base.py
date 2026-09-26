@@ -32,6 +32,10 @@ class CostFetchResult:
     api_calls: int  # 과금 추적용 — 반드시 센다(Cost Explorer는 요청당 $0.01)
     partial: bool = False
     error_code: str | None = None
+    # 이 결과가 저장될 구간을 무엇을 근거로 "확인"이라 부를 수 있는가(app/cost/coverage.py).
+    # 기본은 보수적인 observed_only — 새 어댑터가 아무 말도 하지 않으면 판정에 쓰지 않는다.
+    # "요청 범위 전체를 확인으로 인정"(complete_range)은 어댑터가 명시적으로 선언해야 한다.
+    coverage_basis: str = "observed_only"
 
 
 class CostProvider(Protocol):

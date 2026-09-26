@@ -152,7 +152,11 @@ class AwsCostProvider:
             if not next_token:
                 break
 
+        # Cost Explorer는 요청 기간의 일자 버킷(ResultsByTime)을 빠짐없이 돌려주고 금액이 0인 날은
+        # 그룹이 비어 있을 뿐이다 — 그래서 요청 범위를 확인 근거로 인정한다(기존 정책 유지).
+        # ⚠️ 최종 청구 확정을 뜻하지 않는다(정정은 여전히 온다). 빈 ResultsByTime 자체와 정상 버킷의
+        # 빈 Groups를 구분하는 문제는 별도 과제로 남아 있다.
         return CostFetchResult(
             rows=rows, currency=currency, covered_through=period_end - dt.timedelta(days=1),
-            api_calls=api_calls, partial=False,
+            api_calls=api_calls, partial=False, coverage_basis="complete_range",
         )

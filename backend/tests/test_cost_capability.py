@@ -51,9 +51,12 @@ def _make_run(db_session, account, *, status, error_code=None, records_replaced=
 # --- provider 미구현 -----------------------------------------------------------------------
 
 
-def test_azure_is_unsupported_not_permission_denied(db_session, make_user):
+def test_provider_without_adapter_is_unsupported_not_permission_denied(db_session, make_user):
+    """2026-09-23: Azure 수집기가 생겨서 "어댑터 없음" 예시를 GCP로 바꿨다. 지키는 성질은 그대로 —
+    수집기가 없는 provider는 UNSUPPORTED이지 PERMISSION_DENIED가 아니다(하드코딩된 cost_read=false를
+    권한 거절로 읽으면 사용자에게 없는 죄를 씌운다)."""
     user = make_user()
-    account = _make_account(db_session, user, provider="azure", external_account_id="sub-1")
+    account = _make_account(db_session, user, provider="gcp", external_account_id="proj-1")
     _make_credential(db_session, account)  # 검증된 credential이 있어도 UNSUPPORTED가 우선이다
 
     cap = account_capability(db_session, account)
