@@ -582,3 +582,64 @@ def test_crashed_run_is_finalized_so_the_account_is_not_locked_forever(
     run = db_session.get(CostIngestionRun, run_id)
     assert run.status == "failed" and run.error_code == "INTERNAL_ERROR"
     assert run.finished_at is not None                           # 종결됐으므로 다음 수집이 막히지 않는다
+
+
+# --- "시작도 못 한 실패"와 "부분 수신"을 가른다 --------------------------------------------------
+
+
+def _run_once_with_result(client, make_user, auth_header, db_session, monkeypatch, *, provider, result):
+    user = make_user()
+    acct = _account(db_session, user, provider=provider, ext=f"{provider}-classify")
+    db_session.commit()
+    _set_gating(monkeypatch, manual=provider, account_ids=f"{provider}:{acct.id}")
+    monkeypatch.setattr(costs_router.COST_ADAPTERS[provider], "fetch", lambda self, *a, **k: result)
+    resp = _post(client, user, auth_header, cloud_account_ids=[str(acct.id)])
+    run_id = int(resp.json()["data"]["items"][0]["id"])
+    monkeypatch.setattr(costs_router, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+    costs_router._run_cost_ingestion_run_inner(run_id)
+    return acct, db_session.get(CostIngestionRun, run_id)
+
+
+def _partial(error_code):
+    from app.cost.base import CostFetchResult
+
+    return CostFetchResult(rows=[], currency=None, covered_through=None, api_calls=1,
+                           partial=True, error_code=error_code)
+
+
+@pytest.mark.parametrize("error_code,expected_status,expected_capability", [
+    # 시작도 못 했다 = 받은 게 0건 → 실패로 종결하고 화면이 할 일을 알려 준다
+    ("COST_SETUP_REQUIRED", "failed", "SETUP_REQUIRED"),
+    ("CLOUD_PERMISSION_DENIED", "failed", "PERMISSION_DENIED"),
+    ("PROVIDER_AUTHENTICATION_FAILED", "failed", "COLLECT_FAILED"),
+    # 받다가 끊긴 진짜 부분 수신은 그대로 partial_success
+    ("PROVIDER_API_ERROR", "partial_success", "CONNECTED_PARTIAL"),
+    ("PROVIDER_RATE_LIMITED", "partial_success", "CONNECTED_PARTIAL"),
+])
+def test_not_started_failures_are_not_called_partial(
+    client, make_user, auth_header, db_session, monkeypatch, error_code, expected_status, expected_capability
+):
+    from app.cost.capability import account_capability
+    from app.models import CloudAccount
+
+    monkeypatch.setenv("COST_GCP_EXPORT_TABLES", "")
+    acct, run = _run_once_with_result(
+        client, make_user, auth_header, db_session, monkeypatch,
+        provider="azure", result=_partial(error_code),
+    )
+
+    assert run.status == expected_status and run.error_code == error_code
+    assert run.records_replaced == 0                      # 어느 쪽이든 저장은 하지 않는다
+    cap = account_capability(db_session, db_session.get(CloudAccount, acct.id))
+    assert cap["status"] == expected_capability
+
+
+def test_scheduler_uses_the_same_classification():
+    """자동 수집도 같은 규칙을 쓴다 — 두 경로가 갈리면 화면이 실행 방법에 따라 달라진다."""
+    import inspect
+
+    from app.cost import scheduler
+
+    source = inspect.getsource(scheduler._run_single_account)
+    assert "NOT_STARTED_ERROR_CODES" in source

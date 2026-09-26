@@ -1109,7 +1109,7 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
 |---|---|---|
 | (행 없음) | — | `PENDING`. 단 **GCP에서 Export 테이블이 등록되지 않았으면 `SETUP_REQUIRED`**다(2026-09-26) — 설정만 보고 판단하며 CSP를 호출하지 않는다 |
 | `success` | — | 행 있으면 `CONNECTED_OK`, 0건이면 `CONNECTED_EMPTY` |
-| `partial_success` | — | `CONNECTED_PARTIAL` |
+| `partial_success` | — | `CONNECTED_PARTIAL`. **받다가 끊긴 경우만** 여기 온다 — 설정 없음·권한 거절·인증 실패처럼 시작도 못 한 실패는 `failed`로 종결한다(2026-09-26) |
 | `failed` | `CLOUD_PERMISSION_DENIED` | `PERMISSION_DENIED` |
 | `failed` | `COST_SETUP_REQUIRED` | `SETUP_REQUIRED` |
 | `failed` | `PROVIDER_RATE_LIMITED` | `COLLECT_FAILED`(`PERMISSION_DENIED`로 분류하지 않는다) |

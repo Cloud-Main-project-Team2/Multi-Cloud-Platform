@@ -121,3 +121,18 @@ COST_GCP_EXPORT_TABLES=<project_id>:<프로젝트.데이터셋.테이블>[,...]
   적었다. §19의 "GCP 수집 방식" 행은 **해소·구현됨**으로 갱신.
 - 상태 어휘는 늘리지 않았다 — `SETUP_REQUIRED`는 팀 확정 5종에 이미 있고 프론트도 문구를 갖고 있다
   (`cost-state.js`: "설정 필요").
+
+## 검증 중 함께 고친 것 (2026-09-26)
+
+- **"시작도 못 한 실패"를 `partial_success`라 부르지 않는다.** 어댑터가 `partial=True`로 돌려주는
+  경우에는 두 가지가 섞여 있다 — *받다가 끊긴* 진짜 부분 수신과, *설정 없음·권한 거절·인증 실패*처럼
+  **받은 게 0건**인 경우다. 후자(`app/cost/base.py::NOT_STARTED_ERROR_CODES`)는 run을 `failed`로
+  종결한다. 그래야 `capability`의 매핑표(`COST_SETUP_REQUIRED→SETUP_REQUIRED`,
+  `CLOUD_PERMISSION_DENIED→PERMISSION_DENIED`)가 실제로 동작한다 — 그 전에는 Export 테이블 이름이
+  틀려도 화면에 "부분 수신(저장 안 됨)"이 떴다. 저장 정책·상태 어휘·DB는 그대로다(수동·자동 두 경로
+  모두 같은 규칙).
+- **중단된 run을 종결 상태로 남긴다.** 수집 중 예외가 나면 run이 `running`에 박혀 그 계정의 이후
+  수집이 영구히 `JOB_ALREADY_RUNNING`으로 막혔다. `finalize_interrupted_run()`으로 상태만
+  `failed`/`INTERNAL_ERROR`로 남기고 예외는 그대로 올린다.
+- GCP 어댑터의 **BigQuery 클라이언트 생성**을 try 안으로 넣었다(생성 실패가 어댑터 밖으로 나가면 위
+  상황을 만든다).

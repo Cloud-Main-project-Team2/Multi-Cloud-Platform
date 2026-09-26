@@ -13,6 +13,7 @@ import os
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
+from app.cost.base import NOT_STARTED_ERROR_CODES
 from app.cost.coverage import resolve_basis
 from app.cost.ingest import AccountLockedError, finalize_interrupted_run, replace_cost_rows
 from app.cost.notify import evaluate_for_account
@@ -99,7 +100,8 @@ def _run_single_account(db: Session, account: CloudAccount, period_start: dt.dat
     run.api_calls = result.api_calls
 
     if result.partial:
-        run.status = "partial_success"
+        # 수동 경로와 같은 규칙 — 시작도 못 한 실패는 "부분 수신"이 아니라 실패다(base.py 주석).
+        run.status = "failed" if result.error_code in NOT_STARTED_ERROR_CODES else "partial_success"
         run.error_code = result.error_code
         run.finished_at = dt.datetime.now(dt.timezone.utc)
         db.commit()
