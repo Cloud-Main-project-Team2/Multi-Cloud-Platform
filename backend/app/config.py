@@ -99,6 +99,16 @@ class Settings(BaseSettings):
     # 429에서 서버가 요구한 대기시간이 이 값을 넘으면 기다리지 않고 종료한다(초).
     cost_azure_max_retry_wait_seconds: int = Field(default=30, alias="COST_AZURE_MAX_RETRY_WAIT_SECONDS")
 
+    # app/cost/gcp_cost.py — GCP는 비용 "API"가 아니라 **BigQuery 청구 Export 테이블**을 읽는다.
+    # 그래서 위험이 요청 수가 아니라 **스캔한 바이트(=과금)**다. 실행 전 dry-run으로 스캔량을
+    # 먼저 재고, 상한을 넘으면 실제 쿼리를 보내지 않는다.
+    #   COST_GCP_EXPORT_TABLES  "<project_id>:<프로젝트.데이터셋.테이블>" 목록(쉼표 구분).
+    #                           비어 있으면 그 계정은 수집 대상이 아니다(임의 추측 금지).
+    #   COST_GCP_MAX_SCANNED_BYTES  dry-run 예상치·실제 쿼리 모두에 거는 상한(기본 2GiB)
+    cost_gcp_export_tables: str = Field(default="", alias="COST_GCP_EXPORT_TABLES")
+    cost_gcp_max_scanned_bytes: int = Field(default=2 * 1024 ** 3, alias="COST_GCP_MAX_SCANNED_BYTES")
+    cost_gcp_query_timeout_seconds: int = Field(default=120, alias="COST_GCP_QUERY_TIMEOUT_SECONDS")
+
     # app/report_scheduler.py — 보고서 정기 메일 발송 체크가 매일 도는 시각(UTC, 0-23).
     # "일간" 주기까지만 지원하므로 하루 1회 체크로 충분하다(cost 스케줄러와 동일 패턴).
     report_send_hour_utc: int = Field(default=7, alias="REPORT_SEND_HOUR_UTC")

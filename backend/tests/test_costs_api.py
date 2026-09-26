@@ -5,11 +5,24 @@
 
 from __future__ import annotations
 
+import pytest
+
 import datetime as dt
 from decimal import Decimal
 
 from app.models import CloudAccount, CloudAccountCost, Credential, ServiceCatalog
 from app.security.credential_crypto import encrypt_credential_json
+
+
+@pytest.fixture()
+def no_gcp_adapter(monkeypatch):
+    """3사 모두 수집기가 생긴 뒤에도 "수집기 없는 provider" 성질을 계속 검증하려고, 등록표에서
+    gcp만 잠시 뺀다(UNSUPPORTED이지 PERMISSION_DENIED가 아니다 — 하드코딩된 cost_read=false를
+    권한 거절로 읽으면 사용자에게 없는 죄를 씌운다)."""
+    import app.cost as cost_registry
+
+    monkeypatch.delitem(cost_registry.COST_ADAPTERS, "gcp", raising=False)
+    return None
 
 
 def _make_account(db_session, user, provider="aws", external_account_id="111122223333"):
@@ -46,7 +59,7 @@ def _add_cost_row(db_session, account, day, amount, currency="USD", service="Ama
 # --- capabilities ---------------------------------------------------------------------------
 
 
-def test_capabilities_has_required_three_fields_and_unsupported_for_provider_without_adapter(client, make_user, auth_header, db_session):
+def test_capabilities_has_required_three_fields_and_unsupported_for_provider_without_adapter(no_gcp_adapter, client, make_user, auth_header, db_session):
     user = make_user()
     aws = _make_account(db_session, user, provider="aws", external_account_id="111122223333")
     _make_credential(db_session, aws)

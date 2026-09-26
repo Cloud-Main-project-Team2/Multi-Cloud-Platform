@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.cost.aws_cost import AwsCostProvider
 from app.cost.azure_cost import AzureCostProvider
+from app.cost.gcp_cost import GcpCostProvider
 from app.cost.base import CostProvider
 
 COST_ADAPTERS: dict[str, type[CostProvider]] = {
@@ -15,6 +16,10 @@ COST_ADAPTERS: dict[str, type[CostProvider]] = {
     # ⚠️ 등록 = "수집기가 구현돼 있다"일 뿐이다. 실제 호출 여부는 app/cost/gating.py가 정하며
     # 기본값(COST_INGEST_PROVIDERS=aws)에서는 Azure 호출이 0건이다(A-3).
     "azure": AzureCostProvider,
+    # GCP는 "비용 API"가 아니라 BigQuery 청구 Export를 읽는다(app/cost/gcp_cost.py). 등록은
+    # 구현이 있다는 뜻일 뿐이고, 계정별 Export 테이블(COST_GCP_EXPORT_TABLES)이 없으면
+    # 그 계정은 COST_SETUP_REQUIRED로 끝난다.
+    "gcp": GcpCostProvider,
 }
 
 # 저장 출처(cloud_account_costs.source) — 수동·자동 경로가 **같은 값**을 써야 범위 교체가 서로를
@@ -23,7 +28,8 @@ COST_ADAPTERS: dict[str, type[CostProvider]] = {
 COST_SOURCES: dict[str, str] = {
     "aws": "aws_cost_explorer",
     "azure": "azure_cost_management",
-    "gcp": "gcp_bigquery_billing",      # GCP 수집기는 아직 없다 — 이름만 미리 고정한다
+    # docs/DB_ERD_v1.2.md가 적어 둔 이름과 맞춘다(행이 하나도 없을 때 맞추는 게 가장 싸다).
+    "gcp": "gcp_billing_export",
 }
 
 

@@ -23,6 +23,17 @@ TODAY = dt.date(2026, 9, 21)   # UTC "오늘" — 9월은 30일, 이달 1일~어
 NOW = dt.datetime(2026, 9, 21, 3, 0, tzinfo=dt.timezone.utc)
 
 
+@pytest.fixture()
+def no_gcp_adapter(monkeypatch):
+    """3사 모두 수집기가 생긴 뒤에도 "수집기 없는 provider" 성질을 계속 검증하려고, 등록표에서
+    gcp만 잠시 뺀다(UNSUPPORTED이지 PERMISSION_DENIED가 아니다 — 하드코딩된 cost_read=false를
+    권한 거절로 읽으면 사용자에게 없는 죄를 씌운다)."""
+    import app.cost as cost_registry
+
+    monkeypatch.delitem(cost_registry.COST_ADAPTERS, "gcp", raising=False)
+    return None
+
+
 @pytest.fixture(autouse=True)
 def _freeze_utc_today(monkeypatch):
     monkeypatch.setattr(q_mod, "utc_today", lambda: TODAY)
@@ -281,7 +292,7 @@ def test_missing_days_list_truncated_but_count_is_full(client, make_user, auth_h
 # --- 10·11: 통화 미확인 vs 통화 필터 제외 · 다통화 전망 -------------------------------------------
 
 
-def test_currency_filter_excludes_only_accounts_with_known_other_currency(client, make_user, auth_header, db_session):
+def test_currency_filter_excludes_only_accounts_with_known_other_currency(no_gcp_adapter, client, make_user, auth_header, db_session):
     """USD 필터: KRW 계정은 CURRENCY_FILTERED(상태는 그대로 CONNECTED_OK), 통화를 아직 모르는 계정은
     불일치로 단정하지 않는다(PENDING 그대로). 같은 계정이 두 사유로 세어지지 않는다."""
     user = make_user()
@@ -383,7 +394,7 @@ def test_no_rows_and_no_coverage_does_not_produce_zero_forecast(client, make_use
     assert d["kpis"]["forecast_status"]["state"] == "insufficient_coverage"
 
 
-def test_excluded_accounts_do_not_block_forecast_of_selected_targets(client, make_user, auth_header, db_session):
+def test_excluded_accounts_do_not_block_forecast_of_selected_targets(no_gcp_adapter, client, make_user, auth_header, db_session):
     """⑤ 통화 필터로 빠진 계정·미지원 계정의 결측은 선택된 대상의 전망을 막지 않는다.
     판정 대상은 evaluable_accounts()가 고른 계정뿐이다."""
     user = make_user()

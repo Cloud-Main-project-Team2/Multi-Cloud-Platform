@@ -55,6 +55,16 @@ def _set_gating(monkeypatch, *, manual="aws", auto="aws", account_ids=""):
     get_settings.cache_clear()
 
 
+
+@pytest.fixture()
+def no_gcp_adapter(monkeypatch):
+    """3사 모두 수집기가 생긴 뒤에도 "수집기 없는 provider" 성질을 검증하려고 등록표에서 gcp만 뺀다."""
+    import app.cost as cost_registry
+
+    monkeypatch.delitem(cost_registry.COST_ADAPTERS, "gcp", raising=False)
+    return None
+
+
 def _account(db, user, provider="aws", ext="111122223333"):
     a = CloudAccount(user_id=user.id, provider=provider, external_account_id=ext, account_label=f"{provider}-acct")
     db.add(a)
@@ -77,9 +87,9 @@ def _skipped(resp):
 # --- ① 구현 지원 vs ② 수동 허용은 다른 질문이다 ------------------------------------------------
 
 
-def test_unsupported_provider_is_not_disguised_as_disabled(client, make_user, auth_header, db_session, monkeypatch):
+def test_unsupported_provider_is_not_disguised_as_disabled(no_gcp_adapter, client, make_user, auth_header, db_session, monkeypatch):
     """어댑터 자체가 없으면 UNSUPPORTED다 — 활성화 설정과 무관하다.
-    (2026-09-23: Azure 어댑터가 생겨서 "구현 없음" 예시를 아직 수집기가 없는 GCP로 바꿨다.)"""
+    (2026-09-26: 3사 모두 어댑터가 생겨, 등록표에서 gcp를 잠시 빼고 본다.)"""
     _set_gating(monkeypatch, manual="aws,gcp", account_ids="gcp:999999")
     user = make_user()
     acct = _account(db_session, user, provider="gcp", ext="proj-1")
@@ -420,7 +430,7 @@ def test_manual_and_auto_paths_use_the_same_source(monkeypatch):
 
     assert cost_source_for("aws") == "aws_cost_explorer"        # 기존 값 유지(AWS 회귀)
     assert cost_source_for("azure") == "azure_cost_management"
-    assert cost_source_for("gcp") == "gcp_bigquery_billing"
+    assert cost_source_for("gcp") == "gcp_billing_export"      # DB_ERD_v1.2.md와 같은 이름
 
     import inspect
     import app.cost.scheduler as sched

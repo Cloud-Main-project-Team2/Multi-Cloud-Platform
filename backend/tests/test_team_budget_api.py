@@ -6,6 +6,8 @@
 
 from __future__ import annotations
 
+import pytest
+
 import datetime as dt
 from decimal import Decimal
 
@@ -18,6 +20,17 @@ from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Team, T
 TODAY = dt.datetime.now(dt.timezone.utc).date()
 MONTH_START = TODAY.replace(day=1)
 CONFIRM = {"X-Action-Confirmed": "true"}
+
+
+@pytest.fixture()
+def no_gcp_adapter(monkeypatch):
+    """3사 모두 수집기가 생긴 뒤에도 "수집기 없는 provider" 성질을 계속 검증하려고, 등록표에서
+    gcp만 잠시 뺀다(UNSUPPORTED이지 PERMISSION_DENIED가 아니다 — 하드코딩된 cost_read=false를
+    권한 거절로 읽으면 사용자에게 없는 죄를 씌운다)."""
+    import app.cost as cost_registry
+
+    monkeypatch.delitem(cost_registry.COST_ADAPTERS, "gcp", raising=False)
+    return None
 
 
 def _account(db, user, provider="aws", ext="111122223333", label=None):
@@ -348,7 +361,7 @@ def test_status_currency_mismatch_lists_excluded_accounts(client, make_user, aut
     assert team["account_count"] == 2
 
 
-def test_status_no_accounts_and_unsupported(client, make_user, auth_header, db_session):
+def test_status_no_accounts_and_unsupported(no_gcp_adapter, client, make_user, auth_header, db_session):
     user = make_user()
     h = auth_header(user)
     t = _team(client, h)
