@@ -116,7 +116,12 @@ DELEGATION_TROUBLESHOOTING = [
     "신뢰 정책의 ExternalId가 등록한 값과 같은지 확인하세요.",
 ]
 
-_VERIFICATION_MESSAGES = {
+# 검증 실패 안내는 **CSP마다 다르다**. 예전에는 표가 하나뿐이라 Azure·GCP 자격증명이 실패해도
+# "AWS 인증에 실패했습니다"가 떴다(2026-09-25 Azure 등록, GCP에서도 같은 문구 확인). 역할 위임은
+# AWS에만 있는 개념이라 그 안내를 다른 CSP에 그대로 쓸 수도 없다.
+# 안내는 "무엇을 확인하면 되는지"까지만 적는다 — 어느 단계에서 실패했는지는 응답으로 구분되지
+# 않으므로(전부 PROVIDER_AUTHENTICATION_FAILED) 단정하지 않는다.
+_AWS_VERIFICATION_MESSAGES = {
     "CLOUD_PERMISSION_DENIED": "역할을 빌릴 수 없습니다. " + " ".join(DELEGATION_TROUBLESHOOTING),
     "CREDENTIAL_ACCOUNT_MISMATCH": (
         "역할이 속한 AWS 계정이 등록한 계정 ID와 다릅니다. 다른 계정의 역할이라면 계정을 새로 "
@@ -126,14 +131,48 @@ _VERIFICATION_MESSAGES = {
     "PROVIDER_API_ERROR": "AWS 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.",
 }
 
+_AZURE_VERIFICATION_MESSAGES = {
+    "PROVIDER_AUTHENTICATION_FAILED": (
+        "Azure 자격 증명 검증에 실패했습니다. 테넌트 ID·클라이언트 ID·클라이언트 Secret이 같은 앱 "
+        "등록의 값인지(Secret은 ID가 아니라 값), 만료되지 않았는지, 그 앱이 이 구독을 볼 수 있는지 "
+        "확인해 주세요."
+    ),
+    "CLOUD_PERMISSION_DENIED": (
+        "Azure에서 권한이 거부되었습니다. 서비스 주체에 이 구독 범위의 역할이 할당돼 있는지 "
+        "확인해 주세요."
+    ),
+    "PROVIDER_API_ERROR": "Azure 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+}
 
-def _verification_message(error_code: str | None) -> str | None:
+_GCP_VERIFICATION_MESSAGES = {
+    "PROVIDER_AUTHENTICATION_FAILED": (
+        "GCP 자격 증명 검증에 실패했습니다. 서비스 계정 키(JSON)를 잘라내지 말고 그대로 붙여 넣었는지, "
+        "그 키가 이 프로젝트의 것이고 사용 중지되지 않았는지 확인해 주세요."
+    ),
+    "CLOUD_PERMISSION_DENIED": (
+        "GCP에서 권한이 거부되었습니다. 서비스 계정에 이 프로젝트 권한이 있는지 확인해 주세요."
+    ),
+    "PROVIDER_API_ERROR": "GCP 호출에 실패했습니다. 잠시 후 다시 시도해 주세요.",
+}
+
+_VERIFICATION_MESSAGES_BY_PROVIDER = {
+    "aws": _AWS_VERIFICATION_MESSAGES,
+    "azure": _AZURE_VERIFICATION_MESSAGES,
+    "gcp": _GCP_VERIFICATION_MESSAGES,
+}
+
+
+def _verification_message(error_code: str | None, provider: str | None = None) -> str | None:
+    """검증 실패 안내. provider를 모르면 CSP 이름을 넣지 않은 일반 문구로 답한다."""
     if not error_code:
         return None
-    return _VERIFICATION_MESSAGES.get(error_code, "자격 증명 검증에 실패했습니다.")
+    table = _VERIFICATION_MESSAGES_BY_PROVIDER.get(provider or "", {})
+    return table.get(error_code, "자격 증명 검증에 실패했습니다.")
 
 
-def _serialize_credential(credential: Credential, verification: VerificationResult | None = None) -> dict:
+def _serialize_credential(
+    credential: Credential, verification: VerificationResult | None = None, provider: str | None = None
+) -> dict:
     """`verification`은 방금 수행한 검증 결과다 — 실패 사유를 응답에만 실어 보내기 위한 것이고
     DB에 저장하지 않는다(목록 조회에서는 항상 None)."""
     return {
@@ -152,7 +191,9 @@ def _serialize_credential(credential: Credential, verification: VerificationResu
         # 목록 조회에서 payload를 복호화하지 않고도 "레거시 키" 배지를 띄울 수 있어야 한다.
         "auth_type": (credential.tags or {}).get("auth_type") or AUTH_TYPE_ACCESS_KEY,
         "verification_error_code": verification.error_code if verification else None,
-        "verification_error_message": _verification_message(verification.error_code) if verification else None,
+        "verification_error_message": (
+            _verification_message(verification.error_code, provider) if verification else None
+        ),
     }
 
 
@@ -591,7 +632,7 @@ def create_credential(
 
     db.commit()
     db.refresh(credential)
-    return CredentialResponse(data=_serialize_credential(credential, verification))
+    return CredentialResponse(data=_serialize_credential(credential, verification, provider))
 
 
 @router.patch("/credentials/{credential_id}", response_model=CredentialResponse)
@@ -661,7 +702,7 @@ def patch_credential(
 
     db.commit()
     db.refresh(credential)
-    return CredentialResponse(data=_serialize_credential(credential, verification))
+    return CredentialResponse(data=_serialize_credential(credential, verification, account.provider))
 
 
 @router.post("/credentials/{credential_id}/verify", response_model=VerifyResponse)
@@ -708,7 +749,7 @@ def verify_credential_endpoint(
             verified_at=iso_z(credential.verified_at),
             permission_scope=credential.permission_scope,
             verification_error_code=verification.error_code,
-            verification_error_message=_verification_message(verification.error_code),
+            verification_error_message=_verification_message(verification.error_code, account.provider),
         )
     )
 
