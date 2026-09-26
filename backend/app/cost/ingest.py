@@ -78,3 +78,24 @@ def replace_cost_rows(
         )
 
     return len(rows)
+
+
+def finalize_interrupted_run(db: Session, run_id: int) -> bool:
+    """예외로 중단된 run을 **종결 상태로 남긴다**.
+
+    이게 없으면 run이 `running`에 박혀, 그 계정은 이후 수집 요청이 영구히
+    `JOB_ALREADY_RUNNING`으로 막힌다(`routers/costs.py::_last_active_run`) — DB를 손으로
+    고치기 전에는 복구되지 않는다. 상태만 남기고 예외는 호출부가 그대로 올린다.
+    """
+    if not db.is_active:
+        db.rollback()          # DB 오류로 트랜잭션이 죽었으면 되돌려야 다시 쓸 수 있다
+    else:
+        db.expunge_all()       # 크래시 지점까지의 **미커밋 변경은 버린다** — 상태만 남긴다
+    run = db.get(CostIngestionRun, run_id)
+    if run is None or run.status not in ("pending", "running"):
+        return False
+    run.status = "failed"
+    run.error_code = "INTERNAL_ERROR"
+    run.finished_at = dt.datetime.now(dt.timezone.utc)
+    db.commit()
+    return True

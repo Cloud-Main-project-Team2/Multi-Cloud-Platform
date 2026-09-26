@@ -55,6 +55,16 @@ def _set_gating(monkeypatch, *, manual="aws", auto="aws", account_ids=""):
     get_settings.cache_clear()
 
 
+
+@pytest.fixture()
+def no_gcp_adapter(monkeypatch):
+    """3사 모두 수집기가 생긴 뒤에도 "수집기 없는 provider" 성질을 검증하려고 등록표에서 gcp만 뺀다."""
+    import app.cost as cost_registry
+
+    monkeypatch.delitem(cost_registry.COST_ADAPTERS, "gcp", raising=False)
+    return None
+
+
 def _account(db, user, provider="aws", ext="111122223333"):
     a = CloudAccount(user_id=user.id, provider=provider, external_account_id=ext, account_label=f"{provider}-acct")
     db.add(a)
@@ -77,9 +87,9 @@ def _skipped(resp):
 # --- ① 구현 지원 vs ② 수동 허용은 다른 질문이다 ------------------------------------------------
 
 
-def test_unsupported_provider_is_not_disguised_as_disabled(client, make_user, auth_header, db_session, monkeypatch):
+def test_unsupported_provider_is_not_disguised_as_disabled(no_gcp_adapter, client, make_user, auth_header, db_session, monkeypatch):
     """어댑터 자체가 없으면 UNSUPPORTED다 — 활성화 설정과 무관하다.
-    (2026-09-23: Azure 어댑터가 생겨서 "구현 없음" 예시를 아직 수집기가 없는 GCP로 바꿨다.)"""
+    (2026-09-26: 3사 모두 어댑터가 생겨, 등록표에서 gcp를 잠시 빼고 본다.)"""
     _set_gating(monkeypatch, manual="aws,gcp", account_ids="gcp:999999")
     user = make_user()
     acct = _account(db_session, user, provider="gcp", ext="proj-1")
@@ -420,7 +430,7 @@ def test_manual_and_auto_paths_use_the_same_source(monkeypatch):
 
     assert cost_source_for("aws") == "aws_cost_explorer"        # 기존 값 유지(AWS 회귀)
     assert cost_source_for("azure") == "azure_cost_management"
-    assert cost_source_for("gcp") == "gcp_bigquery_billing"
+    assert cost_source_for("gcp") == "gcp_billing_export"      # DB_ERD_v1.2.md와 같은 이름
 
     import inspect
     import app.cost.scheduler as sched
@@ -543,3 +553,93 @@ def test_bad_second_page_preserves_existing_rows_and_basis(client, make_user, au
     assert [str(r.amount) for r in rows] == ["777.000000"]   # 기존 금액 보존(부분 행 저장 안 함)
     db_session.refresh(good_run)
     assert good_run.coverage_basis == "observed_only" and good_run.status == "success"   # 근거 보존
+
+
+def test_crashed_run_is_finalized_so_the_account_is_not_locked_forever(
+    client, make_user, auth_header, db_session, monkeypatch
+):
+    """수집 도중 예외가 나도 run을 종결로 남긴다.
+
+    'running'에 박혀 있으면 `_last_active_run`이 그 계정의 이후 수집 요청을 **영구히**
+    `JOB_ALREADY_RUNNING`으로 막는다 — DB를 손으로 고치기 전에는 복구되지 않는다."""
+    user = make_user()
+    azure = _account(db_session, user, provider="azure", ext="sub-crash")
+    db_session.commit()
+    _set_gating(monkeypatch, manual="azure", account_ids=f"azure:{azure.id}")
+
+    def _boom(self, *a, **k):
+        raise RuntimeError("adapter blew up")
+
+    monkeypatch.setattr(costs_router.COST_ADAPTERS["azure"], "fetch", _boom)
+    resp = _post(client, user, auth_header, cloud_account_ids=[str(azure.id)])
+    run_id = int(resp.json()["data"]["items"][0]["id"])
+    monkeypatch.setattr(costs_router, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+
+    with pytest.raises(RuntimeError):
+        costs_router._run_cost_ingestion_run_inner(run_id)      # 예외는 그대로 올라간다(로그용)
+
+    run = db_session.get(CostIngestionRun, run_id)
+    assert run.status == "failed" and run.error_code == "INTERNAL_ERROR"
+    assert run.finished_at is not None                           # 종결됐으므로 다음 수집이 막히지 않는다
+
+
+# --- "시작도 못 한 실패"와 "부분 수신"을 가른다 --------------------------------------------------
+
+
+def _run_once_with_result(client, make_user, auth_header, db_session, monkeypatch, *, provider, result):
+    user = make_user()
+    acct = _account(db_session, user, provider=provider, ext=f"{provider}-classify")
+    db_session.commit()
+    _set_gating(monkeypatch, manual=provider, account_ids=f"{provider}:{acct.id}")
+    monkeypatch.setattr(costs_router.COST_ADAPTERS[provider], "fetch", lambda self, *a, **k: result)
+    resp = _post(client, user, auth_header, cloud_account_ids=[str(acct.id)])
+    run_id = int(resp.json()["data"]["items"][0]["id"])
+    monkeypatch.setattr(costs_router, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+    costs_router._run_cost_ingestion_run_inner(run_id)
+    return acct, db_session.get(CostIngestionRun, run_id)
+
+
+def _partial(error_code):
+    from app.cost.base import CostFetchResult
+
+    return CostFetchResult(rows=[], currency=None, covered_through=None, api_calls=1,
+                           partial=True, error_code=error_code)
+
+
+@pytest.mark.parametrize("error_code,expected_status,expected_capability", [
+    # 시작도 못 했다 = 받은 게 0건 → 실패로 종결하고 화면이 할 일을 알려 준다
+    ("COST_SETUP_REQUIRED", "failed", "SETUP_REQUIRED"),
+    ("CLOUD_PERMISSION_DENIED", "failed", "PERMISSION_DENIED"),
+    ("PROVIDER_AUTHENTICATION_FAILED", "failed", "COLLECT_FAILED"),
+    # 받다가 끊긴 진짜 부분 수신은 그대로 partial_success
+    ("PROVIDER_API_ERROR", "partial_success", "CONNECTED_PARTIAL"),
+    ("PROVIDER_RATE_LIMITED", "partial_success", "CONNECTED_PARTIAL"),
+])
+def test_not_started_failures_are_not_called_partial(
+    client, make_user, auth_header, db_session, monkeypatch, error_code, expected_status, expected_capability
+):
+    from app.cost.capability import account_capability
+    from app.models import CloudAccount
+
+    monkeypatch.setenv("COST_GCP_EXPORT_TABLES", "")
+    acct, run = _run_once_with_result(
+        client, make_user, auth_header, db_session, monkeypatch,
+        provider="azure", result=_partial(error_code),
+    )
+
+    assert run.status == expected_status and run.error_code == error_code
+    assert run.records_replaced == 0                      # 어느 쪽이든 저장은 하지 않는다
+    cap = account_capability(db_session, db_session.get(CloudAccount, acct.id))
+    assert cap["status"] == expected_capability
+
+
+def test_scheduler_uses_the_same_classification():
+    """자동 수집도 같은 규칙을 쓴다 — 두 경로가 갈리면 화면이 실행 방법에 따라 달라진다."""
+    import inspect
+
+    from app.cost import scheduler
+
+    source = inspect.getsource(scheduler._run_single_account)
+    assert "NOT_STARTED_ERROR_CODES" in source

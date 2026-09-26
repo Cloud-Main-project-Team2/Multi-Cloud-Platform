@@ -196,6 +196,14 @@ _CATALOG: dict[str, ErrorExplanation] = {
         ),
         # ---- 공통(cross-cutting) ----
         _e(
+            "COST_SETUP_REQUIRED", "cost",
+            "비용을 읽기 전에 클라우드 쪽 설정이 더 필요합니다.",
+            "GCP는 비용 API가 아니라 BigQuery 청구 Export를 읽습니다 — Export가 켜져 있지 않거나, "
+            "내보낸 테이블이 등록되지 않았거나, 서비스 계정에 그 테이블 조회 권한이 없습니다.",
+            "결제 계정에서 비용 내보내기(표준 사용량)를 켜고, 서비스 계정에 BigQuery 조회 권한을 "
+            "준 뒤, 내보낸 테이블을 등록하세요. 켠 시점 이후 데이터부터 쌓입니다.",
+        ),
+        _e(
             "CLOUD_PERMISSION_DENIED", "common",
             "권한 부족으로 작업이 거부되었습니다.",
             "자격 증명에 이 작업을 수행할 권한이 없거나, 검증된 자격 증명이 없습니다.",

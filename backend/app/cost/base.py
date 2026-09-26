@@ -38,6 +38,19 @@ class CostFetchResult:
     coverage_basis: str = "observed_only"
 
 
+# `partial=True`에는 성격이 다른 둘이 섞여 있다.
+#   - 받다가 끊겼다(예: 2페이지째 실패) → 진짜 "부분 수신". 저장은 안 하지만 데이터는 있었다.
+#   - **시작도 못 했다**(설정 없음·권한 거절·인증 실패) → 받은 게 0건이다.
+# 아래 코드는 후자다. 호출부(routers/costs.py·cost/scheduler.py)가 run 상태를 `failed`로 종결해,
+# 화면이 "부분 수신(저장 안 됨)" 대신 **설정 필요·권한 없음**을 보여 주게 한다(사용자가 할 일이 다르다).
+# 저장 정책은 그대로다 — 어느 쪽이든 행은 쓰지 않는다.
+NOT_STARTED_ERROR_CODES = frozenset({
+    "COST_SETUP_REQUIRED",
+    "CLOUD_PERMISSION_DENIED",
+    "PROVIDER_AUTHENTICATION_FAILED",
+})
+
+
 class CostProvider(Protocol):
     def fetch(
         self,
