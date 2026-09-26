@@ -88,8 +88,20 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 비용 화면 4단계 — ①② 역할·제목·배치 정리 + CF-022 다통화 수정 | `seunghyun/cost-layout` | 이승현 | merged (#129) |
 | 비용 5단계 — 카테고리 분류 정확성 + 검토 이력·가격 비교 진입점·조건 링크·보고서 연결 | `seunghyun/cost-extras` | 이승현 | merged (#130) |
 | 비용 6단계 — 계약 문서 반영 + 인수인계(`docs/Cost_Round_Handover_2026-09-23.md`) | `seunghyun/cost-docs` | 이승현 | in progress |
+| 비용 7단계 — Azure 실측 수집기(모의 검증) · 수집 근거(`coverage_basis`) · 수집 활성화 게이트 · 자격증명 검증 진단 | `seunghyun/cost-ingest-gating` | 이승현 | PR #136 (리뷰 대기) |
 
 > Keep this table updated as branches open, progress, and merge.
+
+> **PR #136 요약(2026-09-26)**: ① **수집 근거** — 수집 결과마다 `coverage_basis`
+> (`complete_range`|`observed_only`)를 남기고, 금액 표시는 "관측"으로, 전망·기간 비교·예산
+> 소진율·급증 판정은 "분석 가능"으로 **축을 나눈다**(Azure는 어디까지 도착했는지 알려 주지
+> 않으므로 AWS처럼 다루면 조용히 틀린 값이 나온다). 레거시 NULL은 **AWS만** complete_range로
+> 읽어 기존 동작을 유지한다. ② **수집 활성화 게이트**(`app/cost/gating.py`) — 어댑터 등록(구현
+> 지원)과 실제 호출 허용을 분리한다. 기본값에서 Azure 호출은 0건이고, 빈 목록은 "전체 허용"이
+> 아니라 "한 곳도 허용 안 함"이다. ③ 자격증명 검증 실패를 payload/token/subscription 단계로
+> 갈라 **로그만** 추가(반환 계약 불변) + CSP별 실패 문구 — 자격증명 담당 영역이라 확인 필요.
+> 상세는 `docs/Azure_Credential_Verify_Diagnostics_2026-09-26.md`,
+> `docs/Cost_Round_Handover_2026-09-23.md`, `docs/01_API_Specification_v1.2.md`.
 
 ## Key architectural decisions
 
