@@ -41,9 +41,13 @@ def account_capability(db: Session, account: CloudAccount) -> dict:
             "last_success_at": None,
         }
 
-    # app/providers/{azure,gcp}.py의 permission_scope.cost_read는 하드코딩 false다 — 여기까지
-    # 오지 않는다(위에서 UNSUPPORTED로 이미 끝났다). 그 값을 그대로 썼다면 Azure·GCP가
-    # PERMISSION_DENIED로 보였을 것이다.
+    # ⚠️ app/providers/{azure,gcp}.py의 permission_scope.cost_read는 **프로빙하지 않은 하드코딩
+    # false**다(credential 검증 담당 영역). 2026-09-23에 Azure 수집기가 생기면서 Azure는 더 이상
+    # UNSUPPORTED가 아니라 이 아래를 지나간다 — 그래도 **status는 이 값을 보지 않는다**. 상태는
+    # 오직 마지막 종결 run으로 정하므로, 수집 이력이 없으면 PENDING이고 권한 거절은 run이
+    # CLOUD_PERMISSION_DENIED로 실패했을 때만 PERMISSION_DENIED다. 즉 "미검사(false 하드코딩)"를
+    # "권한 거절"로 읽지 않는다. cost_read를 실제 프로빙으로 채우는 것은 credential 검증 쪽 변경이라
+    # 이번 범위 밖이다(조회 GET에서 CSP를 호출하지 않는다는 원칙도 그대로).
     credential = (
         db.query(Credential)
         .filter(Credential.cloud_account_id == account.id, Credential.verified.is_(True))

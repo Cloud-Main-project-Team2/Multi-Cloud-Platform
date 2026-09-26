@@ -44,17 +44,96 @@ _DELETE_ONLY_ARM_API_VERSIONS: dict[str, str] = {
 }
 
 
+# ── 자격증명 검증 진단(2026-09-26 추가) ──────────────────────────────────────────────
+# ⚠️ 이 파일은 **키 관리(자격증명) 담당 영역**이다. 이번 변경은 실패 원인을 *기록*만 갈라 놓는 것이고,
+# 반환 계약(`verified`·`permission_scope`·`error_code`)은 그대로 둔다 — 실패는 여전히 전부
+# `PROVIDER_AUTHENTICATION_FAILED`다. 오류 코드 분리는 별도 논의 대상이다(담당자 확인 필요).
+#
+# 왜 필요했나: 예전에는 자격증명 생성·토큰 획득·구독 조회가 **하나의 try**에 묶여 있어, 실패해도
+# "인증이 안 됐다"까지만 알 수 있었다(2026-09-25 실제 등록 실패에서 원인 구분 불가로 확인).
+# `ClientAuthenticationError`가 `HttpResponseError`의 하위 클래스라 **예외 타입으로는 단계를 가를 수
+# 없다** — 갈리는 것은 호출 지점이다.
+VERIFY_STAGE_PAYLOAD = "payload"           # 입력값으로 자격증명 객체를 만드는 단계
+VERIFY_STAGE_TOKEN = "token"               # AAD에서 토큰을 받는 단계
+VERIFY_STAGE_SUBSCRIPTION = "subscription"  # 그 토큰으로 구독을 조회하는 단계
+ARM_SCOPE = "https://management.azure.com/.default"
+
+# 기록을 허용하는 ARM 오류 식별자. 목록 밖 값은 원문을 남기지 않고 "other"로만 적는다.
+_ALLOWED_ARM_ERROR_CODES = frozenset({
+    "AuthorizationFailed", "SubscriptionNotFound", "InvalidSubscriptionId",
+    "InvalidAuthenticationToken", "InvalidAuthenticationTokenTenant", "ExpiredAuthenticationToken",
+})
+# AADSTS 코드는 **자릿수가 고정이 아니다** — 공식 표에 5·6·7자리가 모두 있다(AADSTS16000 …
+# AADSTS9002341, learn.microsoft.com/en-us/entra/identity-platform/reference-error-codes에서
+# 2026-09-26 확인). 그래서 자릿수를 단정하지 않되 형식과 길이는 제한한다.
+_AADSTS_RE = re.compile(r"AADSTS[0-9]{4,10}")
+_MAX_ERROR_IDENTIFIER_LEN = 20
+
+
+def _arm_error_code(exc: BaseException) -> str | None:
+    """ARM이 구조화해서 준 오류 코드. 허용 목록 밖이면 값을 남기지 않고 "other"로 적는다."""
+    code = getattr(getattr(exc, "error", None), "code", None)
+    if not isinstance(code, str) or not code.strip():
+        return None
+    code = code.strip()
+    return code if code in _ALLOWED_ARM_ERROR_CODES else "other"
+
+
+def _aadsts_code(exc: BaseException) -> str | None:
+    """예외 문자열에서 **정규식에 맞는 토막만** 떼어 온다. 원문 메시지는 쓰지도 남기지도 않는다."""
+    match = _AADSTS_RE.search(str(exc))
+    return match.group(0)[:_MAX_ERROR_IDENTIFIER_LEN] if match else None
+
+
+def _log_verify_failure(stage: str, exc: BaseException) -> None:
+    """단계·예외 클래스·HTTP 상태·제한된 오류 식별자만 남긴다.
+
+    원문 예외 메시지·응답 본문·헤더·요청 URL·시크릿·토큰은 **기록하지 않는다**. Azure SDK의
+    전역 디버그/HTTP 본문 로깅(`logging_enable`)도 켜지 않는다 — 그쪽은 본문을 통째로 찍는다.
+    여기 남는 것은 관측 사실뿐이다: 어떤 단계에서, 어떤 예외로, 어떤 상태·식별자였는지.
+    (예컨대 `SubscriptionNotFound`를 "테넌트 불일치"로 해석해 적지 않는다 — 구독이 없을 수도,
+    이 앱 등록에 보이지 않을 수도 있고, 지금 근거로는 구분되지 않는다.)"""
+    status = getattr(exc, "status_code", None)
+    log_business_event(
+        "credential.verify.failed",
+        level="WARNING",
+        provider="azure",
+        stage=stage,
+        exception=type(exc).__name__,
+        http_status=status if isinstance(status, int) else None,
+        azure_error_code=_arm_error_code(exc) or _aadsts_code(exc),
+    )
+
+
 def verify(external_account_id: str, secret_payload: dict) -> VerificationResult:
+    failure = VerificationResult(verified=False, error_code="PROVIDER_AUTHENTICATION_FAILED")
+
     try:
         credential = ClientSecretCredential(
             tenant_id=secret_payload["tenant_id"],
             client_id=secret_payload["client_id"],
             client_secret=secret_payload["client_secret"],
         )
+    except (KeyError, ValueError, TypeError) as exc:
+        _log_verify_failure(VERIFY_STAGE_PAYLOAD, exc)
+        return failure
+
+    try:
+        # azure-identity는 **지연 인증**이라 객체 생성만으로는 토큰을 받지 않는다. 여기서 한 번
+        # 명시적으로 받아야 "토큰 단계 실패"와 "구독 조회 실패"가 갈린다. 받은 토큰은 자격증명
+        # 객체가 캐시해 아래 호출이 재사용하지만, 만료·갱신·SDK 재시도가 있으므로 **이 호출로
+        # 외부 요청 횟수가 고정되지는 않는다**.
+        credential.get_token(ARM_SCOPE)
+    except (ClientAuthenticationError, HttpResponseError, AzureError) as exc:
+        _log_verify_failure(VERIFY_STAGE_TOKEN, exc)
+        return failure
+
+    try:
         subscription_client = SubscriptionClient(credential)
         subscription_client.subscriptions.get(external_account_id)
-    except (ClientAuthenticationError, HttpResponseError, AzureError, KeyError):
-        return VerificationResult(verified=False, error_code="PROVIDER_AUTHENTICATION_FAILED")
+    except (ClientAuthenticationError, HttpResponseError, AzureError) as exc:
+        _log_verify_failure(VERIFY_STAGE_SUBSCRIPTION, exc)
+        return failure
 
     scope = {"inventory_read": False, "resource_control": False, "provision": False, "cost_read": False}
 

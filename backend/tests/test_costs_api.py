@@ -46,11 +46,11 @@ def _add_cost_row(db_session, account, day, amount, currency="USD", service="Ama
 # --- capabilities ---------------------------------------------------------------------------
 
 
-def test_capabilities_has_required_three_fields_and_unsupported_for_azure(client, make_user, auth_header, db_session):
+def test_capabilities_has_required_three_fields_and_unsupported_for_provider_without_adapter(client, make_user, auth_header, db_session):
     user = make_user()
     aws = _make_account(db_session, user, provider="aws", external_account_id="111122223333")
     _make_credential(db_session, aws)
-    azure = _make_account(db_session, user, provider="azure", external_account_id="sub-1")
+    gcp = _make_account(db_session, user, provider="gcp", external_account_id="proj-1")   # 아직 수집기 없음
 
     resp = client.get("/api/v1/costs/capabilities", headers=auth_header(user))
 
@@ -62,9 +62,9 @@ def test_capabilities_has_required_three_fields_and_unsupported_for_azure(client
         assert "status" in item and "as_of" in item and "ingestion_running" in item  # 필수 3필드
 
     assert by_provider["aws"]["status"] == "PENDING"
-    assert by_provider["azure"]["status"] == "UNSUPPORTED"
-    assert by_provider["azure"]["status"] != "PERMISSION_DENIED"
-    assert by_provider["azure"]["cost_read"] is None
+    assert by_provider["gcp"]["status"] == "UNSUPPORTED"
+    assert by_provider["gcp"]["status"] != "PERMISSION_DENIED"
+    assert by_provider["gcp"]["cost_read"] is None
 
 
 def test_capabilities_only_shows_own_accounts(client, make_user, auth_header, db_session):

@@ -27,7 +27,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.cost import is_cost_supported
-from app.cost.coverage import missing_days as coverage_missing_days, utc_today
+from app.cost.coverage import analysis_ready_days, missing_days as coverage_missing_days, utc_today
 from app.cost.query import accounts_currency_map, money, staleness_threshold_hours
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Team, TeamBudget, TeamBudgetNotification
 
@@ -36,6 +36,8 @@ USAGE_BASIS = "usage_before_credits"  # 확정 5
 USAGE_CATEGORIES = ["usage"]
 
 REASON_MISSING_DAYS = "MISSING_DAYS"
+# 결측은 없지만 근거가 약한 계정(observed_only)이 판정 대상에 있다 — "빠진 날 있음"과 다른 사유다(A-2).
+REASON_COVERAGE_UNVERIFIED = "COVERAGE_UNVERIFIED"
 REASON_CURRENCY_MISMATCH = "CURRENCY_MISMATCH"
 REASON_NO_BUDGET = "NO_BUDGET"
 REASON_NO_ACCOUNTS = "NO_ACCOUNTS"
@@ -175,6 +177,17 @@ def _missing_days_for_account(
     return coverage_missing_days(db, account.id, period_start, check_end)
 
 
+def _analysis_ready_for_account(
+    db: Session, account: CloudAccount, period_start: dt.date, check_end: dt.date
+) -> bool:
+    """그 구간의 **모든 완료된 날**이 판정에 쓸 수 있는 근거를 갖고 있는가(A-2). 결측 검사와 별개다 —
+    행이 전부 있어도 근거가 약하면(observed_only) 거짓이다."""
+    if check_end <= period_start:
+        return True
+    ready = analysis_ready_days(db, account.id, period_start, check_end)
+    return len(ready) == (check_end - period_start).days
+
+
 def _sum_usage(
     db: Session, account_ids: list[int], currency: str, period_start: dt.date, period_end: dt.date,
     *, categories: list[str] | None,
@@ -297,6 +310,12 @@ def compute_budget_status(
         for a in included:
             if _missing_days_for_account(db, a, period_start, check_end):
                 out["reason_code"] = REASON_MISSING_DAYS
+                return out
+        # 통화 필터로 이미 빠진 계정은 여기 오지 않는다(included만 본다) — 새 사유가 그쪽까지
+        # 끌어들이지 않는다. 팀 단위 판정이라, AWS 전용 팀은 영향이 없고 신규 CSP가 섞인 팀만 보류된다.
+        for a in included:
+            if not _analysis_ready_for_account(db, a, period_start, check_end):
+                out["reason_code"] = REASON_COVERAGE_UNVERIFIED
                 return out
 
     limit = Decimal(budget.limit_amount)

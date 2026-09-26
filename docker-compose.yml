@@ -51,6 +51,16 @@ services:
       # 않으므로 코드 쪽 기본값(false)이 적용돼 테스트 중에는 돌지 않는다.
       COST_SCHEDULER_ENABLED: ${COST_SCHEDULER_ENABLED:-true}
       COST_INGEST_HOUR_UTC: ${COST_INGEST_HOUR_UTC:-6}
+      # 어느 CSP를 실제로 호출할지(app/cost/gating.py). 어댑터 등록(구현 지원)과는 별개다 —
+      # 새 CSP 어댑터를 추가해도 이 값을 바꾸기 전에는 수동·자동 수집 모두 호출이 0건이다.
+      # 수동과 자동은 독립이며, azure·gcp는 COST_INGEST_ACCOUNT_IDS에 계정을 명시해야 켜진다
+      # (빈 목록은 "전체 허용"이 아니라 "한 계정도 허용 안 함"이다).
+      # ⚠️ `:-`가 아니라 `-`를 쓴다. `${VAR:-aws}`는 **빈 문자열까지** aws로 치환해서
+      # "명시적으로 비워서 전부 끄기"가 불가능해진다(docker compose config로 재현함).
+      # `${VAR-aws}`는 변수를 지정하지 않았을 때만 aws이고, 빈 문자열은 빈 문자열 그대로 간다.
+      COST_INGEST_PROVIDERS: ${COST_INGEST_PROVIDERS-aws}
+      COST_AUTO_INGEST_PROVIDERS: ${COST_AUTO_INGEST_PROVIDERS-aws}
+      COST_INGEST_ACCOUNT_IDS: ${COST_INGEST_ACCOUNT_IDS-}
       # 보고서 정기 메일 발송(app/report_scheduler.py, 2026-09-19). 테스트는 이 env를 세팅하지
       # 않으므로 코드 쪽 기본값(false)이 적용돼 테스트 중에는 돌지 않는다.
       REPORT_SCHEDULER_ENABLED: ${REPORT_SCHEDULER_ENABLED:-true}

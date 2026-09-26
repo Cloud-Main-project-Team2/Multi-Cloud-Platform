@@ -13,10 +13,12 @@ import os
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
+from app.cost.coverage import resolve_basis
 from app.cost.ingest import AccountLockedError, replace_cost_rows
 from app.cost.notify import evaluate_for_account
 from app.cost.review import evaluate_and_notify_for_account_safely
-from app.cost import COST_ADAPTERS, is_cost_supported
+from app.cost import COST_ADAPTERS, cost_source_for, is_cost_supported
+from app.cost.gating import auto_ingest_allowed
 from app.config import get_settings
 from app.db import SessionLocal
 from app.logging_config import log_background_task, log_business_event
@@ -90,7 +92,7 @@ def _run_single_account(db: Session, account: CloudAccount, period_start: dt.dat
         return
 
     try:
-        replaced = replace_cost_rows(db, account, run, result.rows, source=f"{account.provider}_cost_explorer")
+        replaced = replace_cost_rows(db, account, run, result.rows, source=cost_source_for(account.provider))
     except AccountLockedError:
         db.rollback()
         run = db.get(CostIngestionRun, run.id)
@@ -102,6 +104,7 @@ def _run_single_account(db: Session, account: CloudAccount, period_start: dt.dat
 
     run.records_replaced = replaced
     run.status = "success"
+    run.coverage_basis = resolve_basis(result.coverage_basis, account.provider)  # 행 교체와 같은 트랜잭션
     run.finished_at = dt.datetime.now(dt.timezone.utc)
     db.commit()
     # 수집이 커밋된 뒤 그 계정의 팀 예산 임계(80/100%)를 평가한다(PR 7). 실패는 로그만.
@@ -123,6 +126,10 @@ def run_daily_ingestion() -> None:
             for account in accounts:
                 if not is_cost_supported(account.provider):
                     continue
+                # 어댑터가 등록됐다고 자동 수집까지 켜지지는 않는다(app/cost/gating.py) — 수동
+                # 허용과 별개로 COST_AUTO_INGEST_PROVIDERS에 적힌 provider·계정만 자동으로 돈다.
+                if not auto_ingest_allowed(account.provider, account.id):
+                    continue
                 # 계정 하나가 실패해도(권한 만료 등) 나머지 계정은 계속 돈다.
                 try:
                     _run_single_account(db, account, period_start, period_end)
@@ -132,6 +139,8 @@ def run_daily_ingestion() -> None:
             # 안전망(PR 8): 오늘 수집이 안 돌았거나 실패한 계정(자격 증명 없음·만료 등)도 저장된
             # 데이터로 새로 판정 가능해진 날을 따라잡는다 — 수집 성공에만 매달면 9/30이 10/4에
             # 판정 가능해질 때 그 계정의 수집이 멈춰 있으면 영영 빠진다. 창을 두지 않고 매번 전부 본다.
+            # 후속 평가(급증)는 **저장된 데이터**로 하는 일이라 수집 활성화와 무관하게 돌린다 —
+            # 수집을 꺼도 이미 쌓인 비용의 판정까지 멈추면 과거 데이터가 화면에서 조용히 사라진다.
             for account in accounts:
                 if is_cost_supported(account.provider):
                     evaluate_and_notify_for_account_safely(db, account)
