@@ -5,13 +5,27 @@ CSP를 호출하지 않는다 — DB에 심어 둔 credential/cost_ingestion_run
 
 from __future__ import annotations
 
+import pytest
+
 import datetime as dt
 
+from app.config import get_settings
 from app.cost.capability import account_capability
 from app.models import CloudAccount, CostIngestionRun, Credential
 from app.security.credential_crypto import encrypt_credential_json
 
 NOW = dt.datetime.now(dt.timezone.utc)
+
+
+@pytest.fixture()
+def no_gcp_adapter(monkeypatch):
+    """3사 모두 수집기가 생긴 뒤에도 "수집기 없는 provider" 성질을 계속 검증하려고, 등록표에서
+    gcp만 잠시 뺀다(UNSUPPORTED이지 PERMISSION_DENIED가 아니다 — 하드코딩된 cost_read=false를
+    권한 거절로 읽으면 사용자에게 없는 죄를 씌운다)."""
+    import app.cost as cost_registry
+
+    monkeypatch.delitem(cost_registry.COST_ADAPTERS, "gcp", raising=False)
+    return None
 
 
 def _make_account(db_session, user, provider="aws", external_account_id="111122223333") -> CloudAccount:
@@ -51,8 +65,9 @@ def _make_run(db_session, account, *, status, error_code=None, records_replaced=
 # --- provider 미구현 -----------------------------------------------------------------------
 
 
-def test_provider_without_adapter_is_unsupported_not_permission_denied(db_session, make_user):
-    """2026-09-23: Azure 수집기가 생겨서 "어댑터 없음" 예시를 GCP로 바꿨다. 지키는 성질은 그대로 —
+def test_provider_without_adapter_is_unsupported_not_permission_denied(no_gcp_adapter, db_session, make_user):
+    """2026-09-26: 3사 모두 수집기가 생겨 "어댑터 없음" 예시가 사라졌다 → 등록표에서 잠시 빼서
+    같은 성질을 계속 본다(no_gcp_adapter). 지키는 성질은 그대로 —
     수집기가 없는 provider는 UNSUPPORTED이지 PERMISSION_DENIED가 아니다(하드코딩된 cost_read=false를
     권한 거절로 읽으면 사용자에게 없는 죄를 씌운다)."""
     user = make_user()
@@ -65,16 +80,6 @@ def test_provider_without_adapter_is_unsupported_not_permission_denied(db_sessio
     assert cap["status"] != "PERMISSION_DENIED"
     assert cap["cost_read"] is None  # UNSUPPORTED에서만 null
     assert cap["capability_source"] == "not_implemented"
-
-
-def test_gcp_is_unsupported_not_permission_denied(db_session, make_user):
-    user = make_user()
-    account = _make_account(db_session, user, provider="gcp", external_account_id="proj-1")
-
-    cap = account_capability(db_session, account)
-
-    assert cap["status"] == "UNSUPPORTED"
-    assert cap["cost_read"] is None
 
 
 # --- 계정 연결 상태 --------------------------------------------------------------------------
@@ -244,3 +249,78 @@ def test_partial_success_only_leaves_no_success_time(db_session, make_user):
     assert cap["status"] == "CONNECTED_PARTIAL"
     assert cap["as_of"] is None
     assert cap["last_success_at"] is None
+
+
+# --- GCP: 수집 전에 사람 손이 필요한 상태 --------------------------------------------------------
+
+
+def test_gcp_without_export_table_is_setup_required(db_session, make_user, monkeypatch):
+    """Export가 등록되지 않은 GCP 계정은 **수집을 돌려 보기 전에** 설정 필요로 보인다.
+
+    PENDING으로 두면 사용자가 "왜 비어 있지?" 하며 수집 버튼만 누르게 되고, 누르면
+    COST_SETUP_REQUIRED로 실패한다. 이 판정은 설정만 보므로 CSP를 호출하지 않는다."""
+    monkeypatch.setenv("COST_GCP_EXPORT_TABLES", "")
+    get_settings.cache_clear()
+    user = make_user()
+    account = _make_account(db_session, user, provider="gcp", external_account_id="proj-1")
+    _make_credential(db_session, account)
+
+    cap = account_capability(db_session, account)
+
+    assert cap["status"] == "SETUP_REQUIRED"
+    assert "Export" in cap["setup_hint"]
+    assert cap["last_error_code"] is None            # 실패한 적이 없다 — 아직 시작도 못 한 것이다
+    get_settings.cache_clear()
+
+
+def test_gcp_with_export_table_is_not_setup_required(db_session, make_user, monkeypatch):
+    monkeypatch.setenv("COST_GCP_EXPORT_TABLES", "proj-1:billing.dataset.table")
+    get_settings.cache_clear()
+    user = make_user()
+    account = _make_account(db_session, user, provider="gcp", external_account_id="proj-1")
+    _make_credential(db_session, account)
+
+    cap = account_capability(db_session, account)
+
+    assert cap["status"] == "PENDING" and cap["setup_hint"] is None
+    get_settings.cache_clear()
+
+
+def test_other_providers_are_untouched_by_the_gcp_setup_check(db_session, make_user, monkeypatch):
+    """AWS·Azure는 자격증명만 있으면 조회할 수 있다 — GCP 설정 검사에 걸리지 않는다."""
+    monkeypatch.setenv("COST_GCP_EXPORT_TABLES", "")
+    get_settings.cache_clear()
+    user = make_user()
+    for provider, ext in (("aws", "111122223333"), ("azure", "sub-1")):
+        account = _make_account(db_session, user, provider=provider, external_account_id=ext)
+        _make_credential(db_session, account)
+
+        assert account_capability(db_session, account)["status"] == "PENDING"
+    get_settings.cache_clear()
+
+
+def test_gcp_without_credential_is_still_not_connected(db_session, make_user, monkeypatch):
+    """설정 검사가 '자격증명 없음'을 가리지 않는다 — 먼저 연결부터다."""
+    monkeypatch.setenv("COST_GCP_EXPORT_TABLES", "")
+    get_settings.cache_clear()
+    user = make_user()
+    account = _make_account(db_session, user, provider="gcp", external_account_id="proj-1")
+
+    assert account_capability(db_session, account)["status"] == "NOT_CONNECTED"
+    get_settings.cache_clear()
+
+
+def test_completed_run_wins_over_the_setup_hint(db_session, make_user, monkeypatch):
+    """이미 완주한 수집이 있으면 그 결과가 우선이다 — 저장된 데이터는 실제로 있는 것이고,
+    설정이 빠진 사실은 다음 수집 시도에서 드러난다(그 run이 COST_SETUP_REQUIRED로 실패한다)."""
+    monkeypatch.setenv("COST_GCP_EXPORT_TABLES", "")
+    get_settings.cache_clear()
+    user = make_user()
+    account = _make_account(db_session, user, provider="gcp", external_account_id="proj-1")
+    _make_credential(db_session, account)
+    _make_run(db_session, account, status="success", records_replaced=3)
+
+    cap = account_capability(db_session, account)
+
+    assert cap["status"] == "CONNECTED_OK" and cap["setup_hint"] is None
+    get_settings.cache_clear()

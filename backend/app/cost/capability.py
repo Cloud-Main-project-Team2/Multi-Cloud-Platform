@@ -12,6 +12,7 @@ import datetime as dt
 from sqlalchemy.orm import Session
 
 from app.cost import is_cost_supported
+from app.cost.gcp_export_config import missing_setup_hint
 from app.models import CloudAccount, CostIngestionRun, Credential
 
 _TERMINAL_STATUSES = ("success", "partial_success", "failed", "cancelled")
@@ -103,8 +104,17 @@ def account_capability(db: Session, account: CloudAccount) -> dict:
         .first()
     )
 
+    # 자격증명은 있는데 **사람 손이 더 필요한** 상태(지금은 GCP의 BigQuery Export 미등록)는 수집을
+    # 돌려 보기 전에도 설정만 보고 알 수 있다(CSP를 부르지 않는다). 아직 한 번도 완주하지 못한
+    # 계정을 PENDING으로 두면 사용자가 "왜 계속 비어 있지?" 하며 수집 버튼만 누르게 된다 —
+    # 누르면 COST_SETUP_REQUIRED로 실패한다.
+    # ⚠️ 다만 **이미 완주한 run이 있으면 그 결과가 우선이다**: 저장된 데이터는 실제로 있는 것이고,
+    # 설정이 빠진 사실은 다음 수집 시도에서 드러난다(그때 run이 COST_SETUP_REQUIRED로 실패하면
+    # 아래 매핑이 같은 상태를 만든다).
+    setup_hint = missing_setup_hint(account.provider, account.external_account_id)
+
     if last_terminal is None:
-        status = "PENDING"
+        status = "SETUP_REQUIRED" if setup_hint else "PENDING"
     elif last_terminal.status == "success":
         status = "CONNECTED_OK" if last_terminal.records_replaced > 0 else "CONNECTED_EMPTY"
     elif last_terminal.status == "partial_success":
@@ -115,7 +125,7 @@ def account_capability(db: Session, account: CloudAccount) -> dict:
         else:
             status = _ERROR_CODE_TO_STATUS.get(last_terminal.error_code, "COLLECT_FAILED")
     else:  # cancelled — 한 번도 완주하지 못했으니 PENDING으로 본다
-        status = "PENDING"
+        status = "SETUP_REQUIRED" if setup_hint else "PENDING"
 
     cost_read = credential.permission_scope.get("cost_read", False) if credential.permission_scope else False
 
@@ -126,7 +136,7 @@ def account_capability(db: Session, account: CloudAccount) -> dict:
         "cost_read": bool(cost_read),
         "capability_source": "probed",
         "currency": _account_currency(db, account),
-        "setup_hint": None,
+        "setup_hint": setup_hint if status == "SETUP_REQUIRED" else None,
         "last_error_code": last_terminal.error_code if last_terminal else None,
         "last_success_at": last_success.finished_at if last_success else None,
     }

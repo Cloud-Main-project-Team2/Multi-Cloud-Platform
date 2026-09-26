@@ -23,6 +23,8 @@ IN_SCOPE_CODES = [
     "AUTHENTICATION_REQUIRED", "CONFLICT", "INTERNAL_ERROR",
     # 비용(2026-09-19 채택 — 05_API계약.md §2-5)
     "TEAM_NOT_FOUND", "TEAM_BUDGET_NOT_FOUND", "COST_INGESTION_RUN_NOT_FOUND", "COST_REVIEW_ITEM_NOT_FOUND",
+    # 2026-09-26: GCP 수집기가 실제로 쓰기 시작했다(Export 미설정·테이블 없음).
+    "COST_SETUP_REQUIRED",
 ]
 
 _VALID_CATEGORIES = {"provisioning", "sync", "resource", "credential", "auth", "cost", "common", "unknown"}

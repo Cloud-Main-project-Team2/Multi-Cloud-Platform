@@ -1107,7 +1107,7 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
 
 | 마지막 run | `error_code` | `status` |
 |---|---|---|
-| (행 없음) | — | `PENDING` |
+| (행 없음) | — | `PENDING`. 단 **GCP에서 Export 테이블이 등록되지 않았으면 `SETUP_REQUIRED`**다(2026-09-26) — 설정만 보고 판단하며 CSP를 호출하지 않는다 |
 | `success` | — | 행 있으면 `CONNECTED_OK`, 0건이면 `CONNECTED_EMPTY` |
 | `partial_success` | — | `CONNECTED_PARTIAL` |
 | `failed` | `CLOUD_PERMISSION_DENIED` | `PERMISSION_DENIED` |
@@ -1133,10 +1133,11 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
         "as_of": "2026-09-17T06:00:00Z", "ingestion_running": false, "cost_read": true,
         "capability_source": "probed", "currency": "USD", "setup_hint": null, "last_error_code": null },
       { "cloud_account_id": "32", "provider": "gcp", "external_account_id": "demo-project",
-        "account_label": "개발 GCP", "team_id": null, "status": "UNSUPPORTED",
-        "as_of": null, "ingestion_running": false, "cost_read": null,
-        "capability_source": "not_implemented", "currency": null,
-        "setup_hint": "GCP 비용 수집은 아직 구현되지 않았습니다.", "last_error_code": null }
+        "account_label": "개발 GCP", "team_id": null, "status": "SETUP_REQUIRED",
+        "as_of": null, "ingestion_running": false, "cost_read": false,
+        "capability_source": "probed", "currency": null,
+        "setup_hint": "GCP 비용은 BigQuery 청구 Export에서 읽습니다. 결제 계정에서 Export를 켜고(표준 사용량), 서비스 계정에 BigQuery 조회 권한을 준 뒤, 내보낸 테이블을 등록해 주세요.",
+        "last_error_code": null }
     ],
     "total": 2, "pagination": null
   }
@@ -1875,7 +1876,8 @@ pending/running    -> cancelled
 | 동기화 | `SYNC_JOB_NOT_FOUND`, `JOB_ALREADY_RUNNING`, `JOB_NOT_CANCELLABLE` |
 | 프로비저닝 | `PROVISIONING_JOB_NOT_FOUND`, `SERVICE_NOT_FOUND`, `RESOURCE_NOT_PROVISIONABLE`, `IDEMPOTENCY_KEY_REQUIRED`, `IDEMPOTENCY_KEY_REUSED`, `SECRET_FIELD_NOT_ALLOWED`, `TERRAFORM_ERROR` |
 | 비용(기존, 구현 완료 시 사용) | `COST_DATA_UNAVAILABLE`, `COST_PERMISSION_REQUIRED`, `CURRENCY_MISMATCH` |
-| **비용(제안, 채택 전 미사용)** | `BUDGET_EXCEEDED`(409, 보류 — ADR-042) · `BUDGET_PERIOD_OVERLAP`(409, `CONFLICT`로 합칠 수 있음) · `BUDGET_PERIOD_TOO_LONG`(422, `VALIDATION_ERROR`로 합칠 수 있음) · `TEAM_NOT_FOUND`(404) · `TEAM_BUDGET_NOT_FOUND`(404) · `COST_INGESTION_RUN_NOT_FOUND`(404) · `COST_REVIEW_ITEM_NOT_FOUND`(404) · `ACCOUNT_ALREADY_IN_TEAM`(409, `CONFLICT`로 합칠 수 있음) · `COST_SETUP_REQUIRED`(409) |
+| **비용(제안, 채택 전 미사용)** | `BUDGET_EXCEEDED`(409, 보류 — ADR-042) · `BUDGET_PERIOD_OVERLAP`(409, `CONFLICT`로 합칠 수 있음) · `BUDGET_PERIOD_TOO_LONG`(422, `VALIDATION_ERROR`로 합칠 수 있음) · `TEAM_NOT_FOUND`(404) · `TEAM_BUDGET_NOT_FOUND`(404) · `COST_INGESTION_RUN_NOT_FOUND`(404) · `COST_REVIEW_ITEM_NOT_FOUND`(404) · `ACCOUNT_ALREADY_IN_TEAM`(409, `CONFLICT`로 합칠 수 있음) |
+| **비용(사용 중)** | `COST_SETUP_REQUIRED` — HTTP 오류가 아니라 **수집 run의 `error_code`**로 쓴다(GCP Export 미등록·테이블 없음). 마지막 run이 이 코드로 실패하면 capability는 `SETUP_REQUIRED`다(§11-3 표) |
 | 공통 | `VALIDATION_ERROR`, `FORBIDDEN`, `CONFIRMATION_REQUIRED`, `CONFLICT`, `INTERNAL_ERROR` |
 
 > **채택되면** `backend/app/errors.py`와 `backend/app/error_catalog.py`(사용자 설명 4줄 형식), 그리고
@@ -1902,7 +1904,7 @@ pending/running    -> cancelled
 | 높음 | pagination 방식과 기본 정렬 | 모든 목록 API | 미결 |
 | 높음 | provider별 서비스 spec 필드 전체 목록(common/provider_spec) | catalog, provisioning | 미결 |
 | 중간 | 태그 타입과 query 문법 | 계정·credential·resource 목록, `/costs/breakdown?dimension=tag` | 미결(비용 쪽은 `501` 고정으로 우회) |
-| ~~중간~~ | ~~GCP 실제 비용 수집 방식·권한~~ | 비용·대시보드 | **해소(제안)** — BigQuery Billing Export 기준으로 설계함(§11). 구현은 Azure/AWS 다음 순서 |
+| ~~중간~~ | ~~GCP 실제 비용 수집 방식·권한~~ | 비용·대시보드 | **해소·구현됨(2026-09-26)** — BigQuery 청구 Export를 읽는 어댑터(`app/cost/gcp_cost.py`) 추가. 계정별 Export 테이블은 `COST_GCP_EXPORT_TABLES`로 등록하고, 미등록 계정은 `SETUP_REQUIRED`(수집 시 `COST_SETUP_REQUIRED`)다. 근거는 `docs/GCP_Cost_Ingest_BigQuery_Design_2026-09-26.md`. **실제 수집 검증은 Export 데이터가 쌓인 뒤** |
 | ~~중간~~ | ~~환율 변환 정책~~ | 통합 비용·대시보드 | **부분 해소** — 원통화 저장 + 환산 없음으로 확정(§11-2 `display_currency`). **완전히 닫히지는 않았다** — 팀 통화를 하나로 고정(§11-10-1)해 우회했을 뿐, 다통화 환산 자체는 아직 없음 |
 | 낮음 | 알림 type·보존·읽음 되돌리기 | 알림 | 미결 |
 | 낮음 | 보고서 형식·주기·전송 정책 | 향후 보고서 API. 비용 섹션 부품 3종(§11-11-4)만 계약 확정, 전체 계약은 미결 | 미결 |
