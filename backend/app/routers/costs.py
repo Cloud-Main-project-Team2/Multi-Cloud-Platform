@@ -18,7 +18,7 @@ from app.cost import COST_ADAPTERS, cost_source_for, is_cost_supported
 from app.cost.coverage import resolve_basis
 from app.cost.gating import manual_ingest_denial
 from app.cost.capability import account_capability
-from app.cost.ingest import AccountLockedError, replace_cost_rows
+from app.cost.ingest import AccountLockedError, finalize_interrupted_run, replace_cost_rows
 from app.cost.notify import evaluate_for_account
 from app.cost.review import evaluate_and_notify_for_account_safely
 from app.cost.query import (
@@ -307,6 +307,11 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
         evaluate_for_account(db, account)
         # 급증 탐지(PR 8) — 이번 run 범위가 아니라 저장된 판정 대상 날 전부를 본다.
         evaluate_and_notify_for_account_safely(db, account)
+    except Exception:       # noqa: BLE001 — 기록만 남기고 그대로 올린다(로그는 log_background_task가 찍는다)
+        # 여기서 잡지 않으면 run이 'running'에 박혀 그 계정은 이후 수집이 영구히
+        # JOB_ALREADY_RUNNING으로 막힌다(_last_active_run). 상태를 종결로 남긴다.
+        finalize_interrupted_run(db, run_id)
+        raise
     finally:
         db.close()
 

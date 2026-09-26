@@ -355,3 +355,18 @@ def test_decimal_precision_is_six_places(patch_bq):
 ])
 def test_export_table_parsing(raw, expected):
     assert gcp.parse_export_tables(raw) == expected
+
+
+def test_client_construction_failure_does_not_escape(patch_bq, monkeypatch):
+    """클라이언트 생성이 실패해도 어댑터는 **결과로** 답한다. 예외가 빠져나가면 수집 run이
+    'running'에 박혀 그 계정은 이후 수집이 JOB_ALREADY_RUNNING으로 영구히 막힌다."""
+    patch_bq(_FakeClient())
+
+    def _boom(project=None, credentials=None):
+        raise RuntimeError("client build failed")
+
+    monkeypatch.setattr(gcp.bigquery, "Client", _boom)
+
+    r = _fetch()
+
+    assert r.partial is True and r.error_code == "PROVIDER_API_ERROR" and r.api_calls == 0

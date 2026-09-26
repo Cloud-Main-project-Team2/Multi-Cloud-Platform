@@ -553,3 +553,32 @@ def test_bad_second_page_preserves_existing_rows_and_basis(client, make_user, au
     assert [str(r.amount) for r in rows] == ["777.000000"]   # 기존 금액 보존(부분 행 저장 안 함)
     db_session.refresh(good_run)
     assert good_run.coverage_basis == "observed_only" and good_run.status == "success"   # 근거 보존
+
+
+def test_crashed_run_is_finalized_so_the_account_is_not_locked_forever(
+    client, make_user, auth_header, db_session, monkeypatch
+):
+    """수집 도중 예외가 나도 run을 종결로 남긴다.
+
+    'running'에 박혀 있으면 `_last_active_run`이 그 계정의 이후 수집 요청을 **영구히**
+    `JOB_ALREADY_RUNNING`으로 막는다 — DB를 손으로 고치기 전에는 복구되지 않는다."""
+    user = make_user()
+    azure = _account(db_session, user, provider="azure", ext="sub-crash")
+    db_session.commit()
+    _set_gating(monkeypatch, manual="azure", account_ids=f"azure:{azure.id}")
+
+    def _boom(self, *a, **k):
+        raise RuntimeError("adapter blew up")
+
+    monkeypatch.setattr(costs_router.COST_ADAPTERS["azure"], "fetch", _boom)
+    resp = _post(client, user, auth_header, cloud_account_ids=[str(azure.id)])
+    run_id = int(resp.json()["data"]["items"][0]["id"])
+    monkeypatch.setattr(costs_router, "SessionLocal", lambda: db_session)
+    monkeypatch.setattr(db_session, "close", lambda: None)
+
+    with pytest.raises(RuntimeError):
+        costs_router._run_cost_ingestion_run_inner(run_id)      # 예외는 그대로 올라간다(로그용)
+
+    run = db_session.get(CostIngestionRun, run_id)
+    assert run.status == "failed" and run.error_code == "INTERNAL_ERROR"
+    assert run.finished_at is not None                           # 종결됐으므로 다음 수집이 막히지 않는다

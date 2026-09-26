@@ -14,7 +14,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
 from app.cost.coverage import resolve_basis
-from app.cost.ingest import AccountLockedError, replace_cost_rows
+from app.cost.ingest import AccountLockedError, finalize_interrupted_run, replace_cost_rows
 from app.cost.notify import evaluate_for_account
 from app.cost.review import evaluate_and_notify_for_account_safely
 from app.cost import COST_ADAPTERS, cost_source_for, is_cost_supported
@@ -39,6 +39,20 @@ def _auto_period(today: dt.date) -> tuple[dt.date, dt.date]:
     period_start = min(month_start, lookback_start)
     return period_start, today + dt.timedelta(days=1)
 
+
+
+def _last_active_run_id(db: Session, cloud_account_id: int) -> int | None:
+    """이 계정에서 아직 종결되지 않은 run(있다면) — 중단 처리용."""
+    row = (
+        db.query(CostIngestionRun.id)
+        .filter(
+            CostIngestionRun.cloud_account_id == cloud_account_id,
+            CostIngestionRun.status.in_(("pending", "running")),
+        )
+        .order_by(CostIngestionRun.requested_at.desc())
+        .first()
+    )
+    return int(row[0]) if row else None
 
 def _run_single_account(db: Session, account: CloudAccount, period_start: dt.date, period_end: dt.date) -> None:
     adapter_cls = COST_ADAPTERS.get(account.provider)
@@ -135,6 +149,10 @@ def run_daily_ingestion() -> None:
                     _run_single_account(db, account, period_start, period_end)
                 except Exception:  # noqa: BLE001 — 자동 수집 루프 전체가 멈추면 안 된다
                     db.rollback()
+                    # 중단된 run을 'running'으로 두면 그 계정은 이후 수동 수집까지 영구히 막힌다.
+                    stuck = _last_active_run_id(db, account.id)
+                    if stuck is not None:
+                        finalize_interrupted_run(db, stuck)
                     log_business_event("cost.daily_ingestion.account_failed", level="ERROR", cloud_account_id=account.id, exc_info=True)
             # 안전망(PR 8): 오늘 수집이 안 돌았거나 실패한 계정(자격 증명 없음·만료 등)도 저장된
             # 데이터로 새로 판정 가능해진 날을 따라잡는다 — 수집 성공에만 매달면 9/30이 10/4에

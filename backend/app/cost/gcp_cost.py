@@ -194,7 +194,13 @@ class GcpCostProvider:
 
         # 쿼리를 실행하는 프로젝트는 **테이블이 있는 프로젝트**로 둔다(청구도 그쪽으로 간다).
         query_project = table.split(".")[0]
-        client = bigquery.Client(project=query_project, credentials=credentials)
+        try:
+            # 클라이언트 생성 자체가 실패할 수 있다(자격증명·프로젝트 문제). 여기서 막지 않으면
+            # 예외가 어댑터 밖으로 빠져나가 수집 run이 종결되지 못한다.
+            client = bigquery.Client(project=query_project, credentials=credentials)
+        except Exception as exc:        # noqa: BLE001 — SDK가 올리는 예외 종류를 단정하지 않는다
+            log_business_event("cost.gcp.client_init_failed", level="WARNING", exception=type(exc).__name__)
+            return fail("PROVIDER_API_ERROR")
         query = build_query(table)
         params = [
             bigquery.ScalarQueryParameter(
