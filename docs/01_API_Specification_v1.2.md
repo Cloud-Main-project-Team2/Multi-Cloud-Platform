@@ -1116,6 +1116,11 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
 | `failed` | 그 외 전부 | `COLLECT_FAILED` |
 | `running` \| `pending` | — | 이전 상태 유지 + `ingestion_running: true` |
 
+> ⚠️ **`CONNECTED_EMPTY`는 "마지막 수집이 성공했고 저장할 행이 0건"이라는 뜻이며, 조회 기간이 0원이라는
+> 뜻이 아니다**(2026-09-23). 기간의 0원 여부는 그 기간의 `coverage`로 판단한다 —
+> `basis == "complete_range"`이고 `missing_count == 0`일 때만 "확인된 0원"이라고 표시한다. 마지막
+> 수집이 0건이어도 다른 조회 기간에는 금액이 있을 수 있다.
+
 **200**
 
 ```json
@@ -1195,10 +1200,11 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
 - `mtd_actual.basis`는 `usage_before_credits` 고정. `mtd_net`은 크레딧·환불까지 반영한 순액이며 참고용이다.
 - `list_price_monthly.missing_count`는 정가표에 없어 추정하지 못한 리소스 수다 — 0으로 세지 않고 개수로 보고한다.
 - `forecast_month_end.method`는 `mtd_prorated` 고정, `based_through`는 어제 날짜다(오늘은 미완성 구간).
-  계산식은 이번 달 실제로 수집된 날짜의 누적 실측 ÷ 오늘까지의 달력 경과일수 × 이달 총일수다.
-  수집되지 않은 날은 0원으로 채우지 않고 합계에서 뺀다. 대상 계정 일부가 이달 수집을 빠짐없이
-  마치지 못했어도 계산 자체는 막지 않는다(2026-09-22 결정) — `kpis.forecast_status.incomplete_accounts`가
-  어느 계정에서 며칠이 빠졌는지 안내만 한다.
+  계산식은 이번 달 1일~어제(UTC)의 실측 ÷ 달력 경과일수 × 이달 총일수다.
+  **대상 계정 전부가 그 기간을 빠짐없이 수집 확인했을 때만 계산한다**(2026-09-23). 하나라도
+  미수집일이 있으면 `forecast_month_end`는 `[]`이고 `forecast_status.state`는 `insufficient_coverage`이며,
+  어느 계정에서 며칠이 빠졌는지는 `incomplete_accounts`가 전달한다 — 빠진 날을 0원으로 평균 내면
+  전망이 **실제보다 낮게** 나오고 그 값은 "여유 있다"로 읽히기 때문이다.
 - `excluded`는 합계에서 빠진 계정 수와 사유다. 조용히 빼지 않는다. `reason_counts`는 **계정당 한 번만**
   세며 우선순위는 `UNSUPPORTED` > `CURRENCY_FILTERED` > 상태/`PERIOD_NOT_COVERED`다(같은 계정이 두 사유로
   두 번 세어지지 않는다).
@@ -1213,26 +1219,43 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
   - `missing_days` 결측일 목록이지만 **최대 31개까지만** 담기고 잘리면 `truncated: true`다 — 개수는
     반드시 `missing_count`를 쓴다.
   - `pending_days` 오늘·미래처럼 아직 끝나지 않아 결측으로 세지 않는 날 수.
+  - `covered + missing_count = days`가 항상 성립한다(완료된 날 기준).
   - 날짜 경계는 **UTC**다(§11-1). 서버 로컬 시각이 아니다.
+  - **`basis`·`analysis_ready`(2026-09-23 추가)** — "금액이 관측됐다"와 "판정에 쓸 수 있다"는 다른 말이다.
+    - `basis`: `"complete_range"` (요청 범위를 확인 근거로 인정 — 기존 AWS 정책) · `"observed_only"`
+      (받은 금액만 관측했고 **어디까지 왔는지는 모른다** — 초기 Azure·GCP) · `null`(관측된 날 없음).
+      `complete_range`는 **최종 청구 확정을 뜻하지 않는다**(정정은 계속 올 수 있다).
+    - `analysis_ready`: `basis == "complete_range"` **AND** `missing_count == 0`. **모든 날짜에 행이
+      있어도**(`missing_count == 0`) 근거가 약하면 `false`이며, 이때 전망·기간 비교·예산 임계 판정·
+      급증 탐지를 **보류**한다. 받은 금액은 그대로 조회·표시된다(수집 실패가 아니다).
+    - 근거는 수집 run마다 `coverage_basis`로 기록하고, 날짜별 근거는 **그 날을 덮는 성공 run 중 가장
+      나중에 저장한 것**이 정한다(저장은 범위 교체이므로). 기간 안에서 근거가 섞이면 요약은 보수적으로
+      `observed_only`다 — 기간 전체를 최신 run 하나로 설명하지 않는다.
 - `accounts[].filter_excluded` — `"currency"`이면 **통화 조건 때문에** 합계에서 빠졌다는 뜻이다(수집
   문제가 아니다). 그 밖에는 `null`. 계정을 목록에서 지우지 않는다.
 - `kpis.forecast_status` — 전망을 **왜 냈는지/못 냈는지**를 응답 전체 단위로 알린다(통화별이 아니다).
   - `state`: `computed` \| `not_current_month` \| `first_day` \| `no_accounts` \| `insufficient_coverage`
     \| `currency_unknown`. 화면은 모르는 값이 와도 "이 조건에서는 전망을 내지 않습니다"로 표시한다.
   - `based_through` 근거 마지막 날 · `required_accounts` 전망 대상 계정 수 ·
-    `incomplete_accounts[] {cloud_account_id, missing_count}` 이달 수집이 빠진 계정.
-  - ⚠️ **`insufficient_coverage`의 의미가 2026-09-22(#128)에 바뀌었다** — 아래 "전망 계약" 참고.
+    `incomplete_accounts[] {cloud_account_id, missing_count}` 이달 수집이 빠진 계정 ·
+    `unverified_accounts[] {cloud_account_id}` 결측은 없지만 **근거가 약한** 계정(2026-09-23).
+  - `coverage_unverified`(2026-09-23 추가) = 결측은 없지만 `analysis_ready`가 아닌 계정이 있어 계산하지
+    않음. **우선순위는 `insufficient_coverage` > `coverage_unverified`** — 사람이 고칠 수 있는 결측을
+    먼저 알린다.
+  - `insufficient_coverage` = **수집 부족으로 계산하지 않음**(값 없음). 아래 "전망 계약" 참고.
 - `warnings[PARTIAL_PERIOD]`에 `missing_count`(정확한 개수)와 `accounts[]`(계정별 결측 수)가 있다.
 - 전망 창: `period_start`가 이달 1일이고 `period_end`가 **UTC 오늘 또는 오늘+1**일 때만 계산한다
   (화면이 "오늘까지"를 exclusive 경계로 보내는 경우와 inclusive로 보내는 경우를 모두 받아들인다).
 
-> ⚠️ **전망 계약 상충 — 확인 필요(2026-09-23, 이승현)**
-> 위 "계산 자체를 막지 않는다"(2026-09-22, #128)는 **1단계에서 승인받은 결정과 반대**다. 원래 계약은
-> "대상 계정 전부가 이달 1일~어제를 빠짐없이 수집 확인했을 때만 계산하고, 하나라도 빠지면
-> `insufficient_coverage`로 값을 내지 않는다"였다(`docs/비용_개발문서/03` §5 · `10` QA-08 ⑤
-> "미수집일을 0으로 평균 내지 않는다"). 지금 구현은 분모를 **달력 경과일**로 쓰므로, 수집이 빠진 날이
-> 있으면 전망이 **실제보다 낮게** 나온다(빠진 날의 비용이 분자에서만 빠지고 분모에는 남는다).
-> 어느 쪽을 최종 계약으로 할지 정해야 하며, 정할 때까지 이 값은 **참고치**로 본다.
+> **전망 계약 — 이력과 확인 상태(2026-09-23)**
+> - 1단계(#118, 승인됨): 대상 계정 전부가 수집 확인됐을 때만 계산, 아니면 `insufficient_coverage`.
+> - 2026-09-22(#128): "누락이 있어도 계산하고 안내만 한다"로 변경됨. 분모가 달력 경과일이라 수집이
+>   빠진 날의 비용이 분자에서만 빠져 **전망이 실제보다 낮게** 나왔다.
+> - 2026-09-23(현재 구현): 1단계 계약으로 **되돌림**. 근거는 `docs/비용_개발문서/03` §5 · `10` QA-08 ⑤
+>   ("미수집일을 0으로 평균 내지 않는다")와, 낮게 나온 전망이 "예산에 여유가 있다"로 읽히는 위험.
+>
+> ⚠️ **확인 상태**: 이 되돌림은 비용 파트(이승현)의 정책 결정이며, **#128을 작성한 조은솔 님의 확인은
+> 아직 받지 않았다.** 확인 결과에 따라 다시 조정될 수 있다.
 
 ### 11-5. `GET /costs/trend`
 
@@ -1346,6 +1369,7 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
 
   - `reasons` 값: `LENGTH_MISMATCH`(일수가 다름) · `INCOMPLETE_PERIOD`(아직 끝나지 않은 날 포함) ·
     `NO_ACCOUNTS` · `CURRENT_COVERAGE`(조회 기간 결측) · `PREVIOUS_COVERAGE`(이전 기간 결측) ·
+    `COVERAGE_UNVERIFIED`(결측은 없지만 도착 범위 근거 없음, 2026-09-23) ·
     `NO_CURRENCY`(비교할 통화 없음). 화면은 모르는 값이 와도 일반 문구로 표시한다.
   - `charge_category`는 `usage` 고정이다 — 비교는 요금 분류 필터를 따르지 않는다.
 - 서비스가 지정되지 않은 금액은 키 `__unallocated__`(라벨 `미분류`)로 내려간다. 합계에 포함되며,
@@ -1373,6 +1397,9 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
 
 화면 상단 수집 불가 배너와 '비용 새로고침' 버튼의 활성/비활성이 이 응답만 보고 결정된다.
 `next_manual_allowed_at`이 미래면 버튼을 비활성화한다(계정당 1시간 1회).
+
+**2026-09-23 추가**: `covered_through`는 **근거가 있을 때만** 값이다 — `basis`가 `complete_range`가
+아니면 `null`이다. 요청 종료일을 "여기까지 확인됨"처럼 돌려주지 않는다.
 
 **2026-09-18 추가 (구현됨, PR #118)**: `period_start`·`period_end`·`currency` query를 받고, 각 항목에
 `coverage`(§11-4와 같은 모양)를 함께 내려준다 — 기간을 바꿀 때마다 summary와 다른 기준으로 결측을 세면
@@ -1422,6 +1449,32 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
 `GET /cost-ingestion-runs/{run_id}` 응답의 `status`는 `pending | running | success | partial_success |
 failed | cancelled`(§16.3과 동일 6종). `api_calls`를 반드시 기록한다(Cost Explorer 요청당 $0.01).
 실패해도 기존 데이터는 남는다(전체 수신 후 한 트랜잭션 교체).
+
+**`skipped[].reason_code` 전체 목록 (2026-09-23 추가 2종)**
+
+| reason_code | 뜻 | 사용자 조치 |
+|---|---|---|
+| `JOB_ALREADY_RUNNING` | 이 계정의 수집이 이미 진행 중 | 기다린다 |
+| `RATE_LIMITED` | 계정당 1시간 1회 제한(`next_allowed_at` 동봉) | 그 시각 이후 재시도 |
+| `UNSUPPORTED` | **이 CSP의 수집기가 구현돼 있지 않다** | 없음(기능 미제공) |
+| **`INGEST_DISABLED`** | 구현은 돼 있으나 **이 CSP의 수집이 설정으로 꺼져 있다** | 운영자가 `COST_INGEST_PROVIDERS`를 켠다 |
+| **`ACCOUNT_NOT_ENABLED`** | CSP는 켜졌으나 **이 계정이 허용 목록에 없다** | 운영자가 `COST_INGEST_ACCOUNT_IDS`에 계정을 추가한다 |
+
+- 세 가지는 **서로 다른 사건**이다. `UNSUPPORTED`(구현 없음) · `INGEST_DISABLED`/`ACCOUNT_NOT_ENABLED`
+  (운영 설정으로 꺼둠) · `CLOUD_PERMISSION_DENIED`(CSP가 거부) 중 어느 것도 다른 것으로 위장하지 않는다.
+- 새 CSP는 **기본적으로 꺼져 있다** — 어댑터를 추가해도 설정을 바꾸기 전에는 CSP 호출이 0건이다.
+  수동 허용과 자동(스케줄러) 허용은 **독립 설정**이라, 테스트 계정을 수동으로 허용해도 자동 수집은
+  켜지지 않는다.
+- 거부된 요청은 **`cost_ingestion_runs` 행을 만들지 않는다**(성공 이력으로 오해될 값이 남지 않는다).
+- 요청 접수 뒤 실행 직전에 설정이 꺼져 있으면, 이미 만들어진 run은 CSP를 호출하지 않고
+  `status="failed"` + `error_code`를 같은 두 값(`INGEST_DISABLED` / `ACCOUNT_NOT_ENABLED`) 중 하나로
+  종결한다. 이것은 **CSP 호출이 실패한 것이 아니라 호출을 하지 않은 것**이며, `PROVIDER_API_ERROR`·
+  `CLOUD_PERMISSION_DENIED`와 구분된다.
+- **수집을 꺼도 기존 데이터는 그대로다**: 저장된 `cloud_account_costs`, 마지막 성공 시각(`as_of`),
+  `covered_through`, 조회 6종의 집계는 이 설정을 보지 않는다. 막는 것은 **새 CSP 호출**뿐이다.
+- 설정은 프로세스 시작 시 읽혀 캐시된다. 적용 방법은 실행 형태에 따라 다르다 — 직접 실행한 앱은
+  **프로세스 재시작**, docker compose `environment`로 주입한 값은 **컨테이너 재생성**이 필요하다
+  (`docker compose restart`는 기존 컨테이너를 그대로 재시작해 environment가 갱신되지 않는다).
 
 ### 11-10. 팀·예산 API (제안 9개)
 
@@ -1520,9 +1573,13 @@ ACCOUNT_ALREADY_IN_TEAM`. 목록에서 빠진 계정은 미배정으로 돌아�
 ```
 
 `computable: false`이면 `ratio_pct`는 `null`이다. `reason_code`: `MISSING_DAYS`(기간 안에 수집 안 된
-날이 있음 — 판정하지 않는다) \| `CURRENCY_MISMATCH` \| `NO_BUDGET`(예산 미설정, **`$0`이 아니다**) \|
-`NO_ACCOUNTS` \| `UNSUPPORTED`. `period_state`: `upcoming` \| `in_progress` \| `ended` — 전망은
-`in_progress`에서만 낸다.
+날이 있음 — 판정하지 않는다) \| **`COVERAGE_UNVERIFIED`**(결측은 없지만 도착 범위 근거가 없는 계정이
+팀에 있음, 2026-09-23 — 예산·한도·관측 금액은 그대로 응답한다) \| `CURRENCY_MISMATCH` \|
+`NO_BUDGET`(예산 미설정, **`$0`이 아니다**) \| `NO_ACCOUNTS` \| `UNSUPPORTED`.
+`period_state`: `upcoming` \| `in_progress` \| `ended` — 전망은 `in_progress`에서만 낸다.
+
+`COVERAGE_UNVERIFIED`는 **팀 단위** 판정이다 — AWS 전용 팀은 영향이 없고, 같은 통화의 AWS + 신규 CSP가
+섞인 팀만 보류된다. 통화가 달라 이미 제외된 계정은 이 사유를 만들지 않는다(기존 `CURRENCY_MISMATCH` 유지).
 
 #### 11-10-3. 예산 알림
 
@@ -1564,6 +1621,19 @@ query: 공통 query + `status`(`open`/`resolved`/`all`, 기본 `open`). **저장
 `label`은 항상 `"원인 확인 필요"`다 — `"비용 누수"`라고 단정하지 않는다. `related_changes`는 같은
 날의 프로비저닝 기록이며 인과를 단정하지 않는다("관련 변경 후보"). `insufficient_history`는 판정
 자체를 못 한 계정이며 조용히 빠지지 않는다.
+
+**`held[].days[].reason` (2026-09-23 값 1개 추가, 기존 값 유지)**
+
+| reason | 뜻 |
+|---|---|
+| `day_not_collected` | 그 날이 수집되지 않았다(관측된 금액 자체가 없다) |
+| `baseline_incomplete` | 직전 7일 기준선에 빠진 날이 있다 |
+| **`coverage_unverified`** | **금액은 관측됐지만 도착 범위 근거가 없어 판정하지 않았다**(A-2). "수집이 안 됐다"·"이력이 짧다"와 다른 사건이다 |
+
+- `insufficient_history`는 **관측 이력 자체가 짧을 때만** 채운다. 관측은 충분한데 근거만 없으면
+  `insufficient_history`가 아니라 `held[reason=coverage_unverified]`다 — "아직 데이터가 없다"로
+  잘못 읽히지 않게 한다.
+- 근거가 없는 날로는 급증 항목을 만들지 않으므로 **검토 큐 항목·알림도 생성되지 않는다**.
 
 #### 11-11-2. 검토 큐
 
