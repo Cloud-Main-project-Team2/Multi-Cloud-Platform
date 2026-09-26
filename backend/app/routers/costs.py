@@ -14,7 +14,9 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
-from app.cost import COST_ADAPTERS, is_cost_supported
+from app.cost import COST_ADAPTERS, cost_source_for, is_cost_supported
+from app.cost.coverage import resolve_basis
+from app.cost.gating import manual_ingest_denial
 from app.cost.capability import account_capability
 from app.cost.ingest import AccountLockedError, replace_cost_rows
 from app.cost.notify import evaluate_for_account
@@ -192,6 +194,18 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             db.commit()
             return
 
+        # 접수 시점에는 허용이었어도 실행 시점에 설정이 바뀌었을 수 있다(배포·env 변경). CSP를
+        # 호출하기 전에 한 번 더 본다 — 이미 만들어진 run은 성공으로 두지 않고 실패로 종결한다.
+        denial = manual_ingest_denial(account.provider, account.id)
+        if denial is not None:
+            run.status = "failed"
+            run.error_code = denial
+            run.error_message = "이 계정의 비용 수집이 현재 비활성화되어 있습니다."
+            run.finished_at = dt.datetime.now(dt.timezone.utc)
+            _create_cost_ingestion_notification(db, run, account)
+            db.commit()
+            return
+
         run.status = "running"
         run.started_at = dt.datetime.now(dt.timezone.utc)
         db.commit()
@@ -262,7 +276,7 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
 
         try:
             replaced = replace_cost_rows(
-                db, account, run, result.rows, source=f"{account.provider}_cost_explorer"
+                db, account, run, result.rows, source=cost_source_for(account.provider)
             )
         except AccountLockedError:
             db.rollback()
@@ -277,6 +291,8 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
 
         run.records_replaced = replaced
         run.status = "success"
+        # 행 교체와 **같은 트랜잭션**에 근거를 남긴다 — 저장 결과와 근거가 어긋나지 않게(A-2).
+        run.coverage_basis = resolve_basis(result.coverage_basis, account.provider)
         run.finished_at = dt.datetime.now(dt.timezone.utc)
         _create_cost_ingestion_notification(db, run, account)
         db.commit()
@@ -349,6 +365,15 @@ def create_cost_ingestion_runs(
         if not is_cost_supported(account.provider):
             skipped.append(
                 CostIngestionRunSkipped(cloud_account_id=str_id(account.id), reason_code="UNSUPPORTED")
+            )
+            continue
+        # 구현 지원(위)과 수집 활성화(아래)는 다른 질문이다 — 꺼져 있다고 UNSUPPORTED나
+        # PERMISSION_DENIED로 위장하지 않는다(app/cost/gating.py). 계정 id를 준 요청이든 생략한
+        # 요청이든 같은 목록을 지나므로 진입 경로가 달라도 판정은 하나다.
+        denial = manual_ingest_denial(account.provider, account.id)
+        if denial is not None:
+            skipped.append(
+                CostIngestionRunSkipped(cloud_account_id=str_id(account.id), reason_code=denial)
             )
             continue
         last_success = _last_manual_success(db, account.id)
