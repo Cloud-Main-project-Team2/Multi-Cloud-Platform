@@ -11,6 +11,7 @@ import datetime as dt
 from decimal import Decimal
 
 from app.models import CloudAccount, CloudAccountCost, Credential, ServiceCatalog
+from tests.account_helpers import add_credential
 from app.security.credential_crypto import encrypt_credential_json
 
 
@@ -64,6 +65,7 @@ def test_capabilities_has_required_three_fields_and_unsupported_for_provider_wit
     aws = _make_account(db_session, user, provider="aws", external_account_id="111122223333")
     _make_credential(db_session, aws)
     gcp = _make_account(db_session, user, provider="gcp", external_account_id="proj-1")   # 아직 수집기 없음
+    add_credential(db_session, gcp)
 
     resp = client.get("/api/v1/costs/capabilities", headers=auth_header(user))
 
@@ -83,8 +85,8 @@ def test_capabilities_has_required_three_fields_and_unsupported_for_provider_wit
 def test_capabilities_only_shows_own_accounts(client, make_user, auth_header, db_session):
     owner = make_user(email="owner@example.com")
     other = make_user(email="other@example.com")
-    _make_account(db_session, owner)
-    _make_account(db_session, other)
+    add_credential(db_session, _make_account(db_session, owner))
+    add_credential(db_session, _make_account(db_session, other))
 
     resp = client.get("/api/v1/costs/capabilities", headers=auth_header(owner))
 

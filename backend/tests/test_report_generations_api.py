@@ -15,12 +15,14 @@ from decimal import Decimal
 
 import app.routers.reports as reports_router
 from app.models import CloudAccount, CloudAccountCost, Notification, ReportGeneration
+from tests.account_helpers import add_credential
 
 
 def _make_account(db_session, user, provider="aws", external_account_id="111122223333"):
     account = CloudAccount(user_id=user.id, provider=provider, external_account_id=external_account_id)
     db_session.add(account)
     db_session.flush()
+    add_credential(db_session, account)
     return account
 
 

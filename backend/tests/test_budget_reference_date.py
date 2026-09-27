@@ -11,6 +11,7 @@ from decimal import Decimal
 
 from app.cost.budget import REASON_MISSING_DAYS, REASON_NO_COMPLETED_DAYS, compute_budget_status
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Team, TeamBudget
+from tests.account_helpers import add_credential
 
 D = dt.timedelta
 
@@ -19,6 +20,7 @@ def _setup(db, user, *, budget_start=dt.date(2026, 8, 1)):
     a = CloudAccount(user_id=user.id, provider="aws", external_account_id="1")
     db.add(a)
     db.flush()
+    add_credential(db, a)
     t = Team(user_id=user.id, name="팀", currency="USD")
     db.add(t)
     db.flush()

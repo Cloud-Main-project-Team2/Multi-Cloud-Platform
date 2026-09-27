@@ -10,6 +10,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.cost.notify import evaluate_budget_thresholds, evaluate_for_account
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Notification, Team, TeamBudget, TeamBudgetNotification
+from tests.account_helpers import add_credential
 
 TODAY = dt.date.today()
 MONTH_START = TODAY.replace(day=1)
@@ -19,6 +20,7 @@ def _setup(db, user, *, limit="300", usage="0", currency="USD"):
     account = CloudAccount(user_id=user.id, provider="aws", external_account_id="111122223333")
     db.add(account)
     db.flush()
+    add_credential(db, account)
     team = Team(user_id=user.id, name="운영팀", currency=currency)
     db.add(team)
     db.flush()
@@ -126,6 +128,7 @@ def test_evaluate_for_account_skips_unassigned_and_commits(db_session, make_user
     unassigned = CloudAccount(user_id=user.id, provider="aws", external_account_id="999")
     db_session.add(unassigned)
     db_session.flush()
+    add_credential(db_session, unassigned)
     assert evaluate_for_account(db_session, unassigned) == []
 
 

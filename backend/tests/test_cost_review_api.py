@@ -7,6 +7,7 @@ from decimal import Decimal
 
 from app.cost.coverage import utc_today
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, CostReviewItem, Notification
+from tests.account_helpers import add_credential
 
 D = dt.timedelta
 TODAY = utc_today()
@@ -17,6 +18,7 @@ def _account(db, user, ext="111122223333"):
     a = CloudAccount(user_id=user.id, provider="aws", external_account_id=ext, account_label="prod-aws")
     db.add(a)
     db.flush()
+    add_credential(db, a)
     return a
 
 
