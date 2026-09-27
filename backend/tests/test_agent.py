@@ -47,6 +47,7 @@ def _make_credential(db_session, account):
 def test_build_user_context_summarizes_resources_and_costs(db_session, make_user):
     user = make_user()
     account = _make_account(db_session, user.id, "aws")
+    _make_credential(db_session, account)
     service = _make_service(db_session, "aws", "ec2")
     now = dt.datetime.now(dt.timezone.utc)
     db_session.add(

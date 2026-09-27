@@ -19,6 +19,7 @@ from decimal import Decimal
 import httpx
 from sqlalchemy.orm import Session
 
+from app.account_scope import owned_active_account
 from app.logging_config import log_business_event
 
 from app.config import get_settings
@@ -77,7 +78,7 @@ def build_user_context(db: Session, user_id: int, cost_conditions: dict | None =
         .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
         .join(ServiceCatalog, Resource.service_catalog_id == ServiceCatalog.id)
         .filter(
-            CloudAccount.user_id == user_id,
+            owned_active_account(user_id),
             Resource.is_stale.is_(False),
             Resource.deleted_at.is_(None),
         )

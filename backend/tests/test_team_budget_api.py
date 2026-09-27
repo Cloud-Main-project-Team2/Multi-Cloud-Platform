@@ -12,6 +12,7 @@ import datetime as dt
 from decimal import Decimal
 
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Team, TeamBudget
+from tests.account_helpers import add_credential
 
 # 예산 판정(budget.py·routers/teams.py)의 '오늘'은 coverage.utc_today() = UTC 날짜다 — 비용 실측이 UTC 일 단위라
 # 예산도 같은 기준으로 맞춘 결정(2026-09-22). 이 파일의 TODAY도 UTC로 잡아야 서버와 같은 날을 가리킨다.
@@ -37,6 +38,7 @@ def _account(db, user, provider="aws", ext="111122223333", label=None):
     a = CloudAccount(user_id=user.id, provider=provider, external_account_id=ext, account_label=label)
     db.add(a)
     db.flush()
+    add_credential(db, a)
     return a
 
 

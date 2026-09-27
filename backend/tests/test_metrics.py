@@ -11,6 +11,7 @@ import datetime as dt
 
 import app.metrics as metrics
 from app.models import CloudAccount, Resource, ServiceCatalog
+from tests.account_helpers import add_credential
 
 
 def _make_service(db_session, provider, service_code):
@@ -24,6 +25,7 @@ def _make_account(db_session, user_id, provider, external_account_id):
     row = CloudAccount(user_id=user_id, provider=provider, external_account_id=external_account_id)
     db_session.add(row)
     db_session.flush()
+    add_credential(db_session, row)
     return row
 
 

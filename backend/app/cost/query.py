@@ -11,6 +11,7 @@ from decimal import Decimal
 from sqlalchemy import Date, cast, func, or_
 from sqlalchemy.orm import Session
 
+from app.account_scope import owned_active_account
 from app.config import get_settings
 from app.cost import is_cost_supported
 from app.cost.coverage import BASIS_COMPLETE_RANGE, day_basis_map, resolve_basis, utc_today
@@ -91,7 +92,7 @@ def resolve_team_scope(db: Session, user_id: int, team_ids: list[str], account_i
         conds.append(CloudAccount.team_id.in_(ids))
     if include_unassigned:
         conds.append(CloudAccount.team_id.is_(None))
-    query = db.query(CloudAccount.id).filter(CloudAccount.user_id == user_id, or_(*conds))
+    query = db.query(CloudAccount.id).filter(owned_active_account(user_id), or_(*conds))
     if account_ids:
         query = query.filter(CloudAccount.id.in_(account_ids))
     scoped = [row[0] for row in query.all()]
@@ -127,7 +128,7 @@ def validate_period(period_start: dt.date, period_end: dt.date) -> None:
 
 
 def owned_accounts(db: Session, user_id: int, q: CostQuery) -> list[CloudAccount]:
-    query = db.query(CloudAccount).filter(CloudAccount.user_id == user_id)
+    query = db.query(CloudAccount).filter(owned_active_account(user_id))
     if q.providers:
         query = query.filter(CloudAccount.provider.in_(q.providers))
     if q.cloud_account_ids:
@@ -165,7 +166,7 @@ def sum_by_currency(
         )
         .join(CloudAccount, CloudAccount.id == CloudAccountCost.cloud_account_id)
         .filter(
-            CloudAccount.user_id == user_id,
+            owned_active_account(user_id),
             CloudAccountCost.period_start >= q.period_start,
             CloudAccountCost.period_start < period_end,
         )
@@ -188,7 +189,7 @@ def list_price_monthly(db: Session, user_id: int, q: CostQuery) -> tuple[list[tu
     query = (
         db.query(Resource)
         .join(CloudAccount, CloudAccount.id == Resource.cloud_account_id)
-        .filter(CloudAccount.user_id == user_id, Resource.deleted_at.is_(None))
+        .filter(owned_active_account(user_id), Resource.deleted_at.is_(None))
     )
     if q.providers:
         query = query.filter(CloudAccount.provider.in_(q.providers))
@@ -256,7 +257,7 @@ def sum_by_account_currency(
         db.query(CloudAccountCost.cloud_account_id, CloudAccountCost.currency, func.sum(CloudAccountCost.amount))
         .join(CloudAccount, CloudAccount.id == CloudAccountCost.cloud_account_id)
         .filter(
-            CloudAccount.user_id == user_id,
+            owned_active_account(user_id),
             CloudAccountCost.period_start >= q.period_start,
             CloudAccountCost.period_start < q.period_end,
         )
@@ -278,7 +279,7 @@ def resource_counts_by_account(db: Session, user_id: int, q: CostQuery) -> dict[
     query = (
         db.query(Resource.cloud_account_id, func.count(Resource.id), func.max(Resource.last_synced_at))
         .join(CloudAccount, CloudAccount.id == Resource.cloud_account_id)
-        .filter(CloudAccount.user_id == user_id, Resource.deleted_at.is_(None))
+        .filter(owned_active_account(user_id), Resource.deleted_at.is_(None))
     )
     if q.providers:
         query = query.filter(CloudAccount.provider.in_(q.providers))
@@ -544,7 +545,7 @@ def breakdown(
         )
         .join(CloudAccount, CloudAccount.id == CloudAccountCost.cloud_account_id)
         .filter(
-            CloudAccount.user_id == user_id,
+            owned_active_account(user_id),
             CloudAccountCost.period_start >= q.period_start,
             CloudAccountCost.period_start < q.period_end,
             CloudAccountCost.currency == chosen_currency,
@@ -697,7 +698,7 @@ def changes(
             db.query(col, func.sum(CloudAccountCost.amount))
             .join(CloudAccount, CloudAccount.id == CloudAccountCost.cloud_account_id)
             .filter(
-                CloudAccount.user_id == user_id,
+                owned_active_account(user_id),
                 CloudAccountCost.period_start >= period_start,
                 CloudAccountCost.period_start < period_end,
                 CloudAccountCost.charge_category == "usage",
@@ -792,7 +793,7 @@ def trend(db: Session, user_id: int, q: CostQuery, granularity: str, group_by: s
         db.query(group_col, bucket_col, func.sum(CloudAccountCost.amount), func.bool_or(CloudAccountCost.is_estimated))
         .join(CloudAccount, CloudAccount.id == CloudAccountCost.cloud_account_id)
         .filter(
-            CloudAccount.user_id == user_id,
+            owned_active_account(user_id),
             CloudAccountCost.period_start >= q.period_start,
             CloudAccountCost.period_start < q.period_end,
             CloudAccountCost.currency == chosen_currency,
@@ -913,7 +914,7 @@ def summary(db: Session, user_id: int, q: CostQuery) -> dict:
     for resource in (
         db.query(Resource)
         .join(CloudAccount, CloudAccount.id == Resource.cloud_account_id)
-        .filter(CloudAccount.user_id == user_id, Resource.deleted_at.is_(None))
+        .filter(owned_active_account(user_id), Resource.deleted_at.is_(None))
         .all()
     ):
         if resource.estimated_monthly_cost is not None:

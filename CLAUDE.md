@@ -89,6 +89,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 비용 5단계 — 카테고리 분류 정확성 + 검토 이력·가격 비교 진입점·조건 링크·보고서 연결 | `seunghyun/cost-extras` | 이승현 | merged (#130) |
 | 비용 6단계 — 계약 문서 반영 + 인수인계(`docs/Cost_Round_Handover_2026-09-23.md`) | `seunghyun/cost-docs` | 이승현 | in progress |
 | 비용 7단계 — Azure 실측 수집기(모의 검증) · 수집 근거(`coverage_basis`) · 수집 활성화 게이트 · 자격증명 검증 진단 | `seunghyun/cost-ingest-gating` | 이승현 | PR #136 (리뷰 대기) |
+| 키를 모두 지운 클라우드 계정 조회 제외 — 비용·인벤토리·대시보드·팀·검토 큐·자동 수집 | `solcho/be-orphan-account-filter` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -690,6 +691,23 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
     동시 요청에 뚫렸다(프론트 스모크가 초기화를 두 번 해 실제 재현). `team_budgets`에 부분 UNIQUE
     `(team_id, start_date) WHERE end_date IS NULL`(`b7c2d9e4f1a3`) + 예산 생성·수정 라우터가 `pg_advisory_xact_lock`으로
     팀별 직렬화. IntegrityError는 같은 409로 통일. 예산 쪽 '오늘'도 `coverage.utc_today()`로 통일(급증과 같은 경계).
+
+- **자격 증명을 모두 지운 계정은 조회에서 뺀다(2026-09-27, `solcho/be-orphan-account-filter`)**: 마이페이지
+  삭제는 `DELETE /credentials/{id}`라 credential 행만 지우고 `cloud_accounts` 행은 남는다(계정 삭제 API는
+  501 보류). 그래서 마지막 키를 지운 계정이 비용·인벤토리·대시보드·팀 화면에 계속 남았다.
+  - **지우지 않고 숨긴다**: `app/account_scope.py`의 `owned_active_account(user_id)`(= 소유 + credential 1개
+    이상)를 `CloudAccount.user_id == user_id` 자리에 쓴다. 리소스·비용 이력은 남고, 같은
+    `external_account_id`로 재등록하면(`POST /credentials/{provider}`가 계정 행을 재사용) 그대로 다시 보인다.
+    보존 정책(삭제 시 스냅샷)을 이 변경으로 정하지 않는다.
+  - **검증 여부는 보지 않는다** — 검증 실패한 키도 "등록된" 키다. **등록 경로에는 쓰지 않는다**(쓰면 재등록
+    때 계정이 하나 더 생긴다).
+  - 적용: `/cloud-accounts` 목록, `/resources`·상세·액션, `/costs/*`·`cost/query.py` 전부, 비용 수집 요청,
+    팀 계정·미지정 목록·예산 계정, 검토 큐 목록·생성, 대시보드 지표(`metrics.py`), AI 문맥(`agent.py`),
+    자동 수집 스케줄러. 숨겨진 계정 id를 직접 지정하면 404 `CLOUD_ACCOUNT_NOT_FOUND`.
+  - 팀 통화 변경 가드(`teams.py`의 "수집된 비용 있음" 검사)는 숨겨진 계정의 비용도 계속 센다 — 재등록하면
+    되살아나는 이력이라 보수적으로 둔다.
+  - 테스트 시드는 계정만 심으면 이제 조회에서 빠진다 — `tests/account_helpers.py::add_credential()`로
+    "등록된 계정" 모양을 맞춘다.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 

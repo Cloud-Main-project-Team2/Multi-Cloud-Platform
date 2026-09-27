@@ -100,10 +100,12 @@ def test_list_resources_only_returns_owner_resources(client, make_user, auth_hea
 def test_list_resources_filters_by_provider(client, make_user, auth_header, db_session):
     user = make_user()
     aws_account = _make_account(db_session, user, "aws", "111122223333")
+    _make_credential(db_session, aws_account)
     aws_service = _make_service(db_session, "aws", "ec2")
     _make_resource(db_session, aws_account, aws_service, "i-aws-1")
 
     gcp_account = _make_account(db_session, user, "gcp", "proj-1")
+    _make_credential(db_session, gcp_account)
     gcp_service = _make_service(db_session, "gcp", "compute_engine")
     _make_resource(db_session, gcp_account, gcp_service, "gcp-vm-1")
     db_session.commit()
@@ -119,6 +121,7 @@ def test_list_resources_filters_by_provider(client, make_user, auth_header, db_s
 def test_list_resources_search_by_resource_field(client, make_user, auth_header, db_session):
     user = make_user()
     account = _make_account(db_session, user, "aws", "111122223333")
+    _make_credential(db_session, account)
     service = _make_service(db_session, "aws", "ec2")
     _make_resource(db_session, account, service, "mcp-a1b2-vm", original_resource_type="EC2 Instance")
     _make_resource(db_session, account, service, "mcp-a1b2-disk", original_resource_type="EBS Volume")
@@ -137,6 +140,7 @@ def test_list_resources_search_by_resource_field(client, make_user, auth_header,
 def test_list_resources_excludes_stale_and_deleted_by_default(client, make_user, auth_header, db_session):
     user = make_user()
     account = _make_account(db_session, user, "aws", "111122223333")
+    _make_credential(db_session, account)
     service = _make_service(db_session, "aws", "ec2")
     _make_resource(db_session, account, service, "fresh")
     _make_resource(db_session, account, service, "stale-one", is_stale=True)
@@ -157,6 +161,7 @@ def test_cost_summary_present_when_cost_data_exists(client, make_user, auth_head
 
     user = make_user()
     account = _make_account(db_session, user, "aws", "111122223333")
+    _make_credential(db_session, account)
     service = _make_service(db_session, "aws", "ec2")
     _make_resource(
         db_session, account, service, "i-cost-1",
@@ -177,11 +182,13 @@ def test_cost_summary_present_when_cost_data_exists(client, make_user, auth_head
 def test_resources_summary_counts(client, make_user, auth_header, db_session):
     user = make_user()
     aws_account = _make_account(db_session, user, "aws", "111122223333")
+    _make_credential(db_session, aws_account)
     aws_service = _make_service(db_session, "aws", "ec2")
     _make_resource(db_session, aws_account, aws_service, "a1")
     _make_resource(db_session, aws_account, aws_service, "a2", is_stale=True)
 
     azure_account = _make_account(db_session, user, "azure", "sub-1")
+    _make_credential(db_session, azure_account)
     azure_service = _make_service(db_session, "azure", "vm")
     _make_resource(db_session, azure_account, azure_service, "az1")
     db_session.commit()

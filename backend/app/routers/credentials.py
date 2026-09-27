@@ -15,6 +15,7 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Query, Request, Response
 from sqlalchemy.orm import Session
 
+from app.account_scope import owned_active_account
 from app.audit import record_audit_event
 from app.config import get_settings
 from app.db import get_db
@@ -222,7 +223,7 @@ def list_cloud_accounts(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> CloudAccountListResponse:
-    query = db.query(CloudAccount).filter(CloudAccount.user_id == current_user.id)
+    query = db.query(CloudAccount).filter(owned_active_account(current_user.id))
 
     if provider:
         invalid = sorted(set(provider) - set(PROVIDERS))

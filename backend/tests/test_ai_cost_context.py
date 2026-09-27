@@ -9,6 +9,7 @@ import app.routers.agent as agent_router
 from app.agent import build_user_context
 from app.cost.ai_context import build_cost_context
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Team, TeamBudget
+from tests.account_helpers import add_credential
 
 D = dt.timedelta
 
@@ -17,6 +18,7 @@ def _account(db, user, ext="1"):
     a = CloudAccount(user_id=user.id, provider="aws", external_account_id=ext, account_label="prod-aws")
     db.add(a)
     db.flush()
+    add_credential(db, a)
     return a
 
 

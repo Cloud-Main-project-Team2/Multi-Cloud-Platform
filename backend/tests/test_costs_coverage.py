@@ -17,6 +17,7 @@ import pytest
 
 from app.cost import query as q_mod
 from app.models import CloudAccount, CloudAccountCost, CostIngestionRun, Credential
+from tests.account_helpers import add_credential
 from app.security.credential_crypto import encrypt_credential_json
 
 TODAY = dt.date(2026, 9, 21)   # UTC "오늘" — 9월은 30일, 이달 1일~어제 = 9/1~9/20(20일)
@@ -53,6 +54,8 @@ def _account(db, user, provider="aws", ext="111122223333", label=None):
         db.add(Credential(cloud_account_id=a.id, name="cred", encrypted_payload=ciphertext, encryption_nonce=nonce,
                           encryption_key_version="v1", verified=True, permission_scope={"cost_read": True}))
         db.flush()
+    else:
+        add_credential(db, a)
     return a
 
 
