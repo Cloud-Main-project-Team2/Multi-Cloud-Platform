@@ -20,6 +20,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import TYPE_CHECKING
 
+from app.account_scope import owned_active_account
 from app.models import CloudAccount, Credential, Resource, ServiceCatalog
 from app.providers.session import CredentialResolutionError, resolve_secret_payload
 from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json
@@ -88,7 +89,7 @@ def get_unused_resources(db: "Session", user: "User", limit: int = 10) -> list[d
         db.query(Resource, CloudAccount)
         .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
         .filter(
-            CloudAccount.user_id == user.id,
+            owned_active_account(user.id),
             Resource.is_stale.is_(False),
             Resource.deleted_at.is_(None),
             CloudAccount.provider == "aws",
@@ -143,7 +144,7 @@ def _compute_items(db: "Session", user: "User") -> list[dict]:
         .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
         .join(ServiceCatalog, Resource.service_catalog_id == ServiceCatalog.id)
         .filter(
-            CloudAccount.user_id == user.id,
+            owned_active_account(user.id),
             Resource.is_stale.is_(False),
             Resource.deleted_at.is_(None),
             ServiceCatalog.service_code.in_(_COMPUTE_SERVICE_CODES.keys()),

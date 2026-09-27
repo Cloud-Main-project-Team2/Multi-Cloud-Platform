@@ -13,6 +13,7 @@ import os
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
 
+from app.account_scope import has_credential
 from app.cost.base import NOT_STARTED_ERROR_CODES
 from app.cost.coverage import resolve_basis
 from app.cost.ingest import AccountLockedError, finalize_interrupted_run, replace_cost_rows
@@ -136,7 +137,7 @@ def run_daily_ingestion() -> None:
             period_start, period_end = _auto_period(dt.date.today())
             accounts = (
                 db.query(CloudAccount)
-                .filter(CloudAccount.provider.in_(list(COST_ADAPTERS)))
+                .filter(CloudAccount.provider.in_(list(COST_ADAPTERS)), has_credential())
                 .all()
             )
             for account in accounts:

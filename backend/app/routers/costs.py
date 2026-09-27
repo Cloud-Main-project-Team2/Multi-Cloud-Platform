@@ -14,6 +14,7 @@ from typing import Any
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.account_scope import owned_active_account
 from app.cost import COST_ADAPTERS, cost_source_for, is_cost_supported
 from app.cost.coverage import resolve_basis
 from app.cost.gating import manual_ingest_denial
@@ -341,7 +342,7 @@ def create_cost_ingestion_runs(
         )
 
     if payload.cloud_account_ids is None:
-        accounts = db.query(CloudAccount).filter(CloudAccount.user_id == current_user.id).all()
+        accounts = db.query(CloudAccount).filter(owned_active_account(current_user.id)).all()
     else:
         if len(payload.cloud_account_ids) > _MAX_ACCOUNT_IDS:
             raise validation_error(
@@ -351,7 +352,7 @@ def create_cost_ingestion_runs(
         ids = _parse_int_list(payload.cloud_account_ids, "cloud_account_ids")
         accounts = (
             db.query(CloudAccount)
-            .filter(CloudAccount.id.in_(ids), CloudAccount.user_id == current_user.id)
+            .filter(CloudAccount.id.in_(ids), owned_active_account(current_user.id))
             .all()
         )
         if len(accounts) != len(set(ids)):

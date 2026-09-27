@@ -12,6 +12,7 @@ import sqlalchemy as sa
 from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
+from app.account_scope import owned_active_account
 from app.audit import record_audit_event
 from app.db import get_db
 from app.deps import get_current_user, require_confirmation
@@ -109,7 +110,7 @@ def _base_query(db: Session, user_id: int):
         db.query(Resource, CloudAccount, ServiceCatalog)
         .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
         .join(ServiceCatalog, Resource.service_catalog_id == ServiceCatalog.id)
-        .filter(CloudAccount.user_id == user_id)
+        .filter(owned_active_account(user_id))
     )
 
 
@@ -302,7 +303,7 @@ def get_resource(
         db.query(Resource, CloudAccount, ServiceCatalog)
         .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
         .join(ServiceCatalog, Resource.service_catalog_id == ServiceCatalog.id)
-        .filter(Resource.id == rid, CloudAccount.user_id == current_user.id)
+        .filter(Resource.id == rid, owned_active_account(current_user.id))
         .one_or_none()
     )
     if row is None:
@@ -331,7 +332,7 @@ def issue_resource_cli_access(
         db.query(Resource, CloudAccount, ServiceCatalog)
         .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
         .join(ServiceCatalog, Resource.service_catalog_id == ServiceCatalog.id)
-        .filter(Resource.id == rid, CloudAccount.user_id == current_user.id)
+        .filter(Resource.id == rid, owned_active_account(current_user.id))
         .one_or_none()
     )
     if row is None:
@@ -445,7 +446,7 @@ def _process_action_item(
         db.query(Resource, CloudAccount, ServiceCatalog)
         .join(CloudAccount, Resource.cloud_account_id == CloudAccount.id)
         .join(ServiceCatalog, Resource.service_catalog_id == ServiceCatalog.id)
-        .filter(Resource.id == resource_id, CloudAccount.user_id == current_user.id)
+        .filter(Resource.id == resource_id, owned_active_account(current_user.id))
         .one_or_none()
     )
     if row is None:

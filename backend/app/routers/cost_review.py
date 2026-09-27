@@ -14,6 +14,7 @@ import datetime as dt
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
 
+from app.account_scope import owned_active_account
 from app.cost.anomaly import SOURCE_TYPE, detect_anomalies, evaluate_account, parse_source_key
 from app.cost.coverage import eligible_end_for_today, utc_today
 from app.cost.query import CostQuery, owned_accounts, parse_period, resolve_team_scope
@@ -144,20 +145,23 @@ def list_review_items(
 
     # CSP·계정 필터는 source_key의 계정 id로 건다(cost_anomaly 키 형식 고정).
     wanted_ids = set(_parse_int_list(cloud_account_id, "cloud_account_id")) if cloud_account_id else None
-    provider_of: dict[int, str] = {}
-    if provider:
-        provider_of = {a.id: a.provider for a in db.query(CloudAccount).filter(CloudAccount.user_id == current_user.id).all()}
+    # 자격 증명을 모두 지운 계정의 항목은 숨긴다(app/account_scope.py) — 행은 남아 재등록 시 다시 보인다.
+    provider_of = {a.id: a.provider for a in db.query(CloudAccount).filter(owned_active_account(current_user.id)).all()}
     items = []
     for r in rows:
-        if wanted_ids is not None or provider:
-            try:
-                acc_id, _, _ = parse_source_key(r.source_key)
-            except ValueError:
+        try:
+            acc_id, _, _ = parse_source_key(r.source_key)
+        except ValueError:
+            if wanted_ids is not None or provider:
                 continue
-            if wanted_ids is not None and acc_id not in wanted_ids:
-                continue
-            if provider and provider_of.get(acc_id) not in provider:
-                continue
+            items.append(_serialize_item(r))
+            continue
+        if acc_id not in provider_of:
+            continue
+        if wanted_ids is not None and acc_id not in wanted_ids:
+            continue
+        if provider and provider_of[acc_id] not in provider:
+            continue
         items.append(_serialize_item(r))
     return ReviewItemListResponse(data=ReviewItemListData(items=items, total=len(items)))
 
@@ -178,7 +182,7 @@ def create_review_item(
         account_id, service, day = parse_source_key(payload.source_key)
     except ValueError as exc:
         raise validation_error("source_key는 {cloud_account_id}:{service}:{YYYY-MM-DD} 형식이어야 합니다.", details=[{"field": "source_key", "reason": "invalid"}]) from exc
-    account = db.query(CloudAccount).filter(CloudAccount.id == account_id, CloudAccount.user_id == current_user.id).first()
+    account = db.query(CloudAccount).filter(CloudAccount.id == account_id, owned_active_account(current_user.id)).first()
     if account is None:
         raise ApiError(404, "CLOUD_ACCOUNT_NOT_FOUND", "클라우드 계정을 찾을 수 없습니다.")
     if day >= eligible_end_for_today():

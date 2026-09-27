@@ -26,6 +26,7 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
+from app.account_scope import has_credential
 from app.cost import is_cost_supported
 from app.cost.coverage import analysis_ready_days, missing_days as coverage_missing_days, utc_today
 from app.cost.query import accounts_currency_map, money, staleness_threshold_hours
@@ -263,7 +264,7 @@ def compute_budget_status(
     notified = {row.threshold: row for row in notified_rows}
 
     accounts = (
-        db.query(CloudAccount).filter(CloudAccount.team_id == team.id).order_by(CloudAccount.id).all()
+        db.query(CloudAccount).filter(CloudAccount.team_id == team.id, has_credential()).order_by(CloudAccount.id).all()
     )
     if not accounts:
         out["reason_code"] = REASON_NO_ACCOUNTS

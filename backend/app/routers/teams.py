@@ -21,6 +21,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from app.account_scope import has_credential, owned_active_account
 from app.cost.budget import (
     STATE_UPCOMING,
     budget_period,
@@ -118,7 +119,7 @@ def _get_owned_budget(db: Session, user: User, budget_id: str) -> tuple[TeamBudg
 
 
 def _team_accounts(db: Session, team_id: int) -> list[CloudAccount]:
-    return db.query(CloudAccount).filter(CloudAccount.team_id == team_id).order_by(CloudAccount.id).all()
+    return db.query(CloudAccount).filter(CloudAccount.team_id == team_id, has_credential()).order_by(CloudAccount.id).all()
 
 
 def _account_out(account: CloudAccount, currency: str | None, team_currency: str | None) -> TeamAccountOut:
@@ -199,7 +200,7 @@ def list_teams(
 
     unassigned_accounts = (
         db.query(CloudAccount)
-        .filter(CloudAccount.user_id == current_user.id, CloudAccount.team_id.is_(None))
+        .filter(owned_active_account(current_user.id), CloudAccount.team_id.is_(None))
         .order_by(CloudAccount.id)
         .all()
     )
@@ -292,7 +293,7 @@ def put_team_accounts(
     if wanted_ids:
         accounts = (
             db.query(CloudAccount)
-            .filter(CloudAccount.user_id == current_user.id, CloudAccount.id.in_(wanted_ids))
+            .filter(owned_active_account(current_user.id), CloudAccount.id.in_(wanted_ids))
             .all()
         )
         found = {a.id for a in accounts}
