@@ -90,7 +90,8 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 비용 6단계 — 계약 문서 반영 + 인수인계(`docs/Cost_Round_Handover_2026-09-23.md`) | `seunghyun/cost-docs` | 이승현 | in progress |
 | 비용 7단계 — Azure 실측 수집기(모의 검증) · 수집 근거(`coverage_basis`) · 수집 활성화 게이트 · 자격증명 검증 진단 | `seunghyun/cost-ingest-gating` | 이승현 | PR #136 (리뷰 대기) |
 | 키를 모두 지운 클라우드 계정 조회 제외 — 비용·인벤토리·대시보드·팀·검토 큐·자동 수집 | `solcho/be-orphan-account-filter` | 조은솔 | merged (#138) |
-| 비용 검증 보고서(2026-09-28) 후속 — 대시보드·인트로 옛 문구, DOM 하네스 상대 경로, 인쇄·좁은 창 CSS 3건 | `solcho/fe-cost-verification-fixes` | 조은솔 | in progress |
+| 비용 검증 보고서(2026-09-28) 후속 — 대시보드·인트로 옛 문구, DOM 하네스 상대 경로, 인쇄·좁은 창 CSS 3건 | `solcho/fe-cost-verification-fixes` | 조은솔 | merged (#141) |
+| 수집 꺼진 계정이 월말 전망·기간 비교를 막던 회귀 수정 + 대시보드 전망 보류 사유 표시 | `solcho/be-cost-forecast-gating` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -709,6 +710,20 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
     되살아나는 이력이라 보수적으로 둔다.
   - 테스트 시드는 계정만 심으면 이제 조회에서 빠진다 — `tests/account_helpers.py::add_credential()`로
     "등록된 계정" 모양을 맞춘다.
+
+- **수집이 꺼진 계정은 전망·기간 비교 판정에서 뺀다(2026-09-28, `solcho/be-cost-forecast-gating`)**:
+  #136·#137로 Azure·GCP 어댑터가 등록되자 두 CSP 계정이 "실측 지원"으로 판정 대상에 들어왔는데, 수집
+  게이트 기본값이 꺼짐이라 한 번도 수집되지 않았다. 그 결측이 "하나라도 빠지면 보류" 규칙에 걸려 AWS가
+  이달을 빠짐없이 수집했어도 **월말 전망이 영원히 `insufficient_coverage`**였다(실DB 사용자 3명 모두 재현,
+  대시보드는 사유 없이 "추정치"로 내려감).
+  - `query.py::split_ingest_disabled()`: 수동·자동 수집이 **모두** 막혀 있고(`gating.ingest_enabled`) 판정
+    창에 **관측된 날이 하나도 없는** 계정만 뺀다. 관측이 일부라도 있으면(켰다가 끈 경우) 빼지 않는다 —
+    분자에 그 금액이 남은 채 결측 검사만 사라지면 전망이 낮게 나온다. "결측이 있으면 보류" 정책 자체는 그대로다.
+  - 뺀 계정은 `forecast_status.ingest_disabled_accounts`·`comparability.ingest_disabled_accounts`로 보고하고
+    비용 화면(CF-003·CF-024)과 대시보드가 "이 값에는 그 계정 비용이 없다"를 적는다. 대시보드는 이제
+    `forecast_status`를 읽어 추정치로 내려간 사유도 보여준다.
+  - **예산 소진율(`budget.py`)은 이번에 바꾸지 않았다** — 팀에 수집 꺼진 계정이 섞이면 여전히 `MISSING_DAYS`로
+    보류된다. 팀 단위 판정 정책(승현)이라 따로 정한다. 급증은 계정별 판정이라 다른 계정을 막지 않는다.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 

@@ -1239,7 +1239,15 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
     \| `currency_unknown`. 화면은 모르는 값이 와도 "이 조건에서는 전망을 내지 않습니다"로 표시한다.
   - `based_through` 근거 마지막 날 · `required_accounts` 전망 대상 계정 수 ·
     `incomplete_accounts[] {cloud_account_id, missing_count}` 이달 수집이 빠진 계정 ·
-    `unverified_accounts[] {cloud_account_id}` 결측은 없지만 **근거가 약한** 계정(2026-09-23).
+    `unverified_accounts[] {cloud_account_id}` 결측은 없지만 **근거가 약한** 계정(2026-09-23) ·
+    `ingest_disabled_accounts[] {cloud_account_id, reason}` 전망 대상에서 **뺀** 계정(2026-09-28, 아래).
+  - **수집이 꺼진 계정은 판정에서 뺀다(2026-09-28)**: 수동·자동 수집이 모두 막혀 있고(§11-9 게이트,
+    `reason` = `INGEST_DISABLED` \| `ACCOUNT_NOT_ENABLED`) **이달 관측된 날이 하나도 없는** 계정은
+    `required_accounts`·결측 검사에서 빠진다. 그 결측은 "다시 수집"으로 메울 수 없는데, 그대로 두면
+    Azure·GCP 계정 하나 때문에 AWS 전망까지 영원히 `insufficient_coverage`가 됐다. 관측이 일부라도 있으면
+    (켰다가 끈 경우) 빼지 않는다 — 분자에 그 금액이 남은 채 결측 검사만 사라지면 전망이 낮게 나온다.
+    수동 수집이 허용된 계정도 빼지 않는다(사람이 메울 수 있다). 뺀 계정의 비용은 전망에 없으므로
+    화면은 이 목록을 **반드시** 함께 보여준다. 전부 빠지면 `state="no_accounts"`.
   - `coverage_unverified`(2026-09-23 추가) = 결측은 없지만 `analysis_ready`가 아닌 계정이 있어 계산하지
     않음. **우선순위는 `insufficient_coverage` > `coverage_unverified`** — 사람이 고칠 수 있는 결측을
     먼저 알린다.
@@ -1372,6 +1380,8 @@ Base path·성공/오류 envelope·인증·필드명 규칙(§2)은 전부 그�
     `NO_ACCOUNTS` · `CURRENT_COVERAGE`(조회 기간 결측) · `PREVIOUS_COVERAGE`(이전 기간 결측) ·
     `COVERAGE_UNVERIFIED`(결측은 없지만 도착 범위 근거 없음, 2026-09-23) ·
     `NO_CURRENCY`(비교할 통화 없음). 화면은 모르는 값이 와도 일반 문구로 표시한다.
+  - `ingest_disabled_accounts[] {cloud_account_id, reason}`(2026-09-28) — 수집이 꺼져 있고 **두 기간 모두**
+    관측이 없어 비교 판정에서 뺀 계정. 규칙은 `forecast_status`와 같다.
   - `charge_category`는 `usage` 고정이다 — 비교는 요금 분류 필터를 따르지 않는다.
 - 서비스가 지정되지 않은 금액은 키 `__unallocated__`(라벨 `미분류`)로 내려간다. 합계에 포함되며,
   상위 N을 넘겨 묶인 `기타`와는 다른 것이다.
@@ -1472,7 +1482,9 @@ failed | cancelled`(§16.3과 동일 6종). `api_calls`를 반드시 기록한�
   종결한다. 이것은 **CSP 호출이 실패한 것이 아니라 호출을 하지 않은 것**이며, `PROVIDER_API_ERROR`·
   `CLOUD_PERMISSION_DENIED`와 구분된다.
 - **수집을 꺼도 기존 데이터는 그대로다**: 저장된 `cloud_account_costs`, 마지막 성공 시각(`as_of`),
-  `covered_through`, 조회 6종의 집계는 이 설정을 보지 않는다. 막는 것은 **새 CSP 호출**뿐이다.
+  `covered_through`, 조회 6종의 **금액 집계**는 이 설정을 보지 않는다. 막는 것은 **새 CSP 호출**뿐이다.
+  예외는 판정 대상 선정 하나다(2026-09-28): 수집이 꺼져 있고 판정 창에 관측이 없는 계정은 월말 전망
+  (`forecast_status`)·기간 비교(`comparability`)의 결측 검사에서 빠지고 `ingest_disabled_accounts`로 보고된다.
 - 설정은 프로세스 시작 시 읽혀 캐시된다. 적용 방법은 실행 형태에 따라 다르다 — 직접 실행한 앱은
   **프로세스 재시작**, docker compose `environment`로 주입한 값은 **컨테이너 재생성**이 필요하다
   (`docker compose restart`는 기존 컨테이너를 그대로 재시작해 environment가 갱신되지 않는다).

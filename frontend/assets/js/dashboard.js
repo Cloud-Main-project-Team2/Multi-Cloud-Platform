@@ -181,6 +181,12 @@
     // 없거나 계산 조건이 안 맞으면 빈 배열이라 정가(list price) 추정으로 내려간다.
     var forecastRows = (costSummary && costSummary.kpis && costSummary.kpis.forecast_month_end) || [];
     var estRows = (costSummary && costSummary.kpis && costSummary.kpis.list_price_monthly) || [];
+    // 전망을 왜 못 냈는지(forecast_status) — 이걸 읽지 않으면 사유 없이 "추정치"로만 바뀌어, 수집 누락과
+    // "원래 데이터 없음"이 구분되지 않는다. 문구는 비용 화면 CF-003과 같은 표(cost-state.js)를 쓴다.
+    var forecastStatus = (costSummary && costSummary.kpis && costSummary.kpis.forecast_status) || null;
+    var disabledAccts = (forecastStatus && forecastStatus.ingest_disabled_accounts) || [];
+    var disabledNote = disabledAccts.length
+      ? " 수집이 꺼진 계정 " + disabledAccts.length + "개는 전망에서 제외(그 계정 비용은 포함되지 않음)." : "";
 
     function setBadge(text, cls) { if (badgeEl) { badgeEl.textContent = text; badgeEl.className = "rounded border px-1.5 text-[11px] " + cls; } }
 
@@ -194,14 +200,18 @@
       setBadge("월말 전망", "border-primary text-primary");
       if (costNoteEl) {
         costNoteEl.textContent = "이번 달 말 전망(CSP 실측 기준) — 어제(" + frow.based_through + ")까지의 실측을 남은 일수 비율로 늘린 값 · 저장하지 않음." +
-          (forecastRows.length > 1 ? " 통화가 섞여 있어 " + frow.currency + " 기준만 표시합니다." : "");
+          (forecastRows.length > 1 ? " 통화가 섞여 있어 " + frow.currency + " 기준만 표시합니다." : "") + disabledNote;
       }
     } else if (estRows.length) {
       var erow = estRows[0];
       if (costEl) costEl.textContent = F.money(erow.amount, erow.currency) + "/mo";
       setBadge("추정치", "border-yellow text-yellow");
       if (costNoteEl) {
-        costNoteEl.textContent = "월말 전망을 낼 실측 데이터가 아직 없어 정가(list price) 기준 추정으로 대신 표시합니다." +
+        var why = forecastStatus && forecastStatus.state !== "computed" && window.MCPCostState
+          ? window.MCPCostState.forecastText(forecastStatus.state) : "월말 전망을 낼 실측 데이터가 아직 없습니다.";
+        var holdCount = forecastStatus && forecastStatus.state === "insufficient_coverage" ? (forecastStatus.incomplete_accounts || []).length : 0;
+        costNoteEl.textContent = why + (holdCount ? " (수집이 빠진 계정 " + holdCount + "개 — 비용 관리 화면에서 확인)" : "") +
+          " 그래서 정가(list price) 기준 추정으로 대신 표시합니다." + disabledNote +
           (erow.missing_count > 0 ? " 사용량 기반 리소스 " + erow.missing_count + "개는 제외됨." : "");
       }
     } else {

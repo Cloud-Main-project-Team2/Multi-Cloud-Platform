@@ -368,6 +368,36 @@ def evaluable_accounts(accounts: list[CloudAccount], filter_excluded: dict[int, 
     return [a for a in accounts if is_cost_supported(a.provider) and not filter_excluded.get(a.id)]
 
 
+def split_ingest_disabled(
+    accounts: list[CloudAccount], coverage_by_account: dict[int, dict], *others: dict[int, dict]
+) -> tuple[list[CloudAccount], list[dict]]:
+    """판정(전망·기간 비교) 대상에서 **수집이 꺼져 있고 판정 창에 관측된 날이 하나도 없는** 계정을 뺀다.
+    반환: (남은 계정, [{"cloud_account_id", "reason"}]).
+
+    #136·#137에서 Azure·GCP 어댑터가 등록되면서 두 CSP 계정이 "실측 지원"이 돼 판정 대상에 들어왔는데,
+    수집 활성화 게이트(`app/cost/gating.py`) 기본값이 꺼짐이라 **한 번도 수집되지 않는다**. 그 결측이
+    "하나라도 빠지면 보류" 규칙에 걸려 멀쩡한 AWS 전망·비교까지 막았다(2026-09-28 발견).
+
+    - **관측된 날이 없을 때만** 뺀다: 그 계정의 금액은 원래 합계에 0으로도 들어가 있지 않으므로 빼도 값이
+      낮아지지 않는다. 일부라도 관측된 계정(수집을 켰다가 끈 경우)은 그대로 둔다 — 빼면 분자에는 그 계정
+      금액이 남고 결측 검사만 사라져 전망이 실제보다 낮게 나온다(보수적으로 계속 보류).
+    - 수동 또는 자동 중 한 경로라도 허용된 계정은 빼지 않는다(`ingest_enabled`) — 사람이 수집으로 메울 수 있다.
+    - 뺀 계정은 반드시 응답에 싣는다 — "이 값에는 그 계정이 없다"를 화면이 말해야 한다.
+    `others`: 같은 계정의 다른 창(예: 비교의 이전 기간) coverage — 모든 창에서 관측이 없어야 뺀다."""
+    from app.cost.gating import ingest_enabled, manual_ingest_denial
+
+    kept: list[CloudAccount] = []
+    disabled: list[dict] = []
+    for a in accounts:
+        observed = any((cov.get(a.id) or {}).get("covered", 0) for cov in (coverage_by_account, *others))
+        if not observed and not ingest_enabled(a.provider, a.id):
+            # 수동이 허용이면 ingest_enabled가 True라 여기 오지 않는다 — 거부 사유는 늘 둘 중 하나다.
+            disabled.append({"cloud_account_id": str(a.id), "reason": manual_ingest_denial(a.provider, a.id)})
+        else:
+            kept.append(a)
+    return kept, disabled
+
+
 def period_coverage(
     db: Session, accounts: list[CloudAccount], start: dt.date, end: dt.date, *, today: dt.date | None = None
 ) -> tuple[dict[int, dict], list[str], int]:
@@ -431,14 +461,18 @@ def forecast_month_end(
     않았다** — `docs/Cost_Round_Handover_2026-09-23.md` §1-1에 확인 대기로 남아 있다.
 
     판정 대상은 `evaluable_accounts()`가 고른 계정뿐이다 — 미지원 CSP·통화 필터로 빠진 계정의
-    결측은 다른 계정의 전망을 막지 않는다. 상태는 **응답 전체 기준**이다(통화별 상태를 만들지
+    결측은 다른 계정의 전망을 막지 않는다. 수집이 꺼져 있고 이달 관측이 없는 계정도 같은 이유로 뺀다
+    (`split_ingest_disabled`, 2026-09-28 — 뺀 계정은 `ingest_disabled_accounts`). 상태는 **응답 전체 기준**이다(통화별 상태를 만들지
     않는다). 반환: (forecast rows, forecast_status)."""
     today = utc_today()
     this_month_start = today.replace(day=1)
     # 전망 창은 어차피 이달 1일~어제(UTC)다. period_end가 '오늘'(어제까지 포함)이든 '오늘+1'(오늘 포함)이든
     # 근거 데이터가 같으므로 둘 다 받는다(2026-09-21 결정). 더 이르면 not_current_month, 미래면 내지 않는다.
     is_current_month = q.period_start == this_month_start and q.period_end in (today, today + dt.timedelta(days=1))
-    status = {"state": "computed", "based_through": None, "required_accounts": 0, "incomplete_accounts": []}
+    status = {
+        "state": "computed", "based_through": None, "required_accounts": 0, "incomplete_accounts": [],
+        "ingest_disabled_accounts": [],
+    }
     if not is_current_month:
         status["state"] = "not_current_month"
         return [], status
@@ -452,6 +486,17 @@ def forecast_month_end(
         accounts = evaluable_accounts(accounts, filter_excluded)
     if currency_map is None:
         currency_map = accounts_currency_map(db, accounts)
+    # 전망 창(이달 1일~오늘) coverage — 넘겨받은 값이 같은 창일 때만 재사용한다.
+    window_cov: dict[int, dict] = {}
+    for a in accounts:
+        c = (coverage_by_account or {}).get(a.id)
+        if c is None or c["start"] != this_month_start.isoformat() or c["end"] != today.isoformat():
+            c = account_coverage(db, a.id, this_month_start, today, today=today)
+        window_cov[a.id] = c
+    # 수집이 꺼져 있고 이달 관측이 없는 계정은 판정에서 뺀다 — 결측을 메울 방법이 없는 계정 때문에
+    # 나머지 계정의 전망까지 막지 않는다(split_ingest_disabled 참고). 뺀 계정은 응답에 남긴다.
+    accounts, ingest_disabled = split_ingest_disabled(accounts, window_cov)
+    status["ingest_disabled_accounts"] = ingest_disabled
     status["required_accounts"] = len(accounts)
     if not accounts:
         status["state"] = "no_accounts"
@@ -459,19 +504,16 @@ def forecast_month_end(
 
     based_through = today - dt.timedelta(days=1)
     status["based_through"] = based_through.isoformat()
-    incomplete = []
-    for a in accounts:
-        c = (coverage_by_account or {}).get(a.id)
-        if c is None or c["start"] != this_month_start.isoformat() or c["end"] != today.isoformat():
-            c = account_coverage(db, a.id, this_month_start, today, today=today)
-        if c["missing_count"]:
-            incomplete.append({"cloud_account_id": str(a.id), "missing_count": c["missing_count"]})
+    incomplete = [
+        {"cloud_account_id": str(a.id), "missing_count": window_cov[a.id]["missing_count"]}
+        for a in accounts if window_cov[a.id]["missing_count"]
+    ]
     status["incomplete_accounts"] = incomplete
     # 근거가 약한 계정(observed_only) — 모든 날짜에 행이 있어도 판정에 쓰지 않는다(A-2).
     unverified = [
         {"cloud_account_id": str(a.id)}
         for a in accounts
-        if not ((coverage_by_account or {}).get(a.id) or account_coverage(db, a.id, this_month_start, today, today=today))["analysis_ready"]
+        if not window_cov[a.id]["analysis_ready"]
         and not any(x["cloud_account_id"] == str(a.id) for x in incomplete)
     ]
     status["unverified_accounts"] = unverified
@@ -660,10 +702,14 @@ def changes(
         reasons.append("LENGTH_MISMATCH")
     if not completed_period:
         reasons.append("INCOMPLETE_PERIOD")
-    if not targets:
-        reasons.append("NO_ACCOUNTS")
     cur_cov, _, _ = period_coverage(db, targets, q.period_start, q.period_end, today=today)
     prev_cov, _, _ = period_coverage(db, targets, prev_start, prev_end, today=today)
+    # 수집이 꺼져 있고 두 기간 모두 관측이 없는 계정은 비교 판정에서 뺀다(split_ingest_disabled).
+    targets, ingest_disabled = split_ingest_disabled(targets, cur_cov, prev_cov)
+    cur_cov = {a.id: cur_cov[a.id] for a in targets}
+    prev_cov = {a.id: prev_cov[a.id] for a in targets}
+    if not targets:
+        reasons.append("NO_ACCOUNTS")
     current_covered = all(c["missing_count"] == 0 for c in cur_cov.values())
     previous_covered = all(c["missing_count"] == 0 for c in prev_cov.values())
     if targets and not current_covered:
@@ -690,6 +736,7 @@ def changes(
             }
             for a in targets if cur_cov[a.id]["missing_count"] or prev_cov[a.id]["missing_count"]
         ],
+        "ingest_disabled_accounts": ingest_disabled,
     }
 
     def dim_sums(period_start: dt.date, period_end: dt.date) -> dict[str, Decimal]:
