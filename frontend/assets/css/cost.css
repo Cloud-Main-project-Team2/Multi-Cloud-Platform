@@ -133,7 +133,9 @@ select, input, textarea {
 .status-list div { display: flex; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--border); padding-bottom: 5px; }
 .support { font-size: 11px; margin: 10px 0; color: var(--muted-foreground); }
 
-.table-wrap { width: 100%; overflow: auto; }
+/* position:relative — 안의 .sr-only(position:absolute)가 이 상자를 기준으로 잡혀야 overflow 안에서
+   잘린다. 없으면 문서 폭까지 밀어내 500px 창에서 ② 탭 전체가 가로로 46px 밀렸다(CF-022 머리줄). */
+.table-wrap { width: 100%; overflow: auto; position: relative; }
 table { border-collapse: collapse; width: 100%; font-size: 12px; }
 th { text-align: left; background: var(--muted); color: var(--muted-foreground); font-size: 11px; font-weight: 600; }
 th, td { padding: 11px 9px; border-bottom: 1px solid var(--border); vertical-align: top; }
@@ -333,6 +335,13 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 .share-row .bar-track { grid-column: 1 / -1; margin-top: 0; height: 8px; }
 .share-row.residual .bar-fill { background: var(--muted-foreground); }
 .share-row.residual .sr-name { color: var(--muted-foreground); }
+/* 좁은 화면: 금액 칸(nowrap, "$0.00 (표시 단위 미만)" 등)이 길면 minmax(0,1fr) 이름 칸이 0까지 줄어
+   한 글자씩 세로로 깨진다. 이름을 한 줄 전체로 올리고 금액·비중은 다음 줄에 둔다.
+   (이름 칸에 최소 폭만 주는 방식은 문서 폭을 넓혀 채택하지 않음 — 2026-09-28 검증 보고서 문제 5) */
+@media (max-width: 640px) {
+  .share-row { grid-template-columns: 1fr auto auto; }
+  .share-row .sr-name { grid-column: 1 / -1; }
+}
 
 /* 증가액 표 — 서비스명 열은 줄바꿈, 숫자 열은 오른쪽 정렬·고정폭 숫자 */
 .changes-table td.num, .changes-table th.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }

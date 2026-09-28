@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>비용 관리(준비 중) · 서비스 소개 · MultiCloud Ops</title>
+  <title>비용 관리 · 서비스 소개 · MultiCloud Ops</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = { theme: { extend: { colors: {
@@ -47,37 +47,26 @@
         <a href="intro-dashboard.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">대시보드</a>
         <a href="intro-inventory.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">리소스 조회</a>
         <a href="intro-provisioning.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">프로비저닝</a>
-        <a href="intro-cost.html" class="flex items-center justify-between rounded-lg border-l-2 border-primary bg-muted px-3 py-2 text-sm font-semibold">비용 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
+        <a href="intro-cost.html" class="flex items-center justify-between rounded-lg border-l-2 border-primary bg-muted px-3 py-2 text-sm font-semibold">비용 관리</a>
         <a href="intro-logs.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">로그 통합 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
       </nav>
     </aside>
 
     <section>
-      <div class="flex items-center gap-3">
-        <h1 class="text-3xl font-extrabold">비용 관리</h1>
-        <span class="rounded-full border border-yellow px-2 py-0.5 text-xs font-medium text-yellow">확장 기능 · 준비 중</span>
-      </div>
-      <p class="mt-3 text-lg text-muted-foreground">클라우드별 비용을 심층 분석하고 예산을 관리하는 확장 기능입니다.</p>
+      <h1 class="text-3xl font-extrabold">비용 관리</h1>
+      <p class="mt-3 text-lg text-muted-foreground">클라우드 청구 데이터에서 실측 비용을 모아 분석하고, 팀 예산과 비용 급증을 관리합니다.</p>
 
-      <!-- 준비 중 예고 배너 -->
-      <div class="mt-6 flex items-start gap-3 rounded-2xl border border-dashed border-yellow bg-surface p-6">
-        <span class="text-2xl">🚧</span>
-        <div>
-          <p class="font-semibold">아직 준비 중인 기능입니다.</p>
-          <p class="mt-1 text-sm text-muted-foreground">비용 상세 분석·예산 알림·리포트 등은 이후 확장 단계에서 제공될 예정입니다.</p>
-        </div>
+      <div class="mt-6 grid h-56 place-items-center rounded-2xl border border-dashed border-border bg-surface text-sm text-muted-foreground">
+        소개 이미지 (준비 중)
       </div>
 
-      <ul class="mt-6 space-y-3 text-sm text-muted-foreground">
-        <li class="flex gap-2"><span>•</span> 서비스·리전·태그별 비용 분해(예정)</li>
-        <li class="flex gap-2"><span>•</span> 예산 설정과 임계값 알림(예정)</li>
-        <li class="flex gap-2"><span>•</span> 기간별 비용 리포트 내보내기(예정)</li>
+      <ul class="mt-6 space-y-3 text-sm">
+        <li class="flex gap-2"><span class="text-primary">•</span> 계정·서비스·기간별 실측 비용 분석과 이전 기간 비교</li>
+        <li class="flex gap-2"><span class="text-primary">•</span> 팀 예산 설정과 80%·100% 임계값 알림</li>
+        <li class="flex gap-2"><span class="text-primary">•</span> 평소보다 급증한 비용 탐지와 검토 목록</li>
       </ul>
 
-      <div class="mt-8 flex items-center gap-3">
-        <button type="button" disabled class="cursor-not-allowed rounded-xl border border-border bg-muted px-6 py-3 text-base font-semibold text-muted-foreground">곧 만나요</button>
-        <a href="login.html" class="text-sm text-muted-foreground hover:text-foreground">다른 기능 먼저 시작하기 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
-      </div>
+      <a href="login.html" class="mt-8 inline-block rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white hover:opacity-90">로그인하고 시작하기 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
       <p class="mt-3 text-xs text-muted-foreground">* 소개 문구·이미지는 확정 전 자리표시자입니다.</p>
     </section>
   </main>
