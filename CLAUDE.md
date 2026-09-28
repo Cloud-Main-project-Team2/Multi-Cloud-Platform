@@ -93,6 +93,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 키를 모두 지운 클라우드 계정 조회 제외 — 비용·인벤토리·대시보드·팀·검토 큐·자동 수집 | `solcho/be-orphan-account-filter` | 조은솔 | merged (#138) |
 | 비용 검증 보고서(2026-09-28) 후속 — 대시보드·인트로 옛 문구, DOM 하네스 상대 경로, 인쇄·좁은 창 CSS 3건 | `solcho/fe-cost-verification-fixes` | 조은솔 | merged (#141) |
 | 수집 꺼진 계정이 월말 전망·기간 비교를 막던 회귀 수정 + 대시보드 전망 보류 사유 표시 | `solcho/be-cost-forecast-gating` | 조은솔 | in progress |
+| 프로비저닝 입력 검증 실패(422)도 failed job으로 기록 — 대시보드 최근 활동에 시도가 보이게 | `solcho/be-provisioning-rejected-jobs` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
