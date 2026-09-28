@@ -97,6 +97,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 회원 탈퇴 `DELETE /auth/me` + 마이페이지 탈퇴 버튼 연결(같은 이메일 재가입 허용) | `solcho/be-account-withdrawal` | 조은솔 | in progress |
 | 메인 히어로 높이·애니메이션 + 회원가입 폼 여백 축소 | `solcho/fe-landing-polish` | 조은솔 | in progress |
 | 대시보드 섹션 카드 클릭 시 관련 페이지 이동(인벤토리·비용 관리·프로비저닝) | `solcho/fe-dashboard-links` | 조은솔 | in progress |
+| 최종발표 데모 계정(`demo@exam.com`) — 3사 데이터 시드 + CSP 호출 없는 샌드박스 | `solcho/be-demo-seed` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -744,6 +745,22 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
   **같은 이메일 재가입을 허용**한다(사용자 결정 — 시연 재촬영). 등록 키는 전부 삭제, 세션 폐기, 진행 중 작업이
   있으면 409. 클라우드 계정·리소스·비용 이력은 남고(키가 없어 조회에서 빠짐), CSP의 실제 리소스는 지우지 않는다.
   보존 기간·파기 정책은 미확정.
+
+- **최종발표 데모 계정 — 시드 + 샌드박스(2026-09-28, `solcho/be-demo-seed`)**: IAM 설정 없이는 다른 팀이 서비스를
+  써 볼 수 없어서 공개 데모 계정 `demo@exam.com` / `demo1234`를 둔다.
+  - **데이터**: `python -m app.seed_demo_data`가 데모 사용자의 데이터를 **전부 지우고 오늘(UTC) 기준으로 다시
+    만든다**(다른 사용자는 건드리지 않음). 계정 6(3사, 원화 청구 1·역할 위임 1·검증 실패 키 1 포함)·리소스 26(stale 1)·
+    비용 190일치·팀 3/예산(86%·107%·45%)·급증 검토 큐·프로비저닝 13·동기화 5·보고서 3. 발표 중 망가지면 다시 실행한다.
+    `seed_mock_data.py`(`demo@multicloud.example`, 날짜 고정)는 개발용 픽스처로 그대로 둔다.
+  - **샌드박스(`app/demo.py`)**: 데모 사용자면 CSP를 부르지 않는다 — 동기화는 기존 리소스를 그대로 "발견", 시작/중지/
+    삭제는 DB만, 프로비저닝은 Terraform 없이 서비스별 가짜 output으로 성공, CPU는 결정적 가짜값, 네트워크/SKU/보안그룹
+    조회는 빈 목록·available. 키 등록·교체·삭제·프로필 수정·탈퇴·비밀번호 재설정 메일은 `403 DEMO_READ_ONLY`.
+    판별은 **서버가 아는 이메일로만** 한다(payload 표시는 일반 사용자가 흉내 낼 수 있어서 쓰지 않음).
+  - **비용은 날짜의 순수 함수**(`demo_cost_rows`): 수동 "수집"·자동 스케줄러가 데모 계정에 한해 같은 함수로 어제까지를
+    채운다(수집 게이트 무시, source `seed_demo` → 급증 목록에 "예시 데이터" 배지). 그래서 재시드 없이도 매일 coverage가
+    이어져 전망·예산이 "수집 지연"으로 바뀌지 않고, 해시 기반 급증도 계속 새로 생긴다.
+  - ⚠️ 샌드박스는 **api 컨테이너를 새 이미지로 띄워야** 동작한다. 그 전의 컨테이너에서 데모 계정으로 동기화를 누르면
+    리소스가 전부 stale이 되고, 자동 수집(매일 06:00 UTC)은 데모 AWS 계정을 실패 run으로 남긴다.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 
