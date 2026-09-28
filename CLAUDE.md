@@ -89,7 +89,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 비용 5단계 — 카테고리 분류 정확성 + 검토 이력·가격 비교 진입점·조건 링크·보고서 연결 | `seunghyun/cost-extras` | 이승현 | merged (#130) |
 | 비용 6단계 — 계약 문서 반영 + 인수인계(`docs/Cost_Round_Handover_2026-09-23.md`) | `seunghyun/cost-docs` | 이승현 | in progress |
 | 비용 7단계 — Azure 실측 수집기(모의 검증) · 수집 근거(`coverage_basis`) · 수집 활성화 게이트 · 자격증명 검증 진단 | `seunghyun/cost-ingest-gating` | 이승현 | PR #136 (리뷰 대기) |
-| 키를 모두 지운 클라우드 계정 조회 제외 — 비용·인벤토리·대시보드·팀·검토 큐·자동 수집 | `solcho/be-orphan-account-filter` | 조은솔 | in progress |
+| 키를 모두 지운 클라우드 계정 조회 제외 — 비용·인벤토리·대시보드·팀·검토 큐·자동 수집 | `solcho/be-orphan-account-filter` | 조은솔 | merged (#138) |
 | 비용 검증 보고서(2026-09-28) 후속 — 대시보드·인트로 옛 문구, DOM 하네스 상대 경로, 인쇄·좁은 창 CSS 3건 | `solcho/fe-cost-verification-fixes` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
