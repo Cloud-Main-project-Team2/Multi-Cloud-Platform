@@ -7,6 +7,9 @@ const iso = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.g
 const monthStart = iso(new Date(today.getFullYear(), today.getMonth(), 1));
 const todayIso = iso(today); const tomorrow = iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1));
 const NOW = new Date().toISOString();
+// api.js의 API_BASE는 상대 경로("/api/v1", #134)라 fetch가 받는 url도 상대 경로다 — new URL(url)만
+// 쓰면 Invalid URL로 모든 요청이 가짜 응답 전에 실패한다. jsdom 페이지와 같은 origin을 기준으로 푼다.
+const PAGE_ORIGIN = "http://localhost:8080";
 
 function base(opts) {
   const o = Object.assign({ status: "CONNECTED_OK", actual: "3.330000", rows: true, est: false, warnings: [], prev: "1.000000", comparable: true, extra: [], summaryAccounts: null, summaryFail: false, delay: 0,
@@ -67,7 +70,7 @@ async function run(name, cfg, checks) {
   let html = fs.readFileSync(path.join(ROOT, "cost.html"), "utf8").replace(/<script src="https:\/\/cdn\.tailwindcss\.com"><\/script>/, "");
   const errors = []; const vc = new VirtualConsole(); vc.on("jsdomError", (e) => errors.push(String(e.message || e))); vc.on("error", (...a) => errors.push(a.map((x) => x && x.stack || String(x)).join(" ")));
   const calls = []; const postBodies = [];
-  const dom = new JSDOM(html, { url: "http://localhost:8080/cost.html" + (cfg.url || ""), runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: vc, beforeParse(w) {
+  const dom = new JSDOM(html, { url: PAGE_ORIGIN + "/cost.html" + (cfg.url || ""), runScripts: "outside-only", pretendToBeVisual: true, virtualConsole: vc, beforeParse(w) {
     w.localStorage.setItem("mcp_session", JSON.stringify({ accessToken: "t", tokenType: "bearer", expiresIn: 3600, refreshToken: "r", refreshExpiresIn: 99999, issuedAt: (cfg.fixedNow || new Date().toISOString()), user: {} }));
     w.Element.prototype.scrollIntoView = () => {};
     // 5단계 C — 클립보드는 jsdom에 없다. clipboardFail이면 "자동 복사 막힘" 경로를 확인한다.
@@ -80,14 +83,14 @@ async function run(name, cfg, checks) {
       w.Date = FakeDate;
     }
     w.fetch = (url, opts) => new Promise((resolve) => {
-      const p = new URL(url).pathname.replace("/api/v1", ""); calls.push((opts && opts.method || "GET") + " " + p + new URL(url).search);
+      const p = new URL(url, PAGE_ORIGIN).pathname.replace("/api/v1", ""); calls.push((opts && opts.method || "GET") + " " + p + new URL(url, PAGE_ORIGIN).search);
       if (opts && opts.body) { try { postBodies.push(JSON.parse(opts.body)); } catch (e) { postBodies.push(opts.body); } }
       const finish = (b) => { if (b && b.__status) resolve({ ok: false, status: b.__status, headers: { get: () => null }, json: async () => ({ error: { code: "INTERNAL_ERROR", message: "서버 오류" } }) }); else resolve({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({ data: b }) }); };
       let key = Object.keys(cfg.routes).filter((k) => !k.startsWith("__")).find((k) => p === k || p.startsWith(k + "/"));
       let body = key ? cfg.routes[key] : { items: [], total: 0 };
-      if (typeof body === "function") body = body(new URL(url).search);
-      if (p === "/costs/trend" && typeof cfg.trendDelayMs === "function") return setTimeout(() => finish(body), cfg.trendDelayMs(new URL(url).search));
-      if (p === "/costs/breakdown" && typeof cfg.breakdownDelayMs === "function") return setTimeout(() => finish(body), cfg.breakdownDelayMs(new URL(url).search));
+      if (typeof body === "function") body = body(new URL(url, PAGE_ORIGIN).search);
+      if (p === "/costs/trend" && typeof cfg.trendDelayMs === "function") return setTimeout(() => finish(body), cfg.trendDelayMs(new URL(url, PAGE_ORIGIN).search));
+      if (p === "/costs/breakdown" && typeof cfg.breakdownDelayMs === "function") return setTimeout(() => finish(body), cfg.breakdownDelayMs(new URL(url, PAGE_ORIGIN).search));
       const tm = p.match(/^\/teams\/(\d+)\/(budget-status|budgets)$/);
       if (tm) { const T = cfg.routes.__team || {};
         if (tm[2] === "budgets") body = T.budgetsFail ? { __status: 500 } : (typeof T.budgets === "function" ? T.budgets(tm[1]) : (T.budgets || { items: [], total: 0 }));
