@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, Query, Response
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.demo import is_demo_user, read_only_error
 from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError, validation_error
 from app.models import CloudAccount, Credential, User
@@ -80,6 +81,9 @@ def _resolve_credential(db: Session, current_user: User, credential_id: str, reg
         raise validation_error(
             "AWS는 조회할 region이 필요합니다.", details=[{"field": "region", "reason": "required"}]
         )
+    if is_demo_user(current_user):
+        # 목록 조회는 list_security_groups가 먼저 빈 목록으로 답한다 — 여기 오는 것은 조회·변경뿐이다.
+        raise read_only_error("실제 보안 그룹을 조회·변경")
 
     try:
         secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
@@ -137,6 +141,9 @@ def list_security_groups(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> SecurityGroupListResponse:
+    if is_demo_user(current_user):
+        _get_owned_credential(db, current_user.id, credential_id)  # 소유권 검사는 그대로
+        return SecurityGroupListResponse(data=SecurityGroupListData(items=[]))
     account, secret_payload = _resolve_credential(db, current_user, credential_id, region)
     try:
         if account.provider == "aws":

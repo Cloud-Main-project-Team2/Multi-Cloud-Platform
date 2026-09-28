@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from app.cost.pricing_sync import apply_list_price_estimate
 from app.db import SessionLocal, get_db
+from app.demo import is_demo_account
 from app.deps import get_current_user
 from app.errors import ApiError, validation_error
 from app.logging_config import log_background_task, log_business_event
@@ -242,6 +243,69 @@ def _mark_stale_resources(db: Session, account: CloudAccount, seen_keys: set[str
     return marked
 
 
+def _demo_discovered(db: Session, account: CloudAccount) -> list[DiscoveredResource]:
+    """데모 계정 — 지금 DB에 있는(삭제되지 않은) 리소스를 그대로 "발견"한 것으로 돌려준다."""
+    rows = (
+        db.query(Resource, ServiceCatalog)
+        .join(ServiceCatalog, Resource.service_catalog_id == ServiceCatalog.id)
+        # 이미 stale인 행은 "안 보이는 리소스" 예시라 그대로 둔다(발견 목록에 넣으면 stale이 풀린다).
+        .filter(Resource.cloud_account_id == account.id, Resource.deleted_at.is_(None), Resource.is_stale.is_(False))
+        .all()
+    )
+    return [
+        DiscoveredResource(
+            service_code=service.service_code,
+            external_resource_id=resource.external_resource_id,
+            original_resource_type=resource.original_resource_type,
+            name=resource.name,
+            region=resource.region,
+            status=resource.status,
+            tags=dict(resource.tags or {}),
+        )
+        for resource, service in rows
+    ]
+
+
+def _discover_from_csp(
+    db: Session, item: ResourceSyncJobItem, account: CloudAccount, credential: Credential
+) -> list[DiscoveredResource] | None:
+    """실제 CSP 조회. 실패하면 item을 failed로 커밋하고 None을 돌려준다."""
+    try:
+        secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+    except CredentialEncryptionError:
+        item.status = "failed"
+        item.error_code = "PROVIDER_API_ERROR"
+        item.finished_at = dt.datetime.now(dt.timezone.utc)
+        db.commit()
+        return None
+
+    # 위임 credential이면 임시 자격증명을 발급받는다(레거시는 그대로 통과). 계정 단위로
+    # 실패를 기록하므로 다른 계정의 동기화 항목은 계속 진행된다.
+    try:
+        secret_payload = resolve_secret_payload(
+            account.provider, secret_payload, credential_id=credential.id
+        )
+    except CredentialResolutionError as exc:
+        item.status = "failed"
+        item.error_code = exc.error_code
+        item.error_message = exc.message
+        item.finished_at = dt.datetime.now(dt.timezone.utc)
+        db.commit()
+        return None
+
+    try:
+        return discover_resources(account.provider, secret_payload, account.external_account_id)
+    except SyncError as exc:
+        item.status = "failed"
+        item.error_code = exc.code
+        item.error_message = exc.message or None
+        item.finished_at = dt.datetime.now(dt.timezone.utc)
+        db.commit()
+        return None
+    finally:
+        del secret_payload
+
+
 def _process_sync_item(db: Session, item: ResourceSyncJobItem, account: CloudAccount) -> None:
     item.status = "running"
     item.started_at = dt.datetime.now(dt.timezone.utc)
@@ -256,40 +320,13 @@ def _process_sync_item(db: Session, item: ResourceSyncJobItem, account: CloudAcc
         db.commit()
         return
 
-    try:
-        secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
-    except CredentialEncryptionError:
-        item.status = "failed"
-        item.error_code = "PROVIDER_API_ERROR"
-        item.finished_at = dt.datetime.now(dt.timezone.utc)
-        db.commit()
-        return
-
-    # 위임 credential이면 임시 자격증명을 발급받는다(레거시는 그대로 통과). 계정 단위로
-    # 실패를 기록하므로 다른 계정의 동기화 항목은 계속 진행된다.
-    try:
-        secret_payload = resolve_secret_payload(
-            account.provider, secret_payload, credential_id=credential.id
-        )
-    except CredentialResolutionError as exc:
-        item.status = "failed"
-        item.error_code = exc.error_code
-        item.error_message = exc.message
-        item.finished_at = dt.datetime.now(dt.timezone.utc)
-        db.commit()
-        return
-
-    try:
-        discovered = discover_resources(account.provider, secret_payload, account.external_account_id)
-    except SyncError as exc:
-        item.status = "failed"
-        item.error_code = exc.code
-        item.error_message = exc.message or None
-        item.finished_at = dt.datetime.now(dt.timezone.utc)
-        db.commit()
-        return
-    finally:
-        del secret_payload
+    if is_demo_account(db, account):
+        # 데모 계정은 가짜 키라 CSP를 부르면 전부 "0건 발견"이 되고 리소스가 stale로 사라진다.
+        discovered = _demo_discovered(db, account)
+    else:
+        discovered = _discover_from_csp(db, item, account, credential)
+        if discovered is None:
+            return
 
     created, updated, seen_keys = _upsert_discovered_resources(db, account, credential, discovered)
     marked_stale = _mark_stale_resources(db, account, seen_keys)

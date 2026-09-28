@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.account_scope import owned_active_account
 from app.audit import record_audit_event
 from app.db import get_db
+from app.demo import is_demo_account, read_only_error
 from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError, validation_error
 from app.models import CloudAccount, Credential, Resource, ServiceCatalog, User
@@ -353,6 +354,8 @@ def issue_resource_cli_access(
     )
     if credential is None:
         raise ApiError(422, "CLOUD_PERMISSION_DENIED", "검증된 자격 증명이 없습니다 — 마이페이지에서 검증하세요.")
+    if is_demo_account(db, account):
+        raise read_only_error("실제 인스턴스 CLI 접속 정보를 발급")
 
     try:
         secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
@@ -493,47 +496,50 @@ def _process_action_item(
     if resource.is_stale:
         return _deny("RESOURCE_STALE")
 
-    try:
-        secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
-    except CredentialEncryptionError:
-        return _deny("PROVIDER_API_ERROR")
+    # 데모 계정은 CSP를 부르지 않고 DB 상태만 바꾼다(가짜 키라 실제 호출은 전부 실패한다).
+    # 원래대로 돌리려면 `python -m app.seed_demo_data`를 다시 실행한다.
+    if not is_demo_account(db, account):
+        try:
+            secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+        except CredentialEncryptionError:
+            return _deny("PROVIDER_API_ERROR")
 
-    # 위임 credential이면 임시 자격증명을 발급받는다(레거시는 그대로 통과). 일괄 요청은
-    # 항목별 부분 성공이므로, 실패해도 나머지 리소스 처리는 계속된다.
-    try:
-        secret_payload = resolve_secret_payload(
-            account.provider, secret_payload, credential_id=credential.id
-        )
-    except CredentialResolutionError as exc:
-        return _deny(exc.error_code)
+        # 위임 credential이면 임시 자격증명을 발급받는다(레거시는 그대로 통과). 일괄 요청은
+        # 항목별 부분 성공이므로, 실패해도 나머지 리소스 처리는 계속된다.
+        try:
+            secret_payload = resolve_secret_payload(
+                account.provider, secret_payload, credential_id=credential.id
+            )
+        except CredentialResolutionError as exc:
+            return _deny(exc.error_code)
 
-    try:
-        perform_action(
-            provider=account.provider,
-            service_code=service.service_code,
-            original_resource_type=resource.original_resource_type,
-            action=action,
-            secret_payload=secret_payload,
-            external_account_id=account.external_account_id,
-            region=resource.region,
-            external_resource_id=resource.external_resource_id,
-            force_empty=force_empty,
-        )
-    except ResourceActionError as exc:
-        record_audit_event(
-            db,
-            actor_user_id=current_user.id,
-            action=f"resource.{action}",
-            target_type="resource",
-            target_id=resource_id_str,
-            result="failure",
-            provider=account.provider,
-            metadata={"error_code": exc.code},
-            request_id=_request_id(request),
-        )
-        return _failed(resource_id_str, exc.code, exc.message)
-    finally:
-        del secret_payload
+        try:
+            perform_action(
+                provider=account.provider,
+                service_code=service.service_code,
+                original_resource_type=resource.original_resource_type,
+                action=action,
+                secret_payload=secret_payload,
+                external_account_id=account.external_account_id,
+                region=resource.region,
+                external_resource_id=resource.external_resource_id,
+                force_empty=force_empty,
+            )
+        except ResourceActionError as exc:
+            record_audit_event(
+                db,
+                actor_user_id=current_user.id,
+                action=f"resource.{action}",
+                target_type="resource",
+                target_id=resource_id_str,
+                result="failure",
+                provider=account.provider,
+                metadata={"error_code": exc.code},
+                request_id=_request_id(request),
+            )
+            return _failed(resource_id_str, exc.code, exc.message)
+        finally:
+            del secret_payload
 
     if action == "start":
         resource.status = "RUNNING"

@@ -202,6 +202,12 @@ def _cpu_map_for_account(
     if credential is None:
         return {}
 
+    from app.demo import cpu_percent, is_demo_account
+
+    if is_demo_account(db, account):
+        # 데모 계정은 가짜 키라 Monitoring API를 부르면 계정마다 타임아웃까지 기다리게 된다.
+        return {resource.external_resource_id: cpu_percent(resource.external_resource_id) for resource, _a, _s in group}
+
     try:
         secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
         secret_payload = resolve_secret_payload(account.provider, secret_payload, credential_id=credential.id)

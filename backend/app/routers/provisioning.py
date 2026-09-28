@@ -29,7 +29,9 @@ from sqlalchemy.orm import Session
 
 from app.audit import record_audit_event
 from app.config import get_settings
+from app import demo
 from app.db import SessionLocal, get_db
+from app.demo import is_demo_account
 from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError
 from app.logging_config import log_background_task, log_business_event
@@ -50,7 +52,7 @@ from app.schemas.provisioning import (
 from app.providers.session import CredentialResolutionError, resolve_secret_payload
 from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json
 from app.serialization import iso_z, str_id
-from app.terraform_runner import redact
+from app.terraform_runner import TerraformResult, redact
 
 router = APIRouter(prefix="/api/v1", tags=["provisioning"])
 
@@ -557,42 +559,51 @@ def _execute_job(
         _finalize_job(db, job, service)
         return
 
-    try:
-        secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
-    except CredentialEncryptionError:
-        job.status = "failed"
-        job.error_code = "PROVIDER_API_ERROR"
-        job.error_message = "자격 증명을 복호화하지 못했습니다."
-        _finalize_job(db, job, service)
-        return
-
-    # 위임(assume_role) credential이면 여기서 1시간짜리 임시 자격증명을 발급받는다. 레거시
-    # 장기 키는 그대로 통과한다. terraform apply 타임아웃(900초)이 세션 수명보다 훨씬 짧아
-    # 실행 도중 만료될 여지는 없다.
-    try:
-        secret_payload = resolve_secret_payload(
-            account.provider, secret_payload, credential_id=credential.id
-        )
-    except CredentialResolutionError as exc:
-        job.status = "failed"
-        job.error_code = exc.error_code
-        job.error_message = exc.message
-        _finalize_job(db, job, service)
-        return
-
     workspace_dir = Path(get_settings().terraform_workspaces_dir) / job.workspace_name
-    try:
-        result = runner.run(
-            job_id=job.id,
-            workspace_dir=workspace_dir,
-            project_id=account.external_account_id,
-            common_spec=cs,
-            provider_spec=ps,
-            secret_payload=secret_payload,
-            cancel_check=lambda: job.id in _CANCEL_REQUESTED,
+    if is_demo_account(db, account):
+        # 데모 계정은 Terraform을 돌리지 않는다 — 가짜 키라 apply가 인증 단계에서 실패한다.
+        # 서비스별 output 모양만 흉내 내서 성공 처리하면 리소스 행 생성·알림은 실제 경로를 그대로 탄다.
+        demo.wait_like_terraform()
+        result = TerraformResult(
+            success=True,
+            outputs=demo.fake_terraform_outputs(service.provider, service.service_code, job.id, cs, ps),
         )
-    finally:
-        del secret_payload
+    else:
+        try:
+            secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+        except CredentialEncryptionError:
+            job.status = "failed"
+            job.error_code = "PROVIDER_API_ERROR"
+            job.error_message = "자격 증명을 복호화하지 못했습니다."
+            _finalize_job(db, job, service)
+            return
+
+        # 위임(assume_role) credential이면 여기서 1시간짜리 임시 자격증명을 발급받는다. 레거시
+        # 장기 키는 그대로 통과한다. terraform apply 타임아웃(900초)이 세션 수명보다 훨씬 짧아
+        # 실행 도중 만료될 여지는 없다.
+        try:
+            secret_payload = resolve_secret_payload(
+                account.provider, secret_payload, credential_id=credential.id
+            )
+        except CredentialResolutionError as exc:
+            job.status = "failed"
+            job.error_code = exc.error_code
+            job.error_message = exc.message
+            _finalize_job(db, job, service)
+            return
+
+        try:
+            result = runner.run(
+                job_id=job.id,
+                workspace_dir=workspace_dir,
+                project_id=account.external_account_id,
+                common_spec=cs,
+                provider_spec=ps,
+                secret_payload=secret_payload,
+                cancel_check=lambda: job.id in _CANCEL_REQUESTED,
+            )
+        finally:
+            del secret_payload
 
     resource_name: str | None = None
     if result.cancelled or job.id in _CANCEL_REQUESTED:

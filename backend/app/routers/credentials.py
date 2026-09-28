@@ -19,6 +19,7 @@ from app.account_scope import owned_active_account
 from app.audit import record_audit_event
 from app.config import get_settings
 from app.db import get_db
+from app.demo import is_demo_user, read_only_error
 from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError, confirmation_required, validation_error
 from app.logging_config import log_business_event
@@ -545,6 +546,8 @@ def create_credential(
 ) -> CredentialResponse:
     if provider not in PROVIDERS:
         raise validation_error("지원하지 않는 provider입니다.", details=[{"field": "provider", "reason": "invalid"}])
+    if is_demo_user(current_user):
+        raise read_only_error("새 자격 증명을 등록")
     validate_secret_payload(provider, payload.secret_payload)
 
     account = (
@@ -647,6 +650,8 @@ def patch_credential(
     credential, account = _get_owned_credential(db, current_user.id, credential_id)
 
     replacing_secret = payload.secret_payload is not None
+    if replacing_secret and is_demo_user(current_user):
+        raise read_only_error("키 값을 교체")  # 이름·순서 같은 메타데이터 수정은 허용한다
     if replacing_secret and request.headers.get("X-Action-Confirmed") != "true":
         raise confirmation_required()
     verification: VerificationResult | None = None
@@ -715,14 +720,22 @@ def verify_credential_endpoint(
 ) -> VerifyResponse:
     credential, account = _get_owned_credential(db, current_user.id, credential_id)
 
-    try:
-        secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
-    except CredentialEncryptionError:
-        verification = VerificationResult(verified=False, error_code="PROVIDER_API_ERROR")
+    if is_demo_user(current_user):
+        # 가짜 키라 실제 검증은 항상 실패한다 — 저장된 검증 결과를 그대로 다시 돌려준다.
+        verification = VerificationResult(
+            verified=credential.verified,
+            permission_scope=dict(credential.permission_scope or {}),
+            error_code=None if credential.verified else "PROVIDER_AUTHENTICATION_FAILED",
+        )
     else:
-        # 복호화 범위를 provider 호출 직전~직후로 최소화한다(§18).
-        verification = verify_credential(account.provider, account.external_account_id, secret_payload)
-        del secret_payload
+        try:
+            secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+        except CredentialEncryptionError:
+            verification = VerificationResult(verified=False, error_code="PROVIDER_API_ERROR")
+        else:
+            # 복호화 범위를 provider 호출 직전~직후로 최소화한다(§18).
+            verification = verify_credential(account.provider, account.external_account_id, secret_payload)
+            del secret_payload
 
     _apply_verification(credential, verification)
 
@@ -775,6 +788,8 @@ def get_network_resources(
         raise validation_error(
             "AWS는 조회할 region이 필요합니다.", details=[{"field": "region", "reason": "required"}]
         )
+    if is_demo_user(current_user):
+        return NetworkResourcesResponse(data=NetworkResourcesData())  # "기존 리소스" 없음 → 새로 만들기만
 
     try:
         secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
@@ -828,6 +843,10 @@ def get_vm_sku_availability(
 
     if not credential.verified:
         raise ApiError(422, "CLOUD_PERMISSION_DENIED", "검증된 자격 증명이 아닙니다 — 먼저 재검증하세요.")
+    if is_demo_user(current_user):
+        return VmSkuAvailabilityResponse(data=VmSkuAvailabilityData(
+            region=region, skus=[VmSkuAvailabilityItem(sku=name, status="available", reason=None) for name in sku],
+        ))
 
     try:
         secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
@@ -866,6 +885,8 @@ def delete_credential(
     db: Session = Depends(get_db),
     _confirmed: None = Depends(require_confirmation),
 ) -> Response:
+    if is_demo_user(current_user):
+        raise read_only_error("자격 증명을 삭제")  # 마지막 키를 지우면 계정이 화면에서 사라진다
     credential, account = _get_owned_credential(db, current_user.id, credential_id)
 
     active_provisioning = (
