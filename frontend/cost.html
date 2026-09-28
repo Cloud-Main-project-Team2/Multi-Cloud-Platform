@@ -376,17 +376,19 @@
     <!-- CF-039 AI 비용 상담 — dashboard.html의 AI 어시스턴트 모달과 같은 마크업(agent.js가 이 id들을 본다) -->
     <div id="agent-chat-modal" data-modal class="hidden fixed inset-0 z-50 flex items-end justify-end bg-black/40 p-4 sm:items-center sm:justify-center">
       <div class="flex h-[min(680px,85vh)] w-full max-w-md flex-col rounded-2xl border border-border bg-surface shadow-xl">
-        <div class="flex items-center justify-between border-b border-border p-4">
-          <div>
+        <!-- 이 화면에선 Tailwind `grid` 클래스를 쓰지 않는다 — cost.css의 `.grid`(블록 4칸 배치)와 이름이 겹쳐
+             버튼 안 글자가 첫 칸으로 밀린다(2026-09-28). 가운데 정렬은 flex로 한다. -->
+        <div class="flex items-center justify-between gap-3 border-b border-border p-4">
+          <div class="min-w-0">
             <h2 class="text-base font-bold">AI 비용 상담</h2>
             <p class="text-xs text-muted-foreground">현재 조건을 바탕으로 비용을 물어보세요. AI는 직접 계산하지 않습니다.</p>
           </div>
-          <div class="flex items-center gap-1.5">
-            <button type="button" id="agent-new-session" class="inline-flex items-center gap-1 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium hover:bg-muted" aria-label="새 세션 시작">
-              <svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+          <div class="flex shrink-0 items-center gap-1">
+            <button type="button" id="agent-new-session" class="inline-flex shrink-0 items-center gap-1 whitespace-nowrap rounded-md border border-border px-2 py-1 text-[11px] font-medium hover:bg-muted" aria-label="새 세션 시작">
+              <svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
               새 세션
             </button>
-            <button type="button" data-modal-close class="grid h-8 w-8 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
+            <button type="button" data-modal-close class="flex h-8 w-8 items-center justify-center rounded-lg text-lg hover:bg-muted" aria-label="닫기">✕</button>
           </div>
         </div>
 
@@ -400,7 +402,7 @@
               placeholder="비용 고민이나 비교할 서비스를 입력하세요…"
               class="flex-1 resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
             ></textarea>
-            <button type="submit" class="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-primary text-white hover:opacity-90" aria-label="전송">↑</button>
+            <button type="submit" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary text-white hover:opacity-90" aria-label="전송">↑</button>
           </div>
           <p class="mt-1 text-[11px] text-muted-foreground">Enter 전송 · Shift+Enter 줄바꿈</p>
         </form>
