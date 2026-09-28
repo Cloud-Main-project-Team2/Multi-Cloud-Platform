@@ -885,6 +885,14 @@ window.MCPCost = (function () {
   }
 
   // ── CF-003 Forecast ─────────────────────────────────────────────────────────────
+  /** 서버가 판정(전망·기간 비교)에서 뺀 "수집이 꺼진 계정"(ingest_disabled_accounts) 안내. 그 계정 비용은 이
+      값에 들어 있지 않다 — 빼놓고 말하지 않으면 전망이 전체 비용처럼 읽힌다(2026-09-28). 없으면 빈 문자열. */
+  function ingestDisabledNoteHtml(list, what) {
+    list = list || [];
+    if (!list.length) return "";
+    var names = list.slice(0, 3).map(function (a) { return accountLabelOf(a.cloud_account_id); }).join(", ") + (list.length > 3 ? " 외" : "");
+    return '<p class="tiny muted">수집이 꺼진 계정 ' + list.length + "개(" + esc(names) + ")는 " + esc(what) + "에서 뺐습니다 — 이 계정 비용은 포함되지 않습니다(수집 설정은 운영자 관리).</p>";
+  }
   function isCurrentMonthToDate() {
     return filters.periodStart === utcStartOfMonthISO() && filters.periodEnd <= utcTodayISO();
   }
@@ -912,15 +920,16 @@ window.MCPCost = (function () {
           esc(hold.slice(0, 3).map(function (a) { return accountLabelOf(a.cloud_account_id) + " " + a.missing_count + "일"; }).join(", ")) + (hold.length > 3 ? " 외" : "") + "</p>" +
           '<div class="button-row no-print"><button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-009">수집 상태 보기</button></div>';
       }
-      return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">' + esc(why) + "</p>" + holdNote + btn };
+      return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">' + esc(why) + "</p>" + holdNote + ingestDisabledNoteHtml(fs.ingest_disabled_accounts, "전망 대상") + btn };
     }
     if (!rows.length) return { state: "CONNECTED_OK", html: '<div class="value">—</div><p class="kpi-basis">전망 값이 없습니다.</p>' + btn };
     // computed = 대상 계정 **전부**가 이달 1일~어제를 수집 확인한 상태다(하나라도 빠지면 서버가
     // insufficient_coverage로 값을 내지 않는다, 2026-09-23). 그래서 여기서는 "일부 누락" 안내가 없다.
+    // 단, 수집이 꺼져 있고 이달 관측이 없는 계정은 대상에서 빠진다 — 그 사실은 따로 적는다.
     var lastAsOf = d.as_of ? fmtWhen(d.as_of).text.replace(/ \(.*\)$/, "") : "없음";
     var html = moneyBadgeLines(rows, "전망") +
       '<p class="kpi-basis">이달 1일 ~ ' + esc(rows[0].based_through || (fs && fs.based_through) || "어제") + "까지 실측(수집 확인된 날)을 남은 일수로 늘린 값 · 마지막 수집 " + esc(lastAsOf) + "</p>" +
-      (fs ? '<p class="tiny muted">대상 계정 ' + fs.required_accounts + "개 전부 수집 확인 · 실측·정가 추정과 합치지 않음</p>" : "") + btn;
+      (fs ? '<p class="tiny muted">대상 계정 ' + fs.required_accounts + "개 전부 수집 확인 · 실측·정가 추정과 합치지 않음</p>" + ingestDisabledNoteHtml(fs.ingest_disabled_accounts, "전망 대상") : "") + btn;
     return { state: "CONNECTED_OK", html: html };
   }
 
@@ -1424,7 +1433,8 @@ window.MCPCost = (function () {
       '<div><div class="cs-label">현재 · ' + esc(curDisp.start) + " ~ " + esc(curDisp.end) + " · " + d.current.days + '일</div><div class="value">' + esc(money(d.totals.current)) + "</div>" + curNote + "</div>" +
       '<div class="cs-delta"><div class="cs-label">증감(현재 − 이전)</div>' + deltaCell + "</div>" +
       "</div>" +
-      '<p class="note">비교 기준: ' + esc(basis) + " · 같은 길이·두 기간 모두 수집 확인된 경우만 비교 · " + esc(d.currency || "통화 없음") + " · 사용료 기준(요금 분류 필터 미적용) · 같은 CSP·계정 조건</p>";
+      '<p class="note">비교 기준: ' + esc(basis) + " · 같은 길이·두 기간 모두 수집 확인된 경우만 비교 · " + esc(d.currency || "통화 없음") + " · 사용료 기준(요금 분류 필터 미적용) · 같은 CSP·계정 조건</p>" +
+      ingestDisabledNoteHtml(d.comparability && d.comparability.ingest_disabled_accounts, "비교 대상");
     return { state: "CONNECTED_OK", html: html };
   }
 
