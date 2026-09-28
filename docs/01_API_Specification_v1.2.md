@@ -950,6 +950,17 @@ v1.0의 `POST /provisioning/requests`(여러 계정·서비스를 `targets[]`로
 
 감사 action: `provisioning.request`.
 
+**입력 검증 실패도 이력에 남는다(2026-09-28)**: 러너의 spec 검증(`validate_spec`)에서 거절되면 응답은
+그대로 `422 VALIDATION_ERROR`지만, 서버가 `status="failed"`·`error.code=VALIDATION_ERROR`·거절 사유를 담은
+job 1건을 저장한다(`started_at=null`, 알림 없음). 그래서 `GET /provisioning/jobs`(대시보드 최근 활동)에
+시도가 보인다.
+- 저장하지 않는 거절: 인증·확인 헤더·Idempotency-Key 누락, 서비스 없음·미지원(404/422/501), credential
+  소유권·provider 불일치(404), `SECRET_FIELD_NOT_ALLOWED`(spec에 비밀값이 있을 수 있다).
+- 민감 필드(`SENSITIVE_PROVIDER_SPEC_FIELDS`)는 성공 경로와 같이 `spec_json`에서 빼고, 사유 문구에서도 지운다.
+- 같은 Idempotency-Key의 job이 이미 있으면 새로 만들지 않는다. 값을 고쳐 다시 보낼 때는 **새 키**를 쓴다
+  (같은 키 + 다른 payload는 기존 규칙대로 `409 IDEMPOTENCY_KEY_REUSED`). 프론트는 제출마다 새 키를 만든다.
+- 감사 이벤트는 남기지 않는다(§14 표에 해당 action 없음). 운영 로그는 `provisioning.job.rejected`.
+
 ### 10.4 `GET /provisioning/jobs`
 
 내 프로비저닝 job 이력을 반환한다. 확정 query: `provider`, `service_catalog_id`, `status`, `credential_id`.
