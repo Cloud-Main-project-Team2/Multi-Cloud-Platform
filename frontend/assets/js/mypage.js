@@ -872,6 +872,7 @@
       editBtn: document.getElementById("profile-edit-btn"),
       saveBtn: document.getElementById("profile-save-btn"),
       cancelBtn: document.getElementById("profile-cancel-btn"),
+      withdrawBtn: document.getElementById("profile-withdraw-btn"),
       msg: document.getElementById("profile-msg"),
     };
   }
@@ -967,6 +968,33 @@
       .then(function () { if (e.saveBtn) { e.saveBtn.disabled = false; e.saveBtn.textContent = "저장"; } });
   }
 
+  // 회원 탈퇴(DELETE /auth/me, 2026-09-28). 화면설계서 MY-01: 실행 전 반드시 확인 · 등록한 키가 함께
+  // 삭제된다는 점을 확인창에 명시한다. 탈퇴 후 같은 이메일로 다시 가입할 수 있다(서버가 이메일을 풀어 준다).
+  function withdrawAccount() {
+    var e = profileEls();
+    var email = (profileUser && profileUser.email) || "이 계정";
+    if (!window.confirm(
+      email + " 계정을 탈퇴할까요?\n\n" +
+      "· 등록한 클라우드 자격 증명(키)이 모두 삭제됩니다.\n" +
+      "· 모든 기기에서 로그아웃되고, 이 계정으로 다시 로그인할 수 없습니다.\n" +
+      "· 클라우드에 이미 만든 리소스는 삭제되지 않습니다(각 CSP 콘솔에서 직접 정리해야 합니다).\n" +
+      "· 같은 이메일로 새로 가입할 수 있습니다."
+    )) return;
+
+    if (e.withdrawBtn) { e.withdrawBtn.disabled = true; e.withdrawBtn.textContent = "탈퇴 중…"; }
+    MCPApi.request("/auth/me", { method: "DELETE", headers: { "X-Action-Confirmed": "true" } })
+      .then(function () {
+        // 서버가 refresh token을 이미 전부 폐기했다 — 로컬 세션만 지우면 된다(logout() 호출 불필요).
+        MCPApi.clearSession();
+        window.alert("탈퇴가 완료되었습니다.");
+        window.location.href = "main.html";
+      })
+      .catch(function (err) {
+        setProfileMsg(errorMessage(err), false);
+        if (e.withdrawBtn) { e.withdrawBtn.disabled = false; e.withdrawBtn.textContent = "회원탈퇴"; }
+      });
+  }
+
   function loadProfile() {
     var e = profileEls();
     if (!e.email && !e.name && !e.aff) return;
@@ -974,6 +1002,7 @@
     if (e.editBtn) e.editBtn.addEventListener("click", enterProfileEdit);
     if (e.saveBtn) e.saveBtn.addEventListener("click", saveProfile);
     if (e.cancelBtn) e.cancelBtn.addEventListener("click", exitProfileEdit);
+    if (e.withdrawBtn) e.withdrawBtn.addEventListener("click", withdrawAccount);
 
     // MCPApi.request는 표준 응답 봉투(json.data)를 이미 벗겨 user 객체를 그대로 준다.
     MCPApi.request("/auth/me")
