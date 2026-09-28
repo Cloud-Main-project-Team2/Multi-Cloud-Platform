@@ -489,6 +489,16 @@ refresh token은 opaque 토큰이며 DB에 해시로만 저장한다(`refresh_to
 **204 No Content**.
 감사 action: `user.withdraw`.
 
+**구현 확정(2026-09-28)** — 경로는 `DELETE /api/v1/auth/me`.
+- **이메일 해제**: `normalized_email`이 UNIQUE라 그대로 두면 같은 메일로 재가입할 수 없다. 탈퇴 행의
+  `email`·`normalized_email`을 `withdrawn-{user_id}@invalid`로 바꾸고 `password_hash`를 비운다 — 같은 이메일로
+  새 계정을 만들 수 있다(새 `user_id`). 원래 주소는 탈퇴 행에 남지 않는다.
+- **credential 처리**: 그 사용자의 credential을 **모두 삭제**한다(화면설계서 MY-01). 클라우드 계정·리소스·비용·
+  job 이력 행은 남고, 키가 없는 계정이라 조회에서 빠진다. CSP에 만든 실제 리소스는 건드리지 않는다.
+- refresh token 전부 폐기 · 소셜 연결 삭제. 이미 발급된 access token은 `401 USER_WITHDRAWN`.
+- 진행 중인 프로비저닝(`queued|running`)·동기화(`pending|running`)가 있으면 `409 JOB_ALREADY_RUNNING`.
+- 법적 보존 정책(탈퇴 행·이력의 보존 기간·파기)은 여전히 미확정이다.
+
 ## 6. 클라우드 계정과 자격 증명
 
 ### 6.1 엔드포인트 요약

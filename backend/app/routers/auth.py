@@ -17,17 +17,28 @@ from __future__ import annotations
 import re
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, BackgroundTasks, Depends
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
-from app.deps import get_current_user
+from app.audit import record_audit_event
+from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError, validation_error
 from app.logging_config import log_business_event
 from app.mailer import send_email
-from app.models import EmailVerification, PasswordResetToken, RefreshToken, User
+from app.models import (
+    CloudAccount,
+    Credential,
+    EmailVerification,
+    PasswordResetToken,
+    ProvisioningJob,
+    RefreshToken,
+    ResourceSyncJob,
+    SocialAccount,
+    User,
+)
 from app.schemas.auth import (
     EmailVerificationRequest,
     EmailVerificationRequestData,
@@ -204,6 +215,74 @@ def logout(payload: LogoutRequest, db: Session = Depends(get_db)) -> MessageResp
         row.revoked_at = _now()
         db.commit()
     return MessageResponse(data=MessageData(message="로그아웃되었습니다."))
+
+
+@router.delete("/me", status_code=204)
+def withdraw_me(
+    request: Request,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    _confirmed: None = Depends(require_confirmation),
+) -> Response:
+    """회원 탈퇴(§5.9, 2026-09-28 구현). 명세대로 행을 지우지 않는 soft 탈퇴다.
+
+    - **이메일을 풀어 준다**: `normalized_email`이 UNIQUE라 그대로 두면 같은 메일로 영원히 재가입할 수
+      없다(가입·인증 단계 409). 탈퇴 행의 이메일을 `withdrawn-{id}@invalid`(RFC 2606 예약 TLD)로 바꿔
+      원래 주소를 새 가입에 돌려준다(사용자 결정 2026-09-28 — 시연 재촬영 등). 원래 주소는 이 행에 남지 않는다.
+    - **등록한 키는 삭제한다**(화면설계서 MY-01 "탈퇴 확인창에 등록한 키가 함께 삭제됨을 명시"). 클라우드
+      계정·리소스·비용·job 이력 행은 남는다 — 키가 없는 계정은 조회에서 빠진다(`account_scope.py`).
+    - 로그인 세션(refresh token)을 전부 폐기한다. 이미 발급된 access token은 `get_current_user`가
+      `USER_WITHDRAWN`으로 막는다. 소셜 연결 행도 지운다(같은 소셜 계정으로 재가입 가능하게).
+    - 진행 중인 프로비저닝·동기화가 있으면 409로 거부한다 — 키를 지우면 실행 중인 작업이 중간에 깨진다
+      (`DELETE /credentials/{id}`의 CREDENTIAL_IN_USE와 같은 이유).
+    """
+    running_job = (
+        db.query(ProvisioningJob.id)
+        .filter(ProvisioningJob.user_id == current_user.id, ProvisioningJob.status.in_(["queued", "running"]))
+        .first()
+    )
+    running_sync = (
+        db.query(ResourceSyncJob.id)
+        .filter(ResourceSyncJob.user_id == current_user.id, ResourceSyncJob.status.in_(["pending", "running"]))
+        .first()
+    )
+    if running_job is not None or running_sync is not None:
+        raise ApiError(
+            409, "JOB_ALREADY_RUNNING", "진행 중인 프로비저닝·동기화 작업이 끝난 뒤 탈퇴할 수 있습니다."
+        )
+
+    now = _now()
+    account_ids = [row.id for row in db.query(CloudAccount.id).filter(CloudAccount.user_id == current_user.id)]
+    deleted_credentials = 0
+    if account_ids:
+        deleted_credentials = (
+            db.query(Credential).filter(Credential.cloud_account_id.in_(account_ids)).delete(synchronize_session=False)
+        )
+    db.query(RefreshToken).filter(RefreshToken.user_id == current_user.id, RefreshToken.revoked_at.is_(None)).update(
+        {RefreshToken.revoked_at: now}, synchronize_session=False
+    )
+    db.query(SocialAccount).filter(SocialAccount.user_id == current_user.id).delete(synchronize_session=False)
+
+    placeholder = f"withdrawn-{current_user.id}@invalid"
+    current_user.status = "withdrawn"
+    current_user.withdrawn_at = now
+    current_user.email = placeholder
+    current_user.normalized_email = placeholder
+    current_user.password_hash = None
+
+    record_audit_event(
+        db,
+        actor_user_id=current_user.id,
+        action="user.withdraw",
+        target_type="user",
+        target_id=str(current_user.id),
+        result="success",
+        metadata={"deleted_credentials": deleted_credentials},
+        request_id=getattr(request.state, "request_id", None),
+    )
+    db.commit()
+    log_business_event("auth.withdrawn", user_id=current_user.id, deleted_credentials=deleted_credentials)
+    return Response(status_code=204)
 
 
 # ---------------------------------------------------------------------------

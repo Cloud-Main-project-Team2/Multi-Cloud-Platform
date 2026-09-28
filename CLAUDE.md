@@ -93,7 +93,8 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 키를 모두 지운 클라우드 계정 조회 제외 — 비용·인벤토리·대시보드·팀·검토 큐·자동 수집 | `solcho/be-orphan-account-filter` | 조은솔 | merged (#138) |
 | 비용 검증 보고서(2026-09-28) 후속 — 대시보드·인트로 옛 문구, DOM 하네스 상대 경로, 인쇄·좁은 창 CSS 3건 | `solcho/fe-cost-verification-fixes` | 조은솔 | merged (#141) |
 | 수집 꺼진 계정이 월말 전망·기간 비교를 막던 회귀 수정 + 대시보드 전망 보류 사유 표시 | `solcho/be-cost-forecast-gating` | 조은솔 | in progress |
-| 프로비저닝 입력 검증 실패(422)도 failed job으로 기록 — 대시보드 최근 활동에 시도가 보이게 | `solcho/be-provisioning-rejected-jobs` | 조은솔 | in progress |
+| 프로비저닝 입력 검증 실패(422)도 failed job으로 기록 — 대시보드 최근 활동에 시도가 보이게 | `solcho/be-provisioning-rejected-jobs` | 조은솔 | merged (#143) |
+| 회원 탈퇴 `DELETE /auth/me` + 마이페이지 탈퇴 버튼 연결(같은 이메일 재가입 허용) | `solcho/be-account-withdrawal` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
@@ -734,6 +735,13 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
     `forecast_status`를 읽어 추정치로 내려간 사유도 보여준다.
   - **예산 소진율(`budget.py`)은 이번에 바꾸지 않았다** — 팀에 수집 꺼진 계정이 섞이면 여전히 `MISSING_DAYS`로
     보류된다. 팀 단위 판정 정책(승현)이라 따로 정한다. 급증은 계정별 판정이라 다른 계정을 막지 않는다.
+
+- **회원 탈퇴 — soft 탈퇴 + 이메일 해제(2026-09-28, `solcho/be-account-withdrawal`)**: 마이페이지 "회원탈퇴"
+  버튼은 정적 UI 단계의 모양뿐이었고 §5.9 `DELETE /me`도 미구현이었다. 행은 지우지 않되(`status=withdrawn`),
+  `normalized_email` UNIQUE 때문에 재가입이 영원히 막히므로 탈퇴 행의 이메일을 `withdrawn-{id}@invalid`로 바꿔
+  **같은 이메일 재가입을 허용**한다(사용자 결정 — 시연 재촬영). 등록 키는 전부 삭제, 세션 폐기, 진행 중 작업이
+  있으면 409. 클라우드 계정·리소스·비용 이력은 남고(키가 없어 조회에서 빠짐), CSP의 실제 리소스는 지우지 않는다.
+  보존 기간·파기 정책은 미확정.
 
 ## Assumptions — frontend static UI (`solcho/fe-pages`, 화면설계서 V1.1)
 
