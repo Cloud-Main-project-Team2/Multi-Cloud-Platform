@@ -44,6 +44,18 @@
     :root[data-theme="dark"] .hero::after{
       background:linear-gradient(to right, rgba(10,20,32,.85), rgba(10,20,32,.5));
     }
+    /* 히어로 애니메이션 — 배경 사진은 아주 느리게 확대/축소(Ken Burns), 텍스트는 뱃지→제목→설명→버튼
+       순서로 떠오르며 등장한다(아래 기능 투어의 ws-enter와 같은 계열, 첫 화면이라 조금 더 길고 크게). */
+    .hero::before{ animation:hero-kenburns 24s ease-in-out infinite alternate; will-change:transform; }
+    @keyframes hero-kenburns{ from{ transform:scale(1); } to{ transform:scale(1.08); } }
+    .hero-reveal > *{ animation:hero-enter .6s ease both; }
+    .hero-reveal > :nth-child(2){ animation-delay:.1s; }
+    .hero-reveal > :nth-child(3){ animation-delay:.2s; }
+    .hero-reveal > :nth-child(4){ animation-delay:.3s; }
+    @keyframes hero-enter{ from{ opacity:0; transform:translateY(16px); } to{ opacity:1; transform:translateY(0); } }
+    @media (prefers-reduced-motion: reduce){
+      .hero::before, .hero-reveal > *{ animation:none; }
+    }
 
     /* ===== Explore the workspace 기능 투어 =====
        외부 시안(main-home-animated.html)의 탭 투어를 이식. 원본의 하드코딩 색상을
@@ -243,8 +255,8 @@
 
   <!-- ===== 히어로 ===== -->
   <section class="hero">
-    <div class="mx-auto max-w-content px-6 py-20 md:py-28">
-    <div class="max-w-2xl">
+    <div class="mx-auto max-w-content px-6 py-28 md:py-40">
+    <div class="hero-reveal max-w-2xl">
       <span class="inline-flex items-center gap-2 rounded-full border border-border bg-surface px-3 py-1 text-xs font-medium text-muted-foreground">
         <span class="h-1.5 w-1.5 rounded-full bg-sky"></span> AWS · Azure · GCP 통합 운영
       </span>
