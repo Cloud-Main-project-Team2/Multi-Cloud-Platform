@@ -207,7 +207,7 @@
                 <a href="intro-dashboard.html" class="block px-4 py-2 text-sm hover:bg-muted">대시보드</a>
                 <a href="intro-inventory.html" class="block px-4 py-2 text-sm hover:bg-muted">리소스 조회</a>
                 <a href="intro-provisioning.html" class="block px-4 py-2 text-sm hover:bg-muted">프로비저닝</a>
-                <a href="intro-cost.html" class="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted">비용 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
+                <a href="intro-cost.html" class="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted">비용 관리</a>
                 <a href="intro-logs.html" class="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted">로그 통합 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
               </div>
             </div>
@@ -284,7 +284,7 @@
           <button class="tab" id="tab-0" role="tab" aria-selected="true" aria-controls="tour-panel" data-index="0">대시보드</button>
           <button class="tab" id="tab-1" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-index="1">인벤토리</button>
           <button class="tab" id="tab-2" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-index="2">프로비저닝</button>
-          <button class="tab" id="tab-3" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-index="3">비용 관리 <small>일부 준비 중</small></button>
+          <button class="tab" id="tab-3" role="tab" aria-selected="false" aria-controls="tour-panel" tabindex="-1" data-index="3">비용 관리</button>
         </div>
         <div class="tour-body" id="tour-panel" role="tabpanel" aria-labelledby="tab-0" tabindex="0">
           <div class="tour-copy">
@@ -421,7 +421,7 @@
         {name:'DASHBOARD',title:'오늘의 클라우드 현황을<br>한눈에 파악하세요.',text:'리소스 수, 리전 분포, 최근 작업 결과를 모아 보여줍니다. 전체 상태를 확인하고 필요한 작업으로 이동하세요.',hint:'전체 규모 확인 → 최근 활동 점검',scene:panel.querySelector('.scene').innerHTML},
         {name:'INVENTORY',title:'필요한 자원을<br>빠르게 찾아보세요.',text:'클라우드마다 흩어진 자원을 한 목록에서 조회합니다. 클라우드, 상태, 리전으로 필터링해 원하는 자원부터 살펴보세요.',hint:'필터 선택 → 자원 조회 → 상태 확인',scene:'<div class="scene-head">리소스 인벤토리 <small>예시 화면</small></div><div class="chips"><span class="chip active">전체 클라우드</span><span class="chip">상태 ▾</span><span class="chip">리전 ▾</span></div><div class="scene-row"><b>web-server</b><span>AWS · 서울</span><span class="pill">실행 중</span></div><div class="scene-row"><b>api-instance</b><span>GCP · 서울</span><span class="pill">실행 중</span></div><div class="scene-row"><b>test-server</b><span>AWS · 미국</span><span class="pill gray">중지</span></div>'},
         {name:'PROVISIONING',title:'새 자원 생성도<br>단계별로 간편하게.',text:'클라우드와 자원 유형을 선택하고 필요한 설정을 입력합니다. 생성 전 내용을 검토하고, 요청 후 작업 결과를 확인하세요.',hint:'클라우드 선택 → 설정 입력 → 검토 및 생성',scene:'<div class="scene-head">새 리소스 만들기 <small>예시 화면</small></div><div class="steps"><div class="step done"><b>1</b>클라우드</div><div class="step done"><b>2</b>설정</div><div class="step done"><b>3</b>검토</div></div><div class="deploy"><div><span>클라우드</span><b>AWS</b></div><div><span>리전</span><b>서울</b></div><div><span>리소스 이름</span><b>web-server</b></div></div><div class="notice">설정 검토 후 생성 요청을 진행합니다.</div>'},
-        {name:'COST OVERVIEW',title:'예상 비용을 확인하고,<br>자원 구성을 점검하세요.',text:'대시보드에서 정가 기준 예상 비용과 서비스별 비중을 확인할 수 있습니다. 실제 청구액과 다를 수 있으며, 추정 불가 자원은 합계에서 제외됩니다.',hint:'월별 비용 추이·예산 초과 경고는 준비 중',scene:'<div class="scene-head">예상 비용 요약 <small>예시 · 추정치</small></div><div class="bars"><div class="bar-label"><span>월 예상 비용</span><b>$6.13 / mo</b></div><div class="bar-label"><span>Compute</span><span>100%</span></div><div class="bar-track"><div class="bar" style="width:100%"></div></div><div class="bar-label"><span>추정 가능한 자원 기준</span></div></div><div class="notice">월별 비용 수집과 예산 경고는 준비 중입니다.</div>'}
+        {name:'COST',title:'실제 청구 비용을 모아 보고,<br>예산을 넘기 전에 알림받으세요.',text:'클라우드 청구 데이터에서 수집한 실측 비용을 계정·서비스·기간별로 나눠 봅니다. 팀 예산을 정해 두면 80%·100%에 도달할 때 알림을 보내고, 평소보다 급증한 날은 검토 목록에 올립니다.',hint:'비용 수집 → 기간·서비스별 분석 → 예산·급증 검토',scene:'<div class="scene-head">이번 달 비용 <small>예시 화면</small></div><div class="bars"><div class="bar-label"><span>AWS</span><b>$42.10</b></div><div class="bar-track"><div class="bar" style="width:70%"></div></div><div class="bar-label"><span>GCP</span><b>$18.35</b></div><div class="bar-track"><div class="bar" style="width:31%"></div></div><div class="bar-label"><span>팀 예산 소진율</span><b>82%</b></div></div><div class="notice">팀 예산의 80%에 도달했습니다 — 예산·검토 탭에서 확인하세요.</div>'}
       ];
       var index = 0, timer = null, inView = false;
       function show(next) {

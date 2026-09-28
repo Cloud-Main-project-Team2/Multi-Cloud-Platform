@@ -6,13 +6,13 @@
  * 이미 셋 다 들어있고, 데이터가 없는 provider는 0으로 표시될 뿐이다).
  *
  * 비용(2026-09-18, `/costs/*` 연동): `/costs/summary`·`/costs/breakdown`·`/costs/trend`
- * (`app/cost/query.py`)를 우선 쓴다 — 지금은 AWS 계정만 실측 데이터가 있고(`app/cost/__init__.py`의
- * COST_ADAPTERS), Azure/GCP는 아직 없다. "월말 예상 비용" 카드는 `kpis.forecast_month_end`
- * (이번 달 진행 중일 때만, 어제까지 실측을 남은 일수 비율로 늘린 값)를 쓰고, 전망을 낼 실측이
+ * (`app/cost/query.py`)를 우선 쓴다 — 실측은 수집기가 있는 CSP(`app/cost/__init__.py`의
+ * COST_ADAPTERS, Azure는 수집 활성화 게이트 `app/cost/gating.py`를 통과해야 함)만 나온다.
+ * "월말 예상 비용" 카드는 `kpis.forecast_month_end`(이번 달 진행 중일 때만, 어제까지 실측을 남은 일수 비율로 늘린 값)를 쓰고, 전망을 낼 실측이
  * 없으면 `app/pricing.py` 정가(list price) 추정치로 자동 대체된다(서버가 이미 `/costs/summary`의
  * kpis.list_price_monthly·accounts[].list_price_estimate에 같이 담아 준다 — 클라이언트에서
  * 따로 계산하지 않는다). "월말 전망"과 "추정치"는 항상 배지로 구분해 보여준다.
- * 월별 추이는 `/costs/trend`(AWS 실측만) — 팀·예산(임계값 경고)은 여전히 백엔드가 없어 "준비 중"이다.
+ * 월별 추이는 `/costs/trend`(CSP 실측) — 팀·예산(임계값 경고)은 비용 관리 ③ 탭에 있어 여기선 그리로 안내만 한다.
  */
 (function () {
   "use strict";
@@ -121,8 +121,8 @@
   // ── /costs/summary.accounts를 provider별로 합친다 ──────────────────────────
   // 계정마다 실측(actual, MTD 누적)이 있으면 실측을 쓰고, 없으면 정가 추정(list_price_estimate)
   // 으로 대체한다 — 둘을 같은 provider 안에서 더하지 않는다(하나가 실측이면 그 provider는
-  // "실측"으로 표시하고, 정가만 있는 계정 몫은 반영되지 않는다). 지금은 AWS만 실측이 나온다
-  // (app/cost/__init__.py의 COST_ADAPTERS).
+  // "실측"으로 표시하고, 정가만 있는 계정 몫은 반영되지 않는다). 실측은 수집기가 있는
+  // CSP만 나온다(app/cost/__init__.py의 COST_ADAPTERS).
   function costByProviderFromSummary(costSummary) {
     var F = window.MCPCostFormat;
     var buckets = {}; // provider -> { actual: [items for sumWithGuard], estimate: [items] }
@@ -177,7 +177,7 @@
     var badgeEl = document.getElementById("dash-total-cost-badge");
     var costSummary = costSummaryRes && costSummaryRes.ok ? costSummaryRes.value : null;
     // "월말 예상 비용" — app/cost/query.py의 forecast_month_end(): 이번 달 진행 중일 때만
-    // (1일 제외) 어제까지의 실측(AWS만)을 남은 일수 비율로 늘린 전망치를 낸다. 아직 실측이
+    // (1일 제외) 어제까지의 실측을 남은 일수 비율로 늘린 전망치를 낸다. 아직 실측이
     // 없거나 계산 조건이 안 맞으면 빈 배열이라 정가(list price) 추정으로 내려간다.
     var forecastRows = (costSummary && costSummary.kpis && costSummary.kpis.forecast_month_end) || [];
     var estRows = (costSummary && costSummary.kpis && costSummary.kpis.list_price_monthly) || [];
@@ -193,7 +193,7 @@
       if (costEl) costEl.textContent = F.money(frow.amount, frow.currency);
       setBadge("월말 전망", "border-primary text-primary");
       if (costNoteEl) {
-        costNoteEl.textContent = "이번 달 말 전망(AWS 실측 기준) — 어제(" + frow.based_through + ")까지의 실측을 남은 일수 비율로 늘린 값 · 저장하지 않음." +
+        costNoteEl.textContent = "이번 달 말 전망(CSP 실측 기준) — 어제(" + frow.based_through + ")까지의 실측을 남은 일수 비율로 늘린 값 · 저장하지 않음." +
           (forecastRows.length > 1 ? " 통화가 섞여 있어 " + frow.currency + " 기준만 표시합니다." : "");
       }
     } else if (estRows.length) {
@@ -296,7 +296,7 @@
     el.innerHTML = costBreakdownBarsHtml(estEntries);
   }
 
-  // ── 월별 비용 추이(/costs/trend, granularity=monthly, group_by=provider) — AWS 실측만 ──
+  // ── 월별 비용 추이(/costs/trend, granularity=monthly, group_by=provider) — CSP 실측 ──
   function renderCostTrendChart(trendRes) {
     var el = document.getElementById("dash-cost-trend");
     if (!el) return;
@@ -321,7 +321,7 @@
     });
     el.innerHTML = window.MCPCostChart.lineChart({
       labels: labels, series: series, currency: d.currency, missingLabels: d.missing_days,
-      state: "CONNECTED_OK", title: "월별 비용 추이(AWS 실측)"
+      state: "CONNECTED_OK", title: "월별 비용 추이(CSP 실측)"
     });
   }
 
