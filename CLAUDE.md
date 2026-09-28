@@ -87,23 +87,32 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 비용 화면 3단계 — 버튼·상세 목록·이동 연결(서비스 상세 재조회·미지정 목록·재수집 대상 명시) | `seunghyun/cost-actions` | 이승현 | merged (#126) |
 | 비용 화면 4단계 — ①② 역할·제목·배치 정리 + CF-022 다통화 수정 | `seunghyun/cost-layout` | 이승현 | merged (#129) |
 | 비용 5단계 — 카테고리 분류 정확성 + 검토 이력·가격 비교 진입점·조건 링크·보고서 연결 | `seunghyun/cost-extras` | 이승현 | merged (#130) |
-| 비용 6단계 — 계약 문서 반영 + 인수인계(`docs/Cost_Round_Handover_2026-09-23.md`) | `seunghyun/cost-docs` | 이승현 | in progress |
-| 비용 7단계 — Azure 실측 수집기(모의 검증) · 수집 근거(`coverage_basis`) · 수집 활성화 게이트 · 자격증명 검증 진단 | `seunghyun/cost-ingest-gating` | 이승현 | PR #136 (리뷰 대기) |
+| 비용 6단계 — 계약 문서 반영 + 인수인계(`docs/Cost_Round_Handover_2026-09-23.md`) | `seunghyun/cost-docs` | 이승현 | merged (#131) |
+| 비용 7단계 — Azure 실측 수집기(모의 검증) · 수집 근거(`coverage_basis`) · 수집 활성화 게이트 · 자격증명 검증 진단 | `seunghyun/cost-ingest-gating` | 이승현 | merged (#136) |
+| 비용 8단계 — GCP 실측 수집기(BigQuery 청구 Export, 모의 검증) · Export 미등록 계정 `SETUP_REQUIRED` 안내 · 중단된 수집 run 종결 | `seunghyun/be-cost-gcp-ingest` | 이승현 | merged (#137) |
 | 키를 모두 지운 클라우드 계정 조회 제외 — 비용·인벤토리·대시보드·팀·검토 큐·자동 수집 | `solcho/be-orphan-account-filter` | 조은솔 | merged (#138) |
 | 비용 검증 보고서(2026-09-28) 후속 — 대시보드·인트로 옛 문구, DOM 하네스 상대 경로, 인쇄·좁은 창 CSS 3건 | `solcho/fe-cost-verification-fixes` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
-> **PR #136 요약(2026-09-26)**: ① **수집 근거** — 수집 결과마다 `coverage_basis`
-> (`complete_range`|`observed_only`)를 남기고, 금액 표시는 "관측"으로, 전망·기간 비교·예산
-> 소진율·급증 판정은 "분석 가능"으로 **축을 나눈다**(Azure는 어디까지 도착했는지 알려 주지
-> 않으므로 AWS처럼 다루면 조용히 틀린 값이 나온다). 레거시 NULL은 **AWS만** complete_range로
-> 읽어 기존 동작을 유지한다. ② **수집 활성화 게이트**(`app/cost/gating.py`) — 어댑터 등록(구현
-> 지원)과 실제 호출 허용을 분리한다. 기본값에서 Azure 호출은 0건이고, 빈 목록은 "전체 허용"이
-> 아니라 "한 곳도 허용 안 함"이다. ③ 자격증명 검증 실패를 payload/token/subscription 단계로
-> 갈라 **로그만** 추가(반환 계약 불변) + CSP별 실패 문구 — 자격증명 담당 영역이라 확인 필요.
-> 상세는 `docs/Azure_Credential_Verify_Diagnostics_2026-09-26.md`,
-> `docs/Cost_Round_Handover_2026-09-23.md`, `docs/01_API_Specification_v1.2.md`.
+> **비용 7·8단계 요약(2026-09-26~27, #136·#137 병합 완료)**: ① **수집 근거** — 수집 결과마다
+> `coverage_basis`(`complete_range`|`observed_only`)를 남기고, 금액 표시는 "관측"으로, 전망·기간
+> 비교·예산 소진율·급증 판정은 "분석 가능"으로 **축을 나눈다**(Azure·GCP는 어디까지 도착했는지
+> 알려 주지 않으므로 AWS처럼 다루면 조용히 틀린 값이 나온다). 레거시 NULL은 **AWS만**
+> complete_range로 읽어 기존 동작을 유지한다. ② **수집 활성화 게이트**(`app/cost/gating.py`) —
+> 어댑터 등록(구현 지원)과 실제 호출 허용을 분리한다. 기본값에서 Azure·GCP 호출은 0건이고, 빈
+> 목록은 "전체 허용"이 아니라 "한 곳도 허용 안 함"이다. ③ **GCP는 비용 API가 아니라 BigQuery 청구
+> Export**를 읽는다 — 계정별 테이블을 `COST_GCP_EXPORT_TABLES`로 등록해야 하고, 미등록 계정은
+> `SETUP_REQUIRED`(수집 시 `COST_SETUP_REQUIRED`)다. 과금 위험이 요청 수가 아니라 **스캔 바이트**라
+> dry-run으로 먼저 재고 상한을 넘으면 실제 쿼리를 보내지 않는다. ④ 자격증명 검증 실패를
+> payload/token/subscription 단계로 갈라 **로그만** 추가(반환 계약 불변) + CSP별 실패 문구
+> (그전에는 Azure·GCP 실패에도 "AWS 인증 실패"가 떴다) — 자격증명 담당 영역이라 확인 필요.
+> ⑤ 중단된 수집 run이 `running`에 박혀 그 계정이 영구히 `JOB_ALREADY_RUNNING`으로 막히던 것과,
+> "시작도 못 한 실패"(설정 없음·권한 거절·인증 실패)가 `partial_success`로 분류되던 것을 고쳤다.
+>
+> ⚠️ **Azure·GCP 실측 수집은 아직 한 번도 실행하지 않았다**(모의 검증까지). 실데이터 연결에 필요한
+> 외부 설정과 사람이 눈으로 볼 항목(브라우저 16건·실호출 4건·코드 확인 9건)은 별도 인수인계 문서로
+> 팀에 파일로 전달했다 — 저장소에는 두지 않았다.
 
 ## Key architectural decisions
 
