@@ -36,6 +36,7 @@ from app.cost.query import (
     trend,
 )
 from app.db import SessionLocal, get_db
+from app.demo import DEMO_COST_SOURCE, DemoCostProvider, is_demo_account
 from app.deps import get_current_user
 from app.errors import ApiError, validation_error
 from app.logging_config import log_background_task, log_business_event
@@ -187,7 +188,9 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             return
 
         account = db.get(CloudAccount, run.cloud_account_id)
-        adapter_cls = COST_ADAPTERS.get(account.provider) if account else None
+        is_demo = is_demo_account(db, account)
+        # 데모 계정은 결정적 가짜 비용(app/demo.py)을 "수집"한다 — 시드와 같은 함수라 같은 날은 같은 금액.
+        adapter_cls = DemoCostProvider if is_demo else (COST_ADAPTERS.get(account.provider) if account else None)
         if account is None or adapter_cls is None:
             run.status = "failed"
             run.error_code = "UNSUPPORTED"
@@ -198,7 +201,7 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
 
         # 접수 시점에는 허용이었어도 실행 시점에 설정이 바뀌었을 수 있다(배포·env 변경). CSP를
         # 호출하기 전에 한 번 더 본다 — 이미 만들어진 run은 성공으로 두지 않고 실패로 종결한다.
-        denial = manual_ingest_denial(account.provider, account.id)
+        denial = None if is_demo else manual_ingest_denial(account.provider, account.id)
         if denial is not None:
             run.status = "failed"
             run.error_code = denial
@@ -227,30 +230,33 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             db.commit()
             return
 
-        try:
-            secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
-        except CredentialEncryptionError:
-            run.status = "failed"
-            run.error_code = "PROVIDER_API_ERROR"
-            run.finished_at = dt.datetime.now(dt.timezone.utc)
-            _create_cost_ingestion_notification(db, run, account)
-            db.commit()
-            return
+        if is_demo:
+            secret_payload = {}  # 가짜 비용 생성기는 자격 증명을 쓰지 않는다(위임 payload로 STS를 부르지 않게)
+        else:
+            try:
+                secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+            except CredentialEncryptionError:
+                run.status = "failed"
+                run.error_code = "PROVIDER_API_ERROR"
+                run.finished_at = dt.datetime.now(dt.timezone.utc)
+                _create_cost_ingestion_notification(db, run, account)
+                db.commit()
+                return
 
-        # 위임(assume_role) credential이면 임시 자격증명을 발급받는다(레거시는 그대로 통과) —
-        # app/routers/sync_jobs.py와 같은 지점, 같은 패턴.
-        try:
-            secret_payload = resolve_secret_payload(
-                account.provider, secret_payload, credential_id=credential.id
-            )
-        except CredentialResolutionError as exc:
-            run.status = "failed"
-            run.error_code = exc.error_code
-            run.error_message = exc.message
-            run.finished_at = dt.datetime.now(dt.timezone.utc)
-            _create_cost_ingestion_notification(db, run, account)
-            db.commit()
-            return
+            # 위임(assume_role) credential이면 임시 자격증명을 발급받는다(레거시는 그대로 통과) —
+            # app/routers/sync_jobs.py와 같은 지점, 같은 패턴.
+            try:
+                secret_payload = resolve_secret_payload(
+                    account.provider, secret_payload, credential_id=credential.id
+                )
+            except CredentialResolutionError as exc:
+                run.status = "failed"
+                run.error_code = exc.error_code
+                run.error_message = exc.message
+                run.finished_at = dt.datetime.now(dt.timezone.utc)
+                _create_cost_ingestion_notification(db, run, account)
+                db.commit()
+                return
 
         try:
             result = adapter_cls().fetch(
@@ -279,9 +285,10 @@ def _run_cost_ingestion_run_inner(run_id: int) -> None:
             return
 
         try:
-            replaced = replace_cost_rows(
-                db, account, run, result.rows, source=cost_source_for(account.provider)
-            )
+            if is_demo:
+                replaced = replace_cost_rows(db, account, run, result.rows, source=DEMO_COST_SOURCE)
+            else:
+                replaced = replace_cost_rows(db, account, run, result.rows, source=cost_source_for(account.provider))
         except AccountLockedError:
             db.rollback()
             run = db.get(CostIngestionRun, run_id)
@@ -379,7 +386,7 @@ def create_cost_ingestion_runs(
         # 구현 지원(위)과 수집 활성화(아래)는 다른 질문이다 — 꺼져 있다고 UNSUPPORTED나
         # PERMISSION_DENIED로 위장하지 않는다(app/cost/gating.py). 계정 id를 준 요청이든 생략한
         # 요청이든 같은 목록을 지나므로 진입 경로가 달라도 판정은 하나다.
-        denial = manual_ingest_denial(account.provider, account.id)
+        denial = None if is_demo_account(db, account) else manual_ingest_denial(account.provider, account.id)
         if denial is not None:
             skipped.append(
                 CostIngestionRunSkipped(cloud_account_id=str_id(account.id), reason_code=denial)

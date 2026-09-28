@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import get_db
+from app.demo import is_demo_user, read_only_error
 from app.audit import record_audit_event
 from app.deps import get_current_user, require_confirmation
 from app.errors import ApiError, validation_error
@@ -164,6 +165,8 @@ def update_me(
     current_user: User = Depends(get_current_user),
 ) -> MeResponse:
     # JWT의 user_id로 인증된 본인 계정만 수정한다(get_current_user와 db가 같은 세션을 공유).
+    if is_demo_user(current_user):
+        raise read_only_error("프로필을 수정")  # 발표장에서 여러 사람이 같은 계정을 쓴다
     name = payload.name.strip()
     if not name:
         raise validation_error("이름을 입력해 주세요.", details=[{"field": "name", "reason": "required"}])
@@ -236,6 +239,8 @@ def withdraw_me(
     - 진행 중인 프로비저닝·동기화가 있으면 409로 거부한다 — 키를 지우면 실행 중인 작업이 중간에 깨진다
       (`DELETE /credentials/{id}`의 CREDENTIAL_IN_USE와 같은 이유).
     """
+    if is_demo_user(current_user):
+        raise read_only_error("회원 탈퇴")
     running_job = (
         db.query(ProvisioningJob.id)
         .filter(ProvisioningJob.user_id == current_user.id, ProvisioningJob.status.in_(["queued", "running"]))
@@ -448,7 +453,8 @@ def request_password_reset(
     user = db.query(User).filter_by(normalized_email=normalized_email).one_or_none()
 
     # 이메일 존재 여부를 노출하지 않도록, 계정이 있든 없든 동일한 성공 메시지를 반환한다.
-    if user is not None and user.status != "withdrawn":
+    # 데모 계정은 비밀번호가 공개돼 있어 재설정 메일을 보내지 않는다(누가 바꾸면 모두가 못 들어온다).
+    if user is not None and user.status != "withdrawn" and not is_demo_user(user):
         token = generate_token()
         ttl = settings.password_reset_token_ttl_seconds
         db.add(

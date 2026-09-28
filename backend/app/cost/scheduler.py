@@ -21,6 +21,7 @@ from app.cost.notify import evaluate_for_account
 from app.cost.review import evaluate_and_notify_for_account_safely
 from app.cost import COST_ADAPTERS, cost_source_for, is_cost_supported
 from app.cost.gating import auto_ingest_allowed
+from app.demo import DEMO_COST_SOURCE, DemoCostProvider, is_demo_account
 from app.config import get_settings
 from app.db import SessionLocal
 from app.logging_config import log_background_task, log_business_event
@@ -57,7 +58,9 @@ def _last_active_run_id(db: Session, cloud_account_id: int) -> int | None:
     return int(row[0]) if row else None
 
 def _run_single_account(db: Session, account: CloudAccount, period_start: dt.date, period_end: dt.date) -> None:
-    adapter_cls = COST_ADAPTERS.get(account.provider)
+    # 데모 계정은 가짜 비용을 매일 이어 붙여 발표 날까지 "수집 지연" 없이 유지한다(app/demo.py).
+    is_demo = is_demo_account(db, account)
+    adapter_cls = DemoCostProvider if is_demo else COST_ADAPTERS.get(account.provider)
     if adapter_cls is None:
         return
 
@@ -84,8 +87,11 @@ def _run_single_account(db: Session, account: CloudAccount, period_start: dt.dat
     db.commit()
 
     try:
-        secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
-        secret_payload = resolve_secret_payload(account.provider, secret_payload, credential_id=credential.id)
+        if is_demo:
+            secret_payload = {}  # 가짜 비용 생성기는 자격 증명을 쓰지 않는다(위임 payload로 STS를 부르지 않게)
+        else:
+            secret_payload = decrypt_credential_json(credential.encrypted_payload, credential.encryption_nonce)
+            secret_payload = resolve_secret_payload(account.provider, secret_payload, credential_id=credential.id)
     except (CredentialEncryptionError, CredentialResolutionError) as exc:
         run.status = "failed"
         run.error_code = getattr(exc, "error_code", "PROVIDER_API_ERROR")
@@ -109,7 +115,10 @@ def _run_single_account(db: Session, account: CloudAccount, period_start: dt.dat
         return
 
     try:
-        replaced = replace_cost_rows(db, account, run, result.rows, source=cost_source_for(account.provider))
+        if is_demo:
+            replaced = replace_cost_rows(db, account, run, result.rows, source=DEMO_COST_SOURCE)
+        else:
+            replaced = replace_cost_rows(db, account, run, result.rows, source=cost_source_for(account.provider))
     except AccountLockedError:
         db.rollback()
         run = db.get(CostIngestionRun, run.id)
@@ -145,7 +154,7 @@ def run_daily_ingestion() -> None:
                     continue
                 # 어댑터가 등록됐다고 자동 수집까지 켜지지는 않는다(app/cost/gating.py) — 수동
                 # 허용과 별개로 COST_AUTO_INGEST_PROVIDERS에 적힌 provider·계정만 자동으로 돈다.
-                if not auto_ingest_allowed(account.provider, account.id):
+                if not auto_ingest_allowed(account.provider, account.id) and not is_demo_account(db, account):
                     continue
                 # 계정 하나가 실패해도(권한 만료 등) 나머지 계정은 계속 돈다.
                 try:
