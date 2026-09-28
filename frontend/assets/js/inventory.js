@@ -671,10 +671,15 @@
   searchBtn.addEventListener("click", render);
   searchInput.addEventListener("keydown", function (e) { if (e.key === "Enter") render(); });
   fReset.addEventListener("click", function () {
-    [fCloud, fCategory, fAccount, fStatus, fRegion, fTag].forEach(function (el) { el.value = ""; });
+    var filters = [fCloud, fCategory, fAccount, fStatus, fRegion, fTag];
+    filters.forEach(function (el) { el.value = ""; });
     searchField.value = "resource";
     searchInput.value = "";
-    render();
+    // 값만 바꾸면 change가 안 떠서 커스텀 드롭다운(dropdown.js) 라벨이 옛 선택에 남는다 —
+    // 값을 모두 되돌린 뒤 change를 쏴 라벨을 맞춘다(필터 select의 change는 render도 다시 부른다).
+    filters.concat(searchField).forEach(function (el) {
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    });
   });
 
   selectAll.addEventListener("change", function () {
