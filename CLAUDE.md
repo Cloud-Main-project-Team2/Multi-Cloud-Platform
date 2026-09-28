@@ -95,6 +95,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 수집 꺼진 계정이 월말 전망·기간 비교를 막던 회귀 수정 + 대시보드 전망 보류 사유 표시 | `solcho/be-cost-forecast-gating` | 조은솔 | in progress |
 | 프로비저닝 입력 검증 실패(422)도 failed job으로 기록 — 대시보드 최근 활동에 시도가 보이게 | `solcho/be-provisioning-rejected-jobs` | 조은솔 | merged (#143) |
 | 회원 탈퇴 `DELETE /auth/me` + 마이페이지 탈퇴 버튼 연결(같은 이메일 재가입 허용) | `solcho/be-account-withdrawal` | 조은솔 | in progress |
+| 메인 히어로 높이·애니메이션 + 회원가입 폼 여백 축소 | `solcho/fe-landing-polish` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
