@@ -18,4 +18,10 @@
      검은 배경으로 인쇄된다. */
   :root, [data-theme="dark"] { --background: #ffffff; --surface: #ffffff; --foreground: #111111; }
   body { background: #fff; }
+  /* CF-018 — 화면용 고정 폭(62rem=992px)은 A4 인쇄 영역(약 746px)을 넘고, .table-wrap의
+     overflow:auto는 인쇄물에서 스크롤이 아니라 잘림이 된다. 인쇄에서는 폭을 풀고, 버튼이
+     .no-print로 숨어도 남던 행동 칸(th·td 모두 이 클래스)도 없앤다. */
+  .account-cost-table { width: 100%; table-layout: auto; }
+  .account-cost-table .account-share-col { width: auto; }
+  .account-cost-table .account-actions-cell { display: none; }
 }
