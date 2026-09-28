@@ -2199,16 +2199,18 @@ window.MCPCost = (function () {
       var parts = r.source_key.split(":");
       var accId = parts[0], day = parts[parts.length - 1], svc = parts.slice(1, -1).join(":");
       var closed = r.status === "resolved";
-      return "<tr><td>" + (an ? esc(an.label) : "검토 항목") + "<br><span class=\"tiny muted\">" + esc(accountLabelOf(accId)) + " · " + esc(svc) + " · " + esc(day) + "</span></td>" +
-        '<td class="num">' + (an ? '<span class="money-positive">+' + esc(F.money(an.delta, an.currency)) + "</span><br><span class=\"tiny muted\">" + anomalyPctText(an) + " · 그 날의 증가액 (정가 노출액 / 절감액이 아님)</span>" : '— <br><span class="tiny muted">현재 규칙으로 급증이 아니거나 기간 밖 — 금액 없음</span>') + "</td>" +
+      return "<tr><td>" + (an ? esc(an.label) : "검토 항목") + "<br><span class=\"tiny muted\">" + esc(accountLabelOf(accId)) + " · " + esc(svc) + " · <span class=\"review-date\">" + esc(day) + "</span></span></td>" +
+        '<td class="num">' + (an ? '<span class="money-positive">+' + esc(F.money(an.delta, an.currency)) + "</span><br><span class=\"tiny muted\">" + anomalyPctText(an) + " · 그 날의 증가액</span><br><span class=\"tiny muted\">(정가 노출액 / 절감액이 아님)</span>" : '— <br><span class="tiny muted">현재 규칙으로 급증이 아니거나 기간 밖 — 금액 없음</span>') + "</td>" +
         "<td>" + esc(r.note || "—") + "</td>" +
         '<td><span class="badge">' + esc(REVIEW_STATUS_LABEL[r.status] || r.status) + "</span></td>" +
         "<td>" + (r.resolution ? esc(RESOLUTION_LABEL[r.resolution] || r.resolution) : '<span class="tiny muted">' + (closed ? "사유 없음" : "—") + "</span>") + "</td>" +
-        '<td><button type="button" class="btn no-print" data-action="open-review-dialog" data-item-id="' + esc(r.id) + '">' + (closed ? "내용 보기" : "검토") + "</button> " +
+        '<td class="actions"><button type="button" class="btn no-print" data-action="open-review-dialog" data-item-id="' + esc(r.id) + '">' + (closed ? "내용 보기" : "검토") + "</button> " +
         '<button type="button" class="btn no-print" data-action="open-price-compare">유사 사양 정가 비교</button></td></tr>';
     });
     var html = reviewFilterBarHtml() +
-      '<div class="table-wrap"><table><thead><tr><th scope="col">문제 / 근거</th><th scope="col" class="num">증가액</th><th scope="col">메모</th><th scope="col">검토 상태</th><th scope="col">종결 사유</th><th scope="col">행동</th></tr></thead><tbody>' +
+      '<div class="table-wrap"><table class="review-table">' +
+      '<colgroup><col><col class="review-col-amount"><col><col class="review-col-status"><col class="review-col-resolution"><col class="review-col-actions"></colgroup>' +
+      '<thead><tr><th scope="col">문제 / 근거</th><th scope="col" class="num">증가액</th><th scope="col">메모</th><th scope="col">검토 상태</th><th scope="col">종결 사유</th><th scope="col" class="actions">행동</th></tr></thead><tbody>' +
       (rows.length ? rows.join("") : '<tr><td colspan="6" class="tiny muted">' + esc(f.empty) + "</td></tr>") + "</tbody></table></div>" +
       '<p class="note">' + esc(f.label) + " 항목 " + items.length + "건 · 기간 필터 없음(CSP·계정 조건만 적용) · 종결된 항목은 되돌릴 수 없습니다(재발은 새 항목) · 이 화면에서 리소스를 중지·삭제하지 않습니다.</p>";
     return { state: "CONNECTED_OK", html: html };

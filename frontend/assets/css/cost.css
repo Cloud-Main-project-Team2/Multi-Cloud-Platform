@@ -267,6 +267,24 @@ td.num { text-align: right; white-space: nowrap; font-variant-numeric: tabular-n
 .account-share-cell { display: inline-flex; align-items: center; justify-content: flex-end; gap: 6px; width: 100%; }
 .account-share-cell .pct-value { display: inline-block; min-width: 3.4em; text-align: right; }
 .account-table .account-share-cell .bar-track { max-width: 140px; flex: 1 1 auto; margin-top: 0; }
+/* CF-034 비용 검토 목록 — 공용 규칙(th 왼쪽 정렬, td.num nowrap)을 그대로 받으면 증가액 칸의 긴 보조
+   문구가 한 줄로 늘어나 auto 레이아웃에서 폭을 독식하고, 오른쪽 칸(검토 상태·종결 사유·행동)의 헤더·
+   뱃지·버튼이 글자 단위로 깨졌다(2026-09-28). 공용 table 규칙은 다른 표가 같이 쓰므로 이 표에만 건다.
+   고정 칸은 colgroup 폭, 문제/근거·메모는 남는 폭을 나눠 쓴다. min-width보다 좁으면 .table-wrap이
+   가로 스크롤을 낸다(칸이 짓눌리지 않는다). */
+.review-table { table-layout: fixed; min-width: 58rem; }
+.review-table .review-col-amount { width: 14rem; }
+.review-table .review-col-status { width: 6rem; }
+.review-table .review-col-resolution { width: 6.5rem; }
+.review-table .review-col-actions { width: 10rem; }
+.review-table th { white-space: nowrap; }
+.review-table th.num { text-align: right; }
+/* 보조 문구는 의도한 <br> 지점에서 줄을 나누고, 그래도 칸보다 긴 문구(신규 비용 발생·금액 없음)만 칸 안에서 접힌다. */
+.review-table td.num .tiny { white-space: normal; }
+.review-table .badge { white-space: nowrap; }
+.review-table .review-date { white-space: nowrap; }
+.review-table td.actions .btn { display: flex; width: 100%; white-space: nowrap; }
+.review-table td.actions .btn + .btn { margin-top: 6px; }
 .provider-cell { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; vertical-align: middle; }
 .provider-logo { height: 14px; width: auto; flex: none; }
 .account-table .status-cell { display: flex; flex-direction: column; gap: 2px; }
