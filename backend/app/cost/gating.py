@@ -114,3 +114,10 @@ def manual_ingest_denial(provider: str, cloud_account_id: int) -> str | None:
 def auto_ingest_allowed(provider: str, cloud_account_id: int) -> bool:
     """자동 수집(스케줄러) 대상인지. 수동 허용 여부와 무관하게 별도로 판정한다."""
     return _denial(provider, cloud_account_id, auto_ingest_providers()) is None
+
+
+def ingest_enabled(provider: str, cloud_account_id: int) -> bool:
+    """이 계정을 수동이든 자동이든 **한 경로라도** 수집할 수 있는지. 둘 다 막혀 있으면 이 계정의 결측은
+    사람이 "다시 수집"으로 메울 수 없다 — 전망·기간 비교 판정 대상에서 빼는 근거로 쓴다
+    (`app/cost/query.py::split_ingest_disabled`). 수동만 허용된 계정은 수집으로 메울 수 있으므로 True다."""
+    return manual_ingest_denial(provider, cloud_account_id) is None or auto_ingest_allowed(provider, cloud_account_id)
