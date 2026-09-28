@@ -236,7 +236,7 @@
         else if (estFallback != null) costText = "$" + estFallback.toFixed(2) + "/mo · Estimated · 정가 730h";
         else costText = "추정 불가";
         return (
-          '<div class="rounded-2xl border border-border bg-surface p-5">' +
+          '<div class="dash-link rounded-2xl border border-border bg-surface p-5" data-href="inventory.html" tabindex="0" title="클릭하면 인벤토리 화면으로 이동합니다">' +
           '<div class="flex items-center justify-between">' +
           '<p class="flex items-center gap-2 font-semibold">' +
           '<img src="' + PROVIDER_ICON[p] + '" alt="" class="h-5 w-auto align-middle" />' +
@@ -815,7 +815,30 @@
     return "period_start=" + iso(start) + "&period_end=" + iso(end);
   }
 
+  // ── 섹션 카드 클릭 → 관련 페이지 이동 ─────────────────────────────────────────
+  // 카드에 data-href만 붙이고 여기서 위임으로 처리한다(클라우드별 카드는 나중에 렌더되므로 위임이어야 한다).
+  // 카드 안의 버튼·링크·접기(details) 등 자체 조작이 있는 요소나, 텍스트를 드래그 선택한 경우는 이동하지 않는다.
+  var INTERACTIVE_SELECTOR = "a, button, input, select, textarea, label, summary, details";
+  function initSectionLinks() {
+    document.addEventListener("click", function (e) {
+      var card = e.target.closest && e.target.closest(".dash-link[data-href]");
+      if (!card) return;
+      var inner = e.target.closest(INTERACTIVE_SELECTOR);
+      if (inner && card.contains(inner)) return;
+      var sel = window.getSelection && window.getSelection();
+      if (sel && String(sel).length > 0) return;
+      window.location.href = card.getAttribute("data-href");
+    });
+    document.addEventListener("keydown", function (e) {
+      if (e.key !== "Enter") return;
+      var card = e.target;
+      if (!card.classList || !card.classList.contains("dash-link") || !card.hasAttribute("data-href")) return;
+      window.location.href = card.getAttribute("data-href");
+    });
+  }
+
   function init() {
+    initSectionLinks();
     if (!window.MCPApi) return;
 
     // /resources/summary(전체 개수·provider별 개수)와 /resources(항목별 cost_summary 포함)를
