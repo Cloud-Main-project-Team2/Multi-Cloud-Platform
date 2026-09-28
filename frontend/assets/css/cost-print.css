@@ -24,4 +24,8 @@
   .account-cost-table { width: 100%; table-layout: auto; }
   .account-cost-table .account-share-col { width: auto; }
   .account-cost-table .account-actions-cell { display: none; }
+  /* CF-034 — 화면용 min-width(58rem)도 인쇄 영역을 넘는다. 버튼이 숨어 비는 행동 칸은 폭을 없앤다. */
+  .review-table { min-width: 0; }
+  .review-table .review-col-actions { width: 0; }
+  .review-table th.actions, .review-table td.actions { display: none; }
 }
