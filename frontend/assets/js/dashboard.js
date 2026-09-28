@@ -562,7 +562,7 @@
     if (!tbody) return;
 
     if (!entries.length) {
-      tbody.innerHTML = '<tr><td class="py-2.5 text-muted-foreground" colspan="5">아직 프로비저닝한 리소스가 없습니다.</td></tr>';
+      tbody.innerHTML = '<tr><td class="py-2.5 text-muted-foreground" colspan="5">아직 프로비저닝 기록이 없습니다.</td></tr>';
       return;
     }
 

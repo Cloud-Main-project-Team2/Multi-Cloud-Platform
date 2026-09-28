@@ -50,6 +50,7 @@ from app.schemas.provisioning import (
 from app.providers.session import CredentialResolutionError, resolve_secret_payload
 from app.security.credential_crypto import CredentialEncryptionError, decrypt_credential_json
 from app.serialization import iso_z, str_id
+from app.terraform_runner import redact
 
 router = APIRouter(prefix="/api/v1", tags=["provisioning"])
 
@@ -92,6 +93,63 @@ def _find_secret_field(spec: dict[str, Any], prefix: str, allow: frozenset[str])
 def _strip_sensitive(provider_spec: dict[str, Any], sensitive: frozenset[str]) -> dict[str, Any]:
     """DB(`spec_json`)에 저장하기 전에 러너가 선언한 민감 필드를 제거한다."""
     return {k: v for k, v in provider_spec.items() if k not in sensitive}
+
+
+def _record_rejected_job(
+    db: Session,
+    *,
+    user: User,
+    credential: Credential,
+    service_catalog: ServiceCatalog,
+    idempotency_key: str,
+    payload: CreateProvisioningJobRequest,
+    sensitive: frozenset[str],
+    exc: ApiError,
+    request: Request,
+) -> None:
+    """입력 검증(`runner.validate_spec`)에서 거절된 요청을 `failed` job으로 남긴다(2026-09-28).
+
+    예전엔 422만 돌려주고 아무것도 저장하지 않아서, 사용자가 "생성하기"를 눌러 실패를 봤는데도
+    대시보드 "최근 프로비저닝 활동"(= `GET /provisioning/jobs`)에는 시도 자체가 없었다. 응답 계약(422)은
+    그대로이고 기록만 추가한다.
+
+    - **검증 실패만** 기록한다: 인증(401)·소유권(404)·미지원 조합(501)·secret 필드 거부(422
+      SECRET_FIELD_NOT_ALLOWED)는 남기지 않는다. 마지막 것은 spec에 비밀값이 들어 있을 수 있어서다.
+    - 민감 필드는 성공 경로와 똑같이 `spec_json`에서 빼고, 사유 문구에서도 그 값을 한 번 더 지운다
+      (지금 러너들은 사유에 입력값을 넣지 않지만 방어적으로).
+    - 같은 Idempotency-Key의 job이 이미 있으면 새로 만들지 않는다(UNIQUE 충돌 방지 · 재전송 중복 방지).
+    - 실행 전 거절이라 `started_at`은 비우고, 알림은 만들지 않는다 — 사용자는 이미 422 응답으로 사유를 봤다.
+    """
+    exists = db.query(ProvisioningJob.id).filter_by(user_id=user.id, idempotency_key=idempotency_key).first()
+    if exists is not None:
+        return
+    secrets = [str(payload.provider_spec[f]) for f in sensitive if payload.provider_spec.get(f)]
+    job = ProvisioningJob(
+        user_id=user.id,
+        credential_id=credential.id,
+        service_catalog_id=service_catalog.id,
+        workspace_name=f"pending-{idempotency_key}",
+        idempotency_key=idempotency_key,
+        spec_json={"common_spec": payload.common_spec, "provider_spec": _strip_sensitive(payload.provider_spec, sensitive)},
+        status="failed",
+        error_code=exc.code,
+        error_message=redact(exc.message, secrets),
+        finished_at=dt.datetime.now(dt.timezone.utc),
+    )
+    db.add(job)
+    db.flush()
+    job.workspace_name = f"user-{user.id}-job-{job.id}"
+    db.commit()
+    log_business_event(
+        "provisioning.job.rejected",
+        level="WARNING",
+        job_id=job.id,
+        user_id=user.id,
+        provider=service_catalog.provider,
+        service=service_catalog.service_code,
+        error_code=exc.code,
+        request_id=_request_id(request),
+    )
 
 
 def _get_owned_credential(db: Session, user_id: int, credential_id: str) -> tuple[Credential, CloudAccount]:
@@ -621,7 +679,15 @@ def create_provisioning_job(
         # 소유 credential이지만 다른 provider — 존재를 드러내지 않고 404로 처리한다.
         raise ApiError(404, "CREDENTIAL_NOT_FOUND", "자격 증명을 찾을 수 없습니다.")
 
-    runner.validate_spec(payload.common_spec, payload.provider_spec)
+    try:
+        runner.validate_spec(payload.common_spec, payload.provider_spec)
+    except ApiError as exc:
+        if exc.status_code == 422:
+            _record_rejected_job(
+                db, user=current_user, credential=credential, service_catalog=service_catalog,
+                idempotency_key=idempotency_key, payload=payload, sensitive=sensitive, exc=exc, request=request,
+            )
+        raise
 
     # DB엔 민감 필드(admin_password 등)를 제거한 provider_spec을 저장하고, 실행엔 원본을 메모리로 넘긴다.
     stored_provider_spec = _strip_sensitive(payload.provider_spec, sensitive)

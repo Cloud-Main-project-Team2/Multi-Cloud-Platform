@@ -348,3 +348,92 @@ def test_get_unknown_job_returns_404(client, azure_fixture):
     resp = client.get("/api/v1/provisioning/jobs/999999", headers=_auth(azure_fixture["user_id"]))
     assert resp.status_code == 404
     assert resp.json()["error"]["code"] == "PROVISIONING_JOB_NOT_FOUND"
+
+
+# --- 입력 검증에서 거절된 요청도 failed job으로 남는다(2026-09-28) ---------------------------------
+# 예전엔 422만 돌려주고 아무것도 저장하지 않아 대시보드 "최근 프로비저닝 활동"에 시도가 보이지 않았다.
+
+WEAK_PASSWORD = "weakpassword1"   # 12자 이상이지만 소문자+숫자 2종뿐 → 서버 규칙(3종 이상) 위반
+
+
+def _list_jobs(client, user_id, **params):
+    resp = client.get("/api/v1/provisioning/jobs", params=params, headers=_auth(user_id))
+    assert resp.status_code == 200, resp.text
+    return resp.json()["data"]["items"]
+
+
+def test_validation_rejected_request_is_recorded_as_failed_job(client, azure_fixture, session_factory):
+    spec = {**VALID_PROVIDER_SPEC, "admin_password": WEAK_PASSWORD}
+    resp = client.post(
+        "/api/v1/provisioning/azure/vm",
+        json=_body(azure_fixture["credential_id"], provider_spec=spec),
+        headers={**_auth(azure_fixture["user_id"]), **_headers()},
+    )
+    assert resp.status_code == 422                                   # 응답 계약은 그대로
+    assert resp.json()["error"]["code"] == "VALIDATION_ERROR"
+
+    items = _list_jobs(client, azure_fixture["user_id"], provider="azure")   # 대시보드가 부르는 모양
+    assert len(items) == 1
+    job = items[0]
+    assert job["status"] == "failed"
+    assert job["error"]["code"] == "VALIDATION_ERROR"
+    assert "3종 이상" in job["error"]["message"]
+    assert job["started_at"] is None and job["finished_at"] is not None
+    assert job["common_spec"]["name"] == "web-01"
+    assert "admin_password" not in job["provider_spec"]
+
+    session = session_factory()
+    try:
+        row = session.query(ProvisioningJob).one()
+        assert WEAK_PASSWORD not in str(row.spec_json) and WEAK_PASSWORD not in (row.error_message or "")
+        assert row.workspace_name == f"user-{azure_fixture['user_id']}-job-{row.id}"
+    finally:
+        session.close()
+
+
+def test_resending_same_rejected_request_does_not_duplicate(client, azure_fixture):
+    spec = {**VALID_PROVIDER_SPEC, "admin_password": WEAK_PASSWORD}
+    for _ in range(2):
+        resp = client.post(
+            "/api/v1/provisioning/azure/vm",
+            json=_body(azure_fixture["credential_id"], provider_spec=spec),
+            headers={**_auth(azure_fixture["user_id"]), **_headers("key-same")},
+        )
+        assert resp.status_code == 422
+    assert len(_list_jobs(client, azure_fixture["user_id"])) == 1
+
+
+def test_corrected_retry_with_new_key_creates_separate_job(client, azure_fixture):
+    bad = {**VALID_PROVIDER_SPEC, "admin_password": WEAK_PASSWORD}
+    assert client.post(
+        "/api/v1/provisioning/azure/vm", json=_body(azure_fixture["credential_id"], provider_spec=bad),
+        headers={**_auth(azure_fixture["user_id"]), **_headers("key-bad")},
+    ).status_code == 422
+    assert client.post(
+        "/api/v1/provisioning/azure/vm", json=_body(azure_fixture["credential_id"]),
+        headers={**_auth(azure_fixture["user_id"]), **_headers("key-good")},
+    ).status_code == 202
+
+    statuses = sorted(j["status"] for j in _list_jobs(client, azure_fixture["user_id"]))
+    assert statuses == ["failed", "queued"]
+
+
+def test_secret_field_rejection_is_not_recorded(client, azure_fixture):
+    """비밀값이 spec에 들어 있을 수 있는 거절은 저장하지 않는다."""
+    spec = {**VALID_PROVIDER_SPEC, "client_secret": "leak-me"}
+    resp = client.post(
+        "/api/v1/provisioning/azure/vm",
+        json=_body(azure_fixture["credential_id"], provider_spec=spec),
+        headers={**_auth(azure_fixture["user_id"]), **_headers()},
+    )
+    assert resp.json()["error"]["code"] == "SECRET_FIELD_NOT_ALLOWED"
+    assert _list_jobs(client, azure_fixture["user_id"]) == []
+
+
+def test_rejection_before_validation_is_not_recorded(client, azure_fixture):
+    """소유권(404)·미지원(501) 등 검증 이전 거절은 job을 만들지 않는다."""
+    client.post("/api/v1/provisioning/azure/sql", json=_body(azure_fixture["credential_id"]),
+                headers={**_auth(azure_fixture["user_id"]), **_headers("k-501")})
+    client.post("/api/v1/provisioning/azure/vm", json=_body(azure_fixture["aws_credential_id"]),
+                headers={**_auth(azure_fixture["user_id"]), **_headers("k-404")})
+    assert _list_jobs(client, azure_fixture["user_id"]) == []
