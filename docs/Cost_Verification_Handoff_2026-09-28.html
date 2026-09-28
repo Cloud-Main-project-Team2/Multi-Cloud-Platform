@@ -1,0 +1,444 @@
+<title>비용 검증 인수인계</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #FBFAF7; --surface: #FFFFFF; --sunk: #F3F1EB;
+    --line: #E2E0D9; --line-strong: #CFCCC2;
+    --ink: #1B2430; --muted: #5C6672; --done: #8B9199;
+    --accent: #1F6F5C; --accent-soft: #E4F0EB;
+    --warn: #B4551F; --warn-soft: #FBEEE3;
+    --team: #2F5EA8; --team-soft: #E6EDF8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #12171C; --surface: #19202A; --sunk: #10161D;
+      --line: #2A323D; --line-strong: #3A4552;
+      --ink: #EDEFF1; --muted: #9AA5B1; --done: #6B747E;
+      --accent: #5FBFA4; --accent-soft: #17302B;
+      --warn: #E29A5F; --warn-soft: #2B2118;
+      --team: #8AB4F0; --team-soft: #182536;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #12171C; --surface: #19202A; --sunk: #10161D;
+    --line: #2A323D; --line-strong: #3A4552;
+    --ink: #EDEFF1; --muted: #9AA5B1; --done: #6B747E;
+    --accent: #5FBFA4; --accent-soft: #17302B;
+    --warn: #E29A5F; --warn-soft: #2B2118;
+    --team: #8AB4F0; --team-soft: #182536;
+  }
+
+  body { background: var(--paper); color: var(--ink); line-height: 1.6; font-size: 16px;
+    font-family: "IBM Plex Sans KR", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  .wrap { max-width: 900px; margin: 0 auto; padding-inline: 20px; padding-block: 0 72px; }
+
+  header.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5;
+    background: var(--paper); border-bottom: 1px solid var(--line); padding-block: 18px 14px; }
+  .eyebrow { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px;
+    letter-spacing: .14em; text-transform: uppercase; color: var(--accent); margin: 0 0 6px; }
+  h1 { font-size: 26px; font-weight: 600; margin: 0 0 4px; letter-spacing: -.01em; text-wrap: balance; }
+  .sub { margin: 0; color: var(--muted); font-size: 14px; }
+  .meter { display: flex; align-items: center; gap: 12px; margin-top: 14px; }
+  .bar { flex: 1; height: 8px; border-radius: 999px; background: var(--sunk); overflow: hidden; }
+  .bar span { display: block; height: 100%; width: 0; background: var(--accent); transition: width .25s ease; }
+  .count { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px; color: var(--muted);
+    font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  button { font: inherit; font-size: 13px; color: var(--ink); background: var(--surface);
+    border: 1px solid var(--line-strong); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button[aria-pressed="true"] { background: var(--accent-soft); border-color: var(--accent); }
+  button:focus-visible, input:focus-visible, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .note { background: var(--surface); border: 1px solid var(--line); border-left: 4px solid var(--accent);
+    border-radius: 10px; padding: 14px 16px; margin-top: 22px; font-size: 14px; color: var(--muted); }
+  .note b { color: var(--ink); font-weight: 600; }
+  .warnbox { background: var(--warn-soft); border: 1px solid var(--warn); border-radius: 10px;
+    padding: 12px 14px; font-size: 14px; margin-bottom: 16px; }
+
+  section { margin-top: 34px; }
+  h2 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
+  h3 { font-size: 15px; font-weight: 600; margin: 24px 0 8px; color: var(--muted); }
+  .lead { margin: 0 0 14px; font-size: 14px; color: var(--muted); }
+
+  table.roles { width: 100%; border-collapse: collapse; font-size: 14px; margin-top: 10px; }
+  table.roles th, table.roles td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; }
+  table.roles th { background: var(--sunk); font-weight: 600; }
+
+  ul.items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  li.item { background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+    display: grid; grid-template-columns: auto 1fr; gap: 12px; padding: 14px 16px; }
+  li.item.done { background: var(--sunk); }
+  li.item.done .title { color: var(--done); text-decoration: line-through; text-decoration-thickness: 1px; }
+  input[type="checkbox"] { width: 20px; height: 20px; margin-top: 3px; accent-color: var(--accent); cursor: pointer; }
+  .body { min-width: 0; }
+  .title { font-size: 15px; font-weight: 500; margin: 0; }
+  .id { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12px; font-weight: 600;
+    color: var(--accent); margin-right: 8px; }
+  .tags { margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: 11.5px; font-weight: 600; border-radius: 999px; padding: 2px 9px;
+    background: var(--team-soft); color: var(--team); }
+  .tag.owner { background: var(--warn-soft); color: var(--warn); }
+  .tag.where { background: var(--accent-soft); color: var(--accent); }
+  details { margin-top: 10px; }
+  summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+  dl { margin: 10px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 14px; font-size: 14px; }
+  dt { color: var(--muted); font-weight: 600; white-space: nowrap; }
+  dd { margin: 0; }
+  code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 12.5px;
+    background: var(--sunk); border-radius: 4px; padding: 1px 5px; }
+  pre { background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px;
+    overflow-x: auto; font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 13px; line-height: 1.7; margin: 0; }
+  .cmdrow { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin: 18px 0 8px; }
+  .cmdrow h3 { margin: 0; }
+  footer { margin-top: 40px; padding-top: 18px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  @media (max-width: 520px) { h1 { font-size: 22px; } .wrap { padding-inline: 16px; } dl { grid-template-columns: 1fr; gap: 2px; } }
+  @media (prefers-reduced-motion: reduce) { .bar span { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <p class="eyebrow">Multi-Cloud Platform · Cost</p>
+    <h1>비용 검증 인수인계</h1>
+    <p class="sub">2026-09-28 · 팀원이 대신 확인해 주는 목록 (이승현은 발표 자료 준비)</p>
+    <div class="meter">
+      <div class="bar"><span id="bar-fill"></span></div>
+      <p class="count" id="count-text">0 / 0</p>
+    </div>
+    <div class="controls">
+      <button type="button" id="f-team" aria-pressed="false">팀원 몫만</button>
+      <button type="button" id="f-open" aria-pressed="false">남은 것만</button>
+      <button type="button" id="copy-result">결과 표 복사</button>
+      <button type="button" id="reset">체크 초기화</button>
+    </div>
+  </header>
+
+  <p class="note">
+    비용 화면·수집 기능은 <b>main에 전부 병합</b>됐고 백엔드 자동 테스트 <b>1111개</b>가 통과했습니다.
+    남은 것은 <b>사람이 브라우저에서 봐야 아는 것</b>과 <b>실제 클라우드를 호출해야 아는 것</b>입니다.
+    문제를 발견하면 고치지 말고 <b>기록만</b> 해 주세요 — 수정은 이승현이 합니다.
+  </p>
+
+  <section>
+    <h2>역할 배분</h2>
+    <table class="roles">
+      <tr><th>파트</th><th>내용</th><th>누가</th><th>시간</th></tr>
+      <tr><td>A</td><td>브라우저에서 눈으로 볼 것 16건</td><td><b>팀원 누구나</b> (클라우드 계정 없어도 됨)</td><td>40~60분</td></tr>
+      <tr><td>B</td><td>실제 클라우드를 호출하는 검증 4건</td><td><b>계정 소유자 + 이승현 동석</b></td><td>항목당 10~20분</td></tr>
+      <tr><td>C</td><td>코드·정책 확인 9건</td><td>조은솔 6 · 안권형 3</td><td>각 5분</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2>준비 (A를 맡은 사람, 10분)</h2>
+    <div class="cmdrow"><h3>스택 기동</h3><button type="button" data-copy="prep-cmd">복사</button></div>
+    <pre id="prep-cmd">git checkout main &amp;&amp; git pull
+docker compose up -d
+docker compose ps            # 4개가 Up
+curl -s localhost:8000/health</pre>
+    <p class="lead" style="margin-top:14px">
+      화면 <code>http://localhost:8080/cost.html</code> · 로그인 <code>demo@multicloud.example</code> /
+      <code>demo-pass-1234</code> · 탭은 <b>① 비용 개요 / ② 비용 분석 / ③ 예산·검토</b> ·
+      블록 왼쪽 위 회색 칩(<code>CF-030</code> 등)으로 위치를 찾으면 빠릅니다.
+    </p>
+    <div class="warnbox">
+      <b>주의 2가지</b> — ① <b>15:00(KST) 근처에는 시작하지 마세요.</b> 그 시각에 AWS 자동 수집이 돌아
+      숫자가 중간에 바뀝니다(피하려면 <code>docker compose stop api</code>).
+      ② 화면의 <b>“다시 수집 요청(과금 가능)”</b> 버튼은 A 단계에서 누르지 마세요 — B-3에서 함께 누릅니다.
+    </div>
+  </section>
+
+  <section>
+    <h2>A. 브라우저에서 눈으로 볼 것</h2>
+    <h3>A-1 · 모달 · 이동 · 상태</h3>
+    <ul class="items" id="group-a1"></ul>
+    <h3>A-2 · 이번 라운드 새 문구</h3>
+    <p class="lead">
+      Azure·GCP는 “이 날 비용이 다 도착했는지”를 알려 주지 않습니다. 그래서 <b>금액은 보여주되
+      전망·예산 소진율·급증 판정은 보류</b>하도록 바꿨습니다. 데모 계정은 AWS만 있어 문구가 안 나올 수
+      있는데, 그때는 <b>“해당 없음”</b>으로 적어 주세요(실패 아님).
+    </p>
+    <ul class="items" id="group-a2"></ul>
+  </section>
+
+  <section>
+    <h2>B. 실제 클라우드를 호출하는 검증</h2>
+    <div class="warnbox">
+      <b>모두 실제 요금이 발생합니다.</b> 혼자 진행하지 말고 이승현과 함께 하세요. 호출 횟수·스캔량
+      상한은 코드로 걸려 있습니다. <b>실패해도 재시도하지 말고</b> 그대로 기록해 주세요.
+    </div>
+    <ul class="items" id="group-b"></ul>
+  </section>
+
+  <section>
+    <h2>C. 코드 · 정책 확인</h2>
+    <h3>조은솔님</h3>
+    <ul class="items" id="group-c1"></ul>
+    <h3>안권형님</h3>
+    <ul class="items" id="group-c2"></ul>
+  </section>
+
+  <section>
+    <h2>문제를 발견했을 때 같이 남겨 주세요</h2>
+    <p class="lead">
+      화면 캡처(다크 테마면 다크 상태로) · 그때의 <b>주소창 URL 전체</b> ·
+      브라우저 콘솔(F12 → Console)의 빨간 오류 줄 · 서버 로그 <code>tail -50 logs/app.log</code>.
+      위 <b>“결과 표 복사”</b> 버튼을 누르면 지금 체크 상태가 표로 복사됩니다.
+    </p>
+  </section>
+
+  <footer>
+    체크 상태는 이 브라우저에만 저장됩니다. 같은 내용의 문서:
+    <code>docs/Cost_Verification_Handoff_2026-09-28.md</code>
+  </footer>
+</div>
+
+<script>
+  var ITEMS = {
+    "group-a1": [
+      ["A1","미지정 대상 목록","팀원","① 개요 탭",
+       "① 탭 상단 ‘미지정’ 카드 → “미지정 대상 보기”",
+       "모달이 열리고 표의 행 수 = 카드 숫자 · “정가표에 없음” 행이 있다 · “인벤토리에서 보기”가 이동한다",
+       "카드 숫자와 모달 행 수를 각각 적고 모달 캡처"],
+      ["A2","좁은 창에서 표가 넘치지 않는지","팀원","모달",
+       "창 폭을 500px 정도로 줄인 뒤 서비스 상세 모달과 미지정 모달을 연다",
+       "표가 모달 안에서만 좌우 스크롤된다. 페이지 전체가 밀리지 않는다",
+       "어느 모달인지 + 캡처"],
+      ["A3","뒤로 가기","팀원","전체",
+       "① → ③ 탭 이동, 기간·CSP 필터를 몇 번 바꾼 뒤 브라우저 뒤로 가기",
+       "주소창 URL과 화면(탭·필터)이 서로 맞는다",
+       "뒤로 가기 직전·직후 URL과 화면 상태"],
+      ["A4","검토 목록 상태 전환","팀원","③ 예산·검토",
+       "비용 검토 목록의 상태 버튼(열림/해결됨/전체)을 빠르게 번갈아 누른다",
+       "표가 심하게 깜빡이지 않고 로딩 중 안내가 짧게 보였다 사라진다",
+       "누른 순서 + 캡처(가능하면 화면 녹화)"],
+      ["A5","조건 링크 복사","팀원","① 개요 탭",
+       "상단 필터의 “이 조건 링크 복사” → 권한 허용 → 새 탭에 붙여넣기",
+       "복사된 URL을 열면 같은 기간·같은 필터로 화면이 뜬다",
+       "권한 팝업이 떴는지, 붙여넣기 결과가 무엇이었는지"],
+      ["A6","다크 테마 대비","팀원","전체",
+       "사이드바 맨 아래 테마 토글 → 다크로 바꾸고 ①②③ 훑기",
+       "그룹 제목·배지·표 맨 뒤 ‘—’ 행이 배경에 묻히지 않는다",
+       "안 읽히는 부분을 다크 상태로 캡처"],
+      ["A7","A4 인쇄","팀원","① 개요 탭",
+       "Cmd/Ctrl + P → PDF로 저장, 용지 A4",
+       "표·카드가 페이지 경계에서 잘리지 않고 빈 페이지가 끼지 않는다",
+       "저장한 PDF 첨부 + 몇 페이지에서 잘렸는지"],
+      ["A8","대시보드 카테고리 카드","팀원","dashboard.html",
+       "대시보드 화면을 연다",
+       "카테고리별 비용이 ‘추정치’가 아니라 실측 값으로 보인다",
+       "‘추정치’ 문구가 남아 있으면 캡처(조은솔님 화면)"],
+      ["A9","인벤토리 이동 문구","팀원","① 개요 탭",
+       "계정 표의 인벤토리 이동 링크를 누른다",
+       "인벤토리로 이동한다. 계정 필터가 자동 적용되지 않는 것이 지금은 정상이며 문구도 그렇게 적혀 있다",
+       "문구와 실제 동작이 어긋나면 캡처"]
+    ],
+    "group-a2": [
+      ["A10","근거 부족 표기","팀원","① CF-002 / CF-009",
+       "계정 표와 누적 카드를 본다",
+       "근거가 부족한 계정이 “N일 금액 관측 · 범위 미확인”으로 보인다",
+       "“N/N일 확인”으로 보이면 캡처"],
+      ["A11","‘마지막 수집 0건’ vs ‘기간 0원’","팀원","① CF-030",
+       "안내 문구를 읽는다",
+       "두 가지를 구분해서 설명한다",
+       "같은 말로 뭉뚱그리면 문구 전체를 캡처"],
+      ["A12","전망 보류 문구","팀원","① CF-003",
+       "월말 전망 블록을 읽는다",
+       "‘수집 실패’가 아니라 ‘도착 범위를 알려주지 않아 전망을 내지 않는다’로 읽힌다",
+       "실패처럼 읽히면 캡처"],
+      ["A13","예산 보류 시 금액 표시","팀원","③ CF-026",
+       "예산 대비 실적 블록을 본다",
+       "보류 상태에서도 받은 금액이 보이고 소진율만 없다",
+       "금액까지 사라지면 캡처"],
+      ["A14","급증 보류 사유 구분","팀원","③ CF-033",
+       "배지와 그 아래 ‘평가하지 못한 계정 사유’ 목록을 모두 본다",
+       "“수집 범위 근거 부족”과 “기준선 미수집”이 갈려 보인다(둘 다에서)",
+       "한쪽만 갈리거나 뭉뚱그려지면 캡처"],
+      ["A15","마이페이지 GCP 행","팀원","mypage.html",
+       "GCP 계정 행의 상태를 본다",
+       "‘미지원’ → ‘연결 안 됨’으로 바뀐다(데모 GCP 키가 검증 실패 상태라서). 발표 화면 판단용",
+       "보이는 그대로 캡처만"],
+      ["A16","알림함","팀원","사이드바 종 아이콘",
+       "알림함을 열어 비용 수집 관련 알림을 본다",
+       "문구가 읽히고 클릭 시 비용 화면으로 이동한다",
+       "문구가 어색하거나 이동이 안 되면 캡처"]
+    ],
+    "group-b": [
+      ["B1","Azure 실수집","소유자","Azure 포털 + 마이페이지",
+       "① 구독 IAM에서 서비스 주체에 Cost Management Reader 부여(전파 수 분) → ② 마이페이지에서 재검증 1회 → ③ 이승현이 제한 수집 1회(UTC 3일·페이지 2·HTTP 3)",
+       "재검증이 ‘검증됨’으로 바뀌고, 수집 금액이 포털의 같은 구독·기간·Actual cost·원통화·Usage 합계와 맞는다",
+       "화면 문구 + logs/app.log의 credential.verify.failed 줄(단계·HTTP 상태)"],
+      ["B2","GCP 실수집","소유자","GCP 콘솔",
+       "① Export(표준 사용량) 데이터가 쌓였는지 확인 → ② 서비스 계정에 BigQuery 작업 사용자 + 데이터 뷰어 → ③ 테이블 경로를 이승현에게 전달 → 수집 1회",
+       "계정 상태가 ‘설정 필요 → 정상’으로 바뀌고 금액이 콘솔과 맞는다",
+       "권한 오류 메시지 그대로 + 테이블 경로(비밀 아님)"],
+      ["B3","AWS 재수집 1회","소유자","① 개요 탭",
+       "계정 행의 “다시 수집 요청(과금 가능)”을 1회 누른다 — 이 경로는 한 번도 실행된 적이 없다",
+       "성공 시 ‘마지막 수집’ 시각이 갱신되고, 실패 시 알림함에 실패 알림이 남는다 · 1시간 안에 다시 누르면 제한 안내가 뜬다",
+       "알림 문구·제한 안내 문구 캡처"],
+      ["B4","자격증명 실패 문구","소유자","mypage.html",
+       "Azure 또는 GCP 자격증명에 일부러 틀린 값을 넣고 저장한다",
+       "실패 안내에 ‘AWS’라는 단어가 없고 해당 CSP 기준 확인 항목이 적혀 있다",
+       "문구 전체 캡처"]
+    ],
+    "group-c1": [
+      ["C1","자격증명 파일 2개 리뷰","조은솔","코드",
+       "app/providers/azure.py(검증 실패를 단계별로 나눠 로그만 추가) · app/routers/credentials.py(CSP별 실패 문구)",
+       "합의 전에 들어간 변경이라 사후 확인 — 배경은 docs/Azure_Credential_Verify_Diagnostics_2026-09-26.md",
+       ""],
+      ["C2","전망 계약 확정","조은솔","정책",
+       "수집 누락이 있을 때 ‘보류’(현재 구현) vs ‘계산하고 안내’(#128) 중 확정",
+       "확정된 쪽으로 코드·문서를 맞춘다",
+       ""],
+      ["C3","partial_success 어휘 통일","조은솔","정책",
+       "비용=저장 0건 / 동기화=일부 성공으로 의미가 반대",
+       "이번에 비용 쪽은 ‘받다가 끊긴 경우’로 범위를 좁힘 — 최종 정리 필요",
+       ""],
+      ["C4","inventory의 계정 파라미터","조은솔","코드",
+       "inventory.html이 ?cloud_account_id= 를 읽게 되는지",
+       "되면 비용 화면의 이동 문구를 되돌린다",
+       ""],
+      ["C5","데모 GCP 자격증명","조은솔","데모 데이터",
+       "seed_mock_data의 GCP 키를 verified=false로 둘지",
+       "A15의 화면 표기와 연결된다",
+       ""],
+      ["C6","대시보드 카테고리 카드","조은솔","dashboard.html",
+       "A8과 같은 항목 — 실측으로 잘 보이는지",
+       "‘추정치’가 남아 있으면 수정",
+       ""]
+    ],
+    "group-c2": [
+      ["C7","카테고리 매핑 단일화","안권형","코드",
+       "app/report_cost.py와 app/cost/query.py에 같은 표가 두 벌 있다",
+       "한쪽만 고치면 화면과 보고서가 갈라진다",
+       ""],
+      ["C8","report_email 통화 혼합","안권형","코드",
+       "KRW와 USD를 그대로 더하고 있다",
+       "통화별로 나누거나 합산을 막는다",
+       ""],
+      ["C9","/cost-reports/* 부품 3종 계약","안권형","정책",
+       "필요한 데이터·기간·집계 단위를 정한다",
+       "정해지면 구현 범위를 잡는다",
+       ""]
+    ]
+  };
+
+  var KEY = "mcp-cost-handoff-2026-09-28";
+  var state = {};
+  try { var raw = localStorage.getItem(KEY); if (raw) state = JSON.parse(raw) || {}; } catch (e) { state = {}; }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  var ROLE_CLASS = { "팀원": "", "소유자": "owner", "조은솔": "", "안권형": "" };
+
+  function render() {
+    Object.keys(ITEMS).forEach(function (gid) {
+      var ul = document.getElementById(gid);
+      if (!ul) return;
+      ul.innerHTML = "";
+      ITEMS[gid].forEach(function (r) {
+        var id = r[0], title = r[1], role = r[2], where = r[3], todo = r[4], pass = r[5], fail = r[6];
+        var li = document.createElement("li");
+        li.className = "item" + (state[id] ? " done" : "");
+        li.dataset.role = role;
+
+        var box = document.createElement("input");
+        box.type = "checkbox"; box.id = "chk-" + id; box.checked = !!state[id];
+        box.setAttribute("aria-label", id + " " + title);
+        box.addEventListener("change", function () {
+          state[id] = box.checked; save();
+          li.classList.toggle("done", box.checked);
+          updateMeter(); applyFilter();
+        });
+
+        var body = document.createElement("div");
+        body.className = "body";
+        var t = document.createElement("p"); t.className = "title";
+        var badge = document.createElement("span"); badge.className = "id"; badge.textContent = id;
+        t.appendChild(badge); t.appendChild(document.createTextNode(title));
+
+        var tags = document.createElement("div"); tags.className = "tags";
+        [[role, ROLE_CLASS[role] || ""], [where, "where"]].forEach(function (pair) {
+          if (!pair[0]) return;
+          var s = document.createElement("span");
+          s.className = "tag" + (pair[1] ? " " + pair[1] : "");
+          s.textContent = pair[0];
+          tags.appendChild(s);
+        });
+
+        var det = document.createElement("details");
+        var sum = document.createElement("summary"); sum.textContent = "자세히";
+        var dl = document.createElement("dl");
+        [["할 일", todo], ["통과", pass], ["실패 시 남길 것", fail]].forEach(function (pair) {
+          if (!pair[1]) return;
+          var dt = document.createElement("dt"); dt.textContent = pair[0];
+          var dd = document.createElement("dd"); dd.textContent = pair[1];
+          dl.appendChild(dt); dl.appendChild(dd);
+        });
+        det.appendChild(sum); det.appendChild(dl);
+
+        body.appendChild(t); body.appendChild(tags); body.appendChild(det);
+        li.appendChild(box); li.appendChild(body);
+        ul.appendChild(li);
+      });
+    });
+    updateMeter(); applyFilter();
+  }
+
+  function allItems() {
+    var out = [];
+    Object.keys(ITEMS).forEach(function (g) { ITEMS[g].forEach(function (r) { out.push(r); }); });
+    return out;
+  }
+
+  function updateMeter() {
+    var items = allItems();
+    var done = items.filter(function (r) { return state[r[0]]; }).length;
+    document.getElementById("bar-fill").style.width = (items.length ? Math.round(done / items.length * 100) : 0) + "%";
+    document.getElementById("count-text").textContent = done + " / " + items.length;
+  }
+
+  var teamOnly = false, openOnly = false;
+  function applyFilter() {
+    document.querySelectorAll("li.item").forEach(function (li) {
+      var hide = (teamOnly && li.dataset.role !== "팀원") || (openOnly && li.classList.contains("done"));
+      li.hidden = hide;
+    });
+  }
+
+  document.getElementById("f-team").addEventListener("click", function () {
+    teamOnly = !teamOnly; this.setAttribute("aria-pressed", String(teamOnly));
+    this.textContent = teamOnly ? "전체 보기" : "팀원 몫만"; applyFilter();
+  });
+  document.getElementById("f-open").addEventListener("click", function () {
+    openOnly = !openOnly; this.setAttribute("aria-pressed", String(openOnly));
+    this.textContent = openOnly ? "체크한 것도 보기" : "남은 것만"; applyFilter();
+  });
+  document.getElementById("reset").addEventListener("click", function () { state = {}; save(); render(); });
+
+  document.getElementById("copy-result").addEventListener("click", function () {
+    var lines = ["항목\t결과\t메모"];
+    allItems().forEach(function (r) { lines.push(r[0] + "\t" + (state[r[0]] ? "O" : "") + "\t"); });
+    copyText(lines.join("\n"), this);
+  });
+  document.querySelectorAll("button[data-copy]").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      var pre = document.getElementById(btn.dataset.copy);
+      if (pre) copyText(pre.textContent, btn);
+    });
+  });
+
+  function copyText(text, btn) {
+    var label = btn.textContent;
+    var ok = function () { btn.textContent = "복사됨"; setTimeout(function () { btn.textContent = label; }, 1500); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(ok, function () { btn.textContent = "복사 실패 — 직접 선택해 주세요"; });
+    } else {
+      btn.textContent = "복사 실패 — 직접 선택해 주세요";
+    }
+  }
+
+  render();
+</script>
