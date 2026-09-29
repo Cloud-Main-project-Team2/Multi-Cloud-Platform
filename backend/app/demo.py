@@ -30,7 +30,8 @@ from app.errors import ApiError
 from app.models import CloudAccount, User
 
 DEMO_USER_EMAIL = "demo@exam.com"
-DEMO_PASSWORD = "demo1234"  # 발표용 공개 계정 — 실제 사용자 비밀번호가 아니다.
+DEMO_PASSWORD = "McoDemo!2026"  # 발표용 공개 계정 — 실제 사용자 비밀번호가 아니다.
+# 흔한 값(`demo1234` 등)은 유출 목록에 있어 Chrome이 로그인마다 "비밀번호 변경" 경고를 띄운다 — 흔하지 않은 값으로 둔다.
 DEMO_USER_NAME = "데모 사용자"
 
 # cloud_account_costs.source. "seed"로 시작해야 급증 목록에 "예시 데이터" 배지가 붙는다(anomaly.py).

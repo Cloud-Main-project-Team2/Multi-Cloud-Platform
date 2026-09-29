@@ -1,4 +1,4 @@
-"""최종발표용 데모 계정(`demo@exam.com` / `demo1234`) 데이터를 **지우고 새로 만든다**.
+"""최종발표용 데모 계정(`demo@exam.com` / `McoDemo!2026`) 데이터를 **지우고 새로 만든다**.
 
     docker compose exec api python -m app.seed_demo_data
 
