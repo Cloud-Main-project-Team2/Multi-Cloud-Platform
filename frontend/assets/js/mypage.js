@@ -987,7 +987,7 @@
         // 서버가 refresh token을 이미 전부 폐기했다 — 로컬 세션만 지우면 된다(logout() 호출 불필요).
         MCPApi.clearSession();
         window.alert("탈퇴가 완료되었습니다.");
-        window.location.href = "main.html";
+        window.location.href = "/main";
       })
       .catch(function (err) {
         setProfileMsg(errorMessage(err), false);

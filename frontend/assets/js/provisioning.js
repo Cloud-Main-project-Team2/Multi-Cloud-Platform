@@ -441,7 +441,7 @@
     var creds = allCredentials.filter(function (c) { return platforms.indexOf(c.provider) >= 0; });
     if (!creds.length) {
       list.innerHTML = '<span class="text-xs text-muted-foreground">선택한 플랫폼에 등록된 자격 증명이 없습니다 — ' +
-        '<a href="mypage.html" class="text-primary underline">마이페이지</a>에서 먼저 등록하세요.</span>';
+        '<a href="/mypage" class="text-primary underline">마이페이지</a>에서 먼저 등록하세요.</span>';
       return;
     }
     list.innerHTML = creds.map(function (c) {

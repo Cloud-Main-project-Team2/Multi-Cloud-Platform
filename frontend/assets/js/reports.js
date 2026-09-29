@@ -154,9 +154,9 @@
             '<td class="py-2.5 pr-4"><span class="rounded-full border border-border px-2 py-0.5 text-xs">' + r.periodLabel + "</span></td>" +
             '<td class="py-2.5 pr-4">' + dotsHtml(r.clouds) + "</td>" +
             '<td class="py-2.5 text-right">' +
-            '<a href="report-view.html?id=' + encodeURIComponent(r.id) + '" target="_blank" rel="noopener" class="text-primary hover:underline">열기</a>' +
+            '<a href="/report-view?id=' + encodeURIComponent(r.id) + '" target="_blank" rel="noopener" class="text-primary hover:underline">열기</a>' +
             '<span class="mx-1.5 text-muted-foreground">·</span>' +
-            '<a href="report-view.html?id=' + encodeURIComponent(r.id) + '&print=1" target="_blank" rel="noopener" class="text-primary hover:underline">인쇄</a>' +
+            '<a href="/report-view?id=' + encodeURIComponent(r.id) + '&print=1" target="_blank" rel="noopener" class="text-primary hover:underline">인쇄</a>' +
             '<span class="mx-1.5 text-muted-foreground">·</span>' +
             '<button type="button" data-report-delete="' + esc(r.id) + '" class="text-red-600 hover:underline">삭제</button>' +
             "</td>" +
@@ -223,7 +223,7 @@
           renderHistory();
           btn.classList.remove("opacity-70");
           if (status) status.textContent = "생성 완료 — 새 탭에서 열립니다.";
-          var url = "report-view.html?id=" + encodeURIComponent(report.id);
+          var url = "/report-view?id=" + encodeURIComponent(report.id);
           if (newTab && !newTab.closed) newTab.location.href = url;
           else window.open(url, "_blank", "noopener");
           window.setTimeout(function () {
@@ -331,7 +331,7 @@
     webDownloadBtn.addEventListener("click", function () {
       MCReports.latest().then(function (r) {
         if (!r) { window.alert("아직 생성된 보고서가 없습니다. 먼저 보고서를 생성하세요."); return; }
-        window.open("report-view.html?id=" + encodeURIComponent(r.id) + "&print=1", "_blank", "noopener");
+        window.open("/report-view?id=" + encodeURIComponent(r.id) + "&print=1", "_blank", "noopener");
       });
     });
 

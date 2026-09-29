@@ -200,7 +200,7 @@
       <!-- ===== 왼쪽: 로고 + 서비스 이용 메뉴 (Docs/Dashboard/Inventory/Billing) ===== -->
       <div class="flex items-center gap-1 sm:gap-2">
         <!-- 로고 + 서비스명 (클릭 시 메인 홈) -->
-        <a href="main.html" class="mr-1 flex items-center gap-2 sm:mr-3">
+        <a href="/main" class="mr-1 flex items-center gap-2 sm:mr-3">
           <img src="assets/imgs/logo.png" alt="" class="h-8 w-8 object-contain" />
           <span class="text-lg font-bold" data-service-name>MultiCloud Ops</span>
         </a>
@@ -216,20 +216,20 @@
             <!-- 호버 유지용 브릿지 포함: 버튼~메뉴 사이 여백을 group 안에 둠. 왼쪽 정렬(left-0). -->
             <div class="invisible absolute left-0 top-full z-40 pt-1 opacity-0 transition group-hover:visible group-hover:opacity-100">
               <div class="w-52 overflow-hidden rounded-xl border border-border bg-surface py-1 shadow-lg">
-                <a href="intro-dashboard.html" class="block px-4 py-2 text-sm hover:bg-muted">대시보드</a>
-                <a href="intro-inventory.html" class="block px-4 py-2 text-sm hover:bg-muted">리소스 조회</a>
-                <a href="intro-provisioning.html" class="block px-4 py-2 text-sm hover:bg-muted">프로비저닝</a>
-                <a href="intro-cost.html" class="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted">비용 관리</a>
-                <a href="intro-logs.html" class="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted">로그 통합 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
+                <a href="/intro-dashboard" class="block px-4 py-2 text-sm hover:bg-muted">대시보드</a>
+                <a href="/intro-inventory" class="block px-4 py-2 text-sm hover:bg-muted">리소스 조회</a>
+                <a href="/intro-provisioning" class="block px-4 py-2 text-sm hover:bg-muted">프로비저닝</a>
+                <a href="/intro-cost" class="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted">비용 관리</a>
+                <a href="/intro-logs" class="flex items-center justify-between px-4 py-2 text-sm text-muted-foreground hover:bg-muted">로그 통합 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
               </div>
             </div>
           </div>
 
           <!-- 서비스 이용 메뉴(항상 영어 라벨). 비로그인 시 클릭하면 안내 후 로그인 페이지로
                이동한다(아래 인라인 스크립트가 data-app-link 전부를 처리). -->
-          <a href="dashboard.html" data-app-link class="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted">Dashboard</a>
-          <a href="inventory.html" data-app-link class="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted">Inventory</a>
-          <a href="cost.html" data-app-link class="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted">Billing</a>
+          <a href="/dashboard" data-app-link class="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted">Dashboard</a>
+          <a href="/inventory" data-app-link class="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted">Inventory</a>
+          <a href="/cost" data-app-link class="rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted">Billing</a>
         </nav>
       </div>
 
@@ -241,13 +241,13 @@
 
         <!-- 게스트 상태: 로그인/회원가입 -->
         <span data-auth="guest" class="contents">
-          <a href="login.html" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">로그인</a>
-          <a href="signup.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">회원가입</a>
+          <a href="/login" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">로그인</a>
+          <a href="/signup" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">회원가입</a>
         </span>
         <!-- 로그인 상태: 사용자 이름 + 대시보드 (JS가 hidden 토글) -->
         <span data-auth="user" class="hidden items-center gap-1 sm:gap-2">
-          <a href="mypage.html" data-user-name class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted"></a>
-          <a href="dashboard.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">대시보드</a>
+          <a href="/mypage" data-user-name class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted"></a>
+          <a href="/dashboard" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">대시보드</a>
         </span>
       </nav>
     </div>
@@ -270,13 +270,13 @@
       <div class="mt-8 flex flex-wrap items-center gap-3">
         <!-- 게스트 상태 CTA -->
         <span data-auth="guest" class="contents">
-          <a href="signup.html" class="rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white shadow-sm hover:opacity-90">무료로 시작하기 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
-          <a href="login.html" class="rounded-xl border border-border bg-surface px-6 py-3 text-base font-semibold hover:bg-muted">로그인</a>
+          <a href="/signup" class="rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white shadow-sm hover:opacity-90">무료로 시작하기 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+          <a href="/login" class="rounded-xl border border-border bg-surface px-6 py-3 text-base font-semibold hover:bg-muted">로그인</a>
         </span>
         <!-- 로그인 상태 CTA (JS가 hidden 토글) -->
         <span data-auth="user" class="hidden flex-wrap items-center gap-3">
-          <a href="dashboard.html" class="rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white shadow-sm hover:opacity-90">대시보드로 이동 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
-          <a href="inventory.html" class="rounded-xl border border-border bg-surface px-6 py-3 text-base font-semibold hover:bg-muted">리소스 조회</a>
+          <a href="/dashboard" class="rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white shadow-sm hover:opacity-90">대시보드로 이동 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+          <a href="/inventory" class="rounded-xl border border-border bg-surface px-6 py-3 text-base font-semibold hover:bg-muted">리소스 조회</a>
         </span>
       </div>
     </div>
@@ -364,8 +364,8 @@
       <p>먼저 대시보드에서 전체를 보고, 필요한 메뉴로 이어가세요.</p>
       <div class="actions">
         <!-- 게스트: 회원가입으로 / 로그인 상태: 대시보드로 (하단 스크립트가 data-auth로 토글) -->
-        <span data-auth="guest" class="contents"><a class="button primary" href="signup.html">시작하기 <span>→</span></a></span>
-        <span data-auth="user" class="hidden"><a class="button primary" href="dashboard.html">대시보드로 이동 <span>→</span></a></span>
+        <span data-auth="guest" class="contents"><a class="button primary" href="/signup">시작하기 <span>→</span></a></span>
+        <span data-auth="user" class="hidden"><a class="button primary" href="/dashboard">대시보드로 이동 <span>→</span></a></span>
       </div>
     </div>
   </section>
@@ -379,22 +379,22 @@
       <div class="mt-10 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
         <!-- 각 카드: 비로그인 클릭 → 소개(문서) 페이지, 로그인 상태 → 실제 기능 페이지(아래 스크립트가 href 교체).
              호버 시 살짝 커지고(primary 테두리) 아이콘 강조색으로 전환. -->
-        <a href="intro-dashboard.html" data-card-user="dashboard.html" class="cloud-card block rounded-2xl border border-border bg-surface p-6">
+        <a href="/intro-dashboard" data-card-user="/dashboard" class="cloud-card block rounded-2xl border border-border bg-surface p-6">
           <div class="cloud-card__ico grid h-11 w-11 place-items-center rounded-xl bg-muted text-primary"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></svg></div>
           <h3 class="mt-4 font-semibold">통합 대시보드</h3>
           <p class="mt-2 text-sm text-muted-foreground">전체 리소스·리전·비용을 한 화면에서 실시간으로 요약해 봅니다.</p>
         </a>
-        <a href="intro-inventory.html" data-card-user="inventory.html" class="cloud-card block rounded-2xl border border-border bg-surface p-6">
+        <a href="/intro-inventory" data-card-user="/inventory" class="cloud-card block rounded-2xl border border-border bg-surface p-6">
           <div class="cloud-card__ico grid h-11 w-11 place-items-center rounded-xl bg-muted text-primary"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
           <h3 class="mt-4 font-semibold">리소스 인벤토리</h3>
           <p class="mt-2 text-sm text-muted-foreground">클라우드·상태·리전·태그로 필터링해 모든 자원을 한 목록에서 조회합니다.</p>
         </a>
-        <a href="intro-provisioning.html" data-card-user="provisioning.html" class="cloud-card block rounded-2xl border border-border bg-surface p-6">
+        <a href="/intro-provisioning" data-card-user="/provisioning" class="cloud-card block rounded-2xl border border-border bg-surface p-6">
           <div class="cloud-card__ico grid h-11 w-11 place-items-center rounded-xl bg-muted text-primary"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
           <h3 class="mt-4 font-semibold">멀티 프로비저닝</h3>
           <p class="mt-2 text-sm text-muted-foreground">여러 플랫폼에 걸쳐 리소스를 한 번의 마법사로 생성하고 가격을 비교합니다.</p>
         </a>
-        <a href="intro-cost.html" data-card-user="cost.html" class="cloud-card block rounded-2xl border border-border bg-surface p-6">
+        <a href="/intro-cost" data-card-user="/cost" class="cloud-card block rounded-2xl border border-border bg-surface p-6">
           <div class="cloud-card__ico grid h-11 w-11 place-items-center rounded-xl bg-muted text-primary"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12V8H6a2 2 0 0 1-2-2c0-1.1.9-2 2-2h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></svg></div>
           <h3 class="mt-4 font-semibold">비용 한눈에</h3>
           <p class="mt-2 text-sm text-muted-foreground">클라우드별 실측·예상 비용과 예산 임계값 경고를 한 곳에서 확인합니다.</p>
@@ -517,7 +517,7 @@
           if (!loggedIn) {
             e.preventDefault();
             window.alert("로그인이 필요한 서비스입니다.");
-            window.location.href = "login.html";
+            window.location.href = "/login";
           }
         });
       });

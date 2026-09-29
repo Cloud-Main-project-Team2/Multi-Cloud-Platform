@@ -193,7 +193,7 @@ window.MCPCost = (function () {
   }
   function stateActionHtml(status) {
     switch (status) {
-      case "NOT_CONNECTED": return '<div class="button-row no-print"><a class="btn" href="mypage.html">계정 연결</a></div>';
+      case "NOT_CONNECTED": return '<div class="button-row no-print"><a class="btn" href="/mypage">계정 연결</a></div>';
       case "PENDING": return '<div class="button-row no-print"><button type="button" class="btn" data-action="refresh-cost">현재 조건 계정 다시 수집</button></div>';
       case "SETUP_REQUIRED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="open-setup-dialog">설정 안내</button></div>';
       case "PERMISSION_DENIED": return '<div class="button-row no-print"><button type="button" class="btn" data-action="open-permission-dialog">필요 권한 보기</button></div>';
@@ -468,7 +468,7 @@ window.MCPCost = (function () {
     if (scoped.CONNECTED_PARTIAL) out.push({ level: "warn", html: scoped.CONNECTED_PARTIAL + "개 계정은 마지막 수집이 부분 성공이라 그 구간은 확인되지 않았습니다. " + acct });
     if (scoped.PERMISSION_DENIED) out.push({ level: "warn", html: scoped.PERMISSION_DENIED + "개 계정은 비용 조회 권한이 부족합니다. " + acct });
     if (scoped.SETUP_REQUIRED) out.push({ level: "warn", html: scoped.SETUP_REQUIRED + "개 계정은 비용 조회 설정이 필요합니다. " + acct });
-    if (scoped.NOT_CONNECTED) out.push({ level: "warn", html: scoped.NOT_CONNECTED + '개 계정은 연결되지 않았습니다. <a class="btn no-print" href="mypage.html">계정 연결</a>' });
+    if (scoped.NOT_CONNECTED) out.push({ level: "warn", html: scoped.NOT_CONNECTED + '개 계정은 연결되지 않았습니다. <a class="btn no-print" href="/mypage">계정 연결</a>' });
     if (scoped.PENDING) out.push({ level: "info", html: scoped.PENDING + "개 계정은 첫 수집을 기다리는 중입니다 — 아직 금액이 없습니다(0원이 아닙니다)." });
     if (scoped.UNSUPPORTED) out.push({ level: "info", html: scoped.UNSUPPORTED + "개 계정은 이 CSP의 비용 수집을 아직 지원하지 않습니다(설정으로 해결되지 않습니다). 합계에 들어 있지 않습니다." });
     if (curExcluded) out.push({ level: "info", html: curExcluded + "개 계정은 현재 통화 조건(" + esc(filters.currency) + ")에서 제외됐습니다 — 수집 문제가 아닙니다." });
@@ -1031,7 +1031,7 @@ window.MCPCost = (function () {
     var out = ['<button type="button" class="btn no-print" data-action="open-account-detail" data-account-id="' + esc(cap.cloud_account_id) + '">상세</button>'];
     if (cap.status === "SETUP_REQUIRED" || cap.status === "PERMISSION_DENIED") out.push('<button type="button" class="btn no-print" data-action="open-setup-dialog" data-hint="' + esc(cap.setup_hint || "") + '" data-status="' + esc(cap.status) + '">설정 안내</button>');
     if (cap.status === "COLLECT_FAILED") out.push('<button type="button" class="btn no-print" data-action="refresh-account" data-account-id="' + esc(cap.cloud_account_id) + '" title="이 계정 하나만 CSP에 다시 수집 요청(과금 가능)">이 계정 다시 수집</button>');
-    if (cap.status === "NOT_CONNECTED") out.push('<a class="btn no-print" href="mypage.html">계정 연결</a>');
+    if (cap.status === "NOT_CONNECTED") out.push('<a class="btn no-print" href="/mypage">계정 연결</a>');
     return out.join(" ");
   }
 
@@ -1605,7 +1605,7 @@ window.MCPCost = (function () {
     return { state: "CONNECTED_OK", html:
       '<p class="small">비용 요약이 들어간 보고서는 보고서 화면에서 만듭니다.</p>' +
       '<p class="note">이 화면의 <strong>계정·통화·요금 분류 조건은 전달되지 않습니다</strong> · 보고서의 비용 값은 <strong>생성 시점 값으로 고정</strong>됩니다(이후 재수집으로 숫자가 바뀌어도 그 보고서는 그대로입니다).</p>' +
-      '<div class="button-row no-print"><a class="btn primary" href="reports.html">보고서 만들러 가기</a></div>' };
+      '<div class="button-row no-print"><a class="btn primary" href="/reports">보고서 만들러 가기</a></div>' };
   }
 
   // ── CF-039 AI 비용 상담 — 정적 CTA. 실제 채팅은 agent.js가 처리한다(07 §10) ────────
@@ -2169,7 +2169,7 @@ window.MCPCost = (function () {
       '<p class="note">원인을 단정하지 않습니다 — "원인 확인 필요"입니다. 태그 기준 검토 후보이며 조직 소유권을 뜻하지 않습니다.</p>' +
       (withActions ? '<div class="button-row">' +
         (it.review ? '<span class="badge">이미 검토 등록됨 · ' + esc(REVIEW_STATUS_LABEL[it.review.status] || it.review.status) + '</span> <button type="button" class="btn" data-action="nav-scroll" data-tab="overview" data-target="CF-034">검토 목록에서 보기</button>' : '<button type="button" class="btn primary" data-action="anomaly-add-queue" data-source-key="' + esc(it.source_key) + '">검토 등록</button>') +
-        '<a class="btn" href="inventory.html?cloud_account_id=' + encodeURIComponent(it.cloud_account_id) + '" title="인벤토리는 아직 계정 파라미터를 읽지 않습니다 — 열린 뒤 계정 필터를 직접 고르세요">인벤토리 열기(계정 필터는 직접 선택)</a></div>' +
+        '<a class="btn" href="/inventory?cloud_account_id=' + encodeURIComponent(it.cloud_account_id) + '" title="인벤토리는 아직 계정 파라미터를 읽지 않습니다 — 열린 뒤 계정 필터를 직접 고르세요">인벤토리 열기(계정 필터는 직접 선택)</a></div>' +
         '<p id="anomaly-feedback" class="note" role="status"></p>' : "");
   }
 
@@ -2254,7 +2254,7 @@ window.MCPCost = (function () {
       '<label class="filter-box" style="flex-basis:260px">메모<input id="review-note" type="text" maxlength="2000" value="' + esc(r.note || "") + '"></label>' +
       '<span class="button-row" style="margin-top:0"><button type="button" class="btn primary" data-action="review-patch" data-item-id="' + esc(r.id) + '">저장</button></span></div>') +
       '<p class="note">resolved로 닫힌 항목은 되돌릴 수 없습니다 — 재발은 새 항목입니다. 검토 상태는 금액·합계에 영향을 주지 않습니다.</p>' +
-      '<div class="button-row"><a class="btn" href="inventory.html?cloud_account_id=' + encodeURIComponent(r.source_key.split(":")[0]) + '" title="인벤토리는 아직 계정 파라미터를 읽지 않습니다 — 열린 뒤 계정 필터를 직접 고르세요">인벤토리 열기(계정 필터는 직접 선택)</a></div>' +
+      '<div class="button-row"><a class="btn" href="/inventory?cloud_account_id=' + encodeURIComponent(r.source_key.split(":")[0]) + '" title="인벤토리는 아직 계정 파라미터를 읽지 않습니다 — 열린 뒤 계정 필터를 직접 고르세요">인벤토리 열기(계정 필터는 직접 선택)</a></div>' +
       '<p id="review-feedback" class="note" role="status"></p>';
   }
 
@@ -2283,7 +2283,7 @@ window.MCPCost = (function () {
     });
     return '<div class="table-wrap"><table><thead><tr><th scope="col">플랫폼 / SKU</th><th scope="col">월 정가</th><th scope="col">최저 대비 차이</th><th scope="col">가정</th></tr></thead><tbody>' + rows.join("") + "</tbody></table></div>" +
       '<p class="note">정가(list price) 기준 추정치 · 730h 상시 가동 가정 · 부속 디스크·IP·백업 과금 미확인 · 당월 영향 미산출 · 기준 ' + esc(fmtDateTime(d.as_of)) + "</p>" +
-      '<div class="button-row"><a class="btn" href="provisioning.html">프로비저닝에서 검토</a></div>';
+      '<div class="button-row"><a class="btn" href="/provisioning">프로비저닝에서 검토</a></div>';
   }
 
   function thresholdDialogHtml() {
@@ -2809,7 +2809,7 @@ window.MCPCost = (function () {
           load();
           break;
         case "open-resource-detail":
-          window.location.href = "inventory.html?resource_id=" + encodeURIComponent(btn.getAttribute("data-resource-id"));
+          window.location.href = "/inventory?resource_id=" + encodeURIComponent(btn.getAttribute("data-resource-id"));
           break;
         case "open-basis-dialog":
           openDialog("집계 기준 · 계산 방법", '<dl class="meta-grid" style="grid-template-columns:1fr">' +
@@ -2829,7 +2829,7 @@ window.MCPCost = (function () {
           var lead = st === "PERMISSION_DENIED" ? "이 계정의 자격 증명에 비용 조회 권한이 없습니다. 마이페이지에서 권한을 부여한 뒤 재검증하세요."
                    : "이 계정의 비용 조회를 위한 설정이 필요합니다. 마이페이지에서 자격 증명을 확인하세요.";
           openDialog("설정 안내", "<p>" + esc(lead) + "</p>" + (btn.getAttribute("data-hint") ? '<p class="note">' + esc(btn.getAttribute("data-hint")) + "</p>" : "") +
-            '<div class="button-row"><a class="btn" href="mypage.html">마이페이지로</a></div>');
+            '<div class="button-row"><a class="btn" href="/mypage">마이페이지로</a></div>');
           break;
         }
         case "open-account-detail": {

@@ -236,7 +236,7 @@
         else if (estFallback != null) costText = "$" + estFallback.toFixed(2) + "/mo · Estimated · 정가 730h";
         else costText = "추정 불가";
         return (
-          '<div class="dash-link rounded-2xl border border-border bg-surface p-5" data-href="inventory.html" tabindex="0" title="클릭하면 인벤토리 화면으로 이동합니다">' +
+          '<div class="dash-link rounded-2xl border border-border bg-surface p-5" data-href="/inventory" tabindex="0" title="클릭하면 인벤토리 화면으로 이동합니다">' +
           '<div class="flex items-center justify-between">' +
           '<p class="flex items-center gap-2 font-semibold">' +
           '<img src="' + PROVIDER_ICON[p] + '" alt="" class="h-5 w-auto align-middle" />' +
