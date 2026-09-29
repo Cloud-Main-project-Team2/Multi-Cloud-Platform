@@ -77,7 +77,7 @@ window.MCProvTracker = (function () {
     w.setAttribute("role", "button");
     w.setAttribute("aria-label", "프로비저닝 진행 상황 — 프로비저닝 페이지로 이동");
     w.addEventListener("click", function () {
-      if (location.pathname.indexOf("provisioning.html") < 0) location.href = "provisioning.html";
+      if (location.pathname.indexOf("/provisioning") < 0) location.href = "/provisioning";
     });
     document.body.appendChild(w);
     return w;
@@ -142,7 +142,8 @@ window.MCProvTracker = (function () {
   // ── 페이지 로드 시 자동 복원 ───────────────────────────────────────────────
   function autoInit() {
     // 메인홈(로그인 전)에는 로드되지 않지만 방어적으로 한 번 더 확인.
-    if (/(^|\/)main\.html$/.test(location.pathname)) return;
+    // 메인홈 주소는 "/", "/main"(확장자 없는 주소, nginx가 main.html로 응답), 예전 "/main.html" 셋 다다.
+    if (/^\/(main(\.html)?)?$/.test(location.pathname)) return;
     // 실 프로비저닝 화면: provisioning.js가 라이브 진행 UI를 소유한다 — 저장소만 두고 창은 그리지 않는다.
     if (document.getElementById("prov-progress-list")) return;
     if (activeJobs(read()).length) startPolling();

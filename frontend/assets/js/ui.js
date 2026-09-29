@@ -112,7 +112,7 @@
     var resource = p.resource || "";
     var ok = '<span style="color:var(--primary)">' + ICONS.check + "</span>";
     var bad = '<span style="color:#c0392b">' + ICONS.x + "</span>";
-    var href = n.reference_type === "provisioning_job" ? "provisioning.html" : "#";
+    var href = n.reference_type === "provisioning_job" ? "/provisioning" : "#";
     if (n.type === "provisioning_succeeded") {
       return { icon: ok, title: "프로비저닝 완료", desc: (resource ? resource + " " : "") + "생성이 완료되었습니다.", href: href };
     }
@@ -123,31 +123,31 @@
     }
     // 비용 파트 알림 2종(PR 7·8) — 문구는 message_params로 만들고 비용 화면으로 보낸다.
     if (n.type === "budget_threshold") {
-      return { icon: bad, title: "예산 " + (p.percent || "") + "% 도달", desc: (p.team_name || "팀") + " · 한도 " + (p.limit_amount || "") + " " + (p.currency || "") + " · " + (p.period_start || "") + " 시작 구간", href: "cost.html?team=" + encodeURIComponent(p.team_id || "") + "#CF-026" };
+      return { icon: bad, title: "예산 " + (p.percent || "") + "% 도달", desc: (p.team_name || "팀") + " · 한도 " + (p.limit_amount || "") + " " + (p.currency || "") + " · " + (p.period_start || "") + " 시작 구간", href: "/cost?team=" + encodeURIComponent(p.team_id || "") + "#CF-026" };
     }
     if (n.type === "cost_anomaly") {
       var pct = p.delta_pct == null ? "신규 비용 발생" : "+" + p.delta_pct + "%";
-      return { icon: bad, title: "비용 급증 · 원인 확인 필요", desc: (p.service || "") + " " + (p.date || "") + " · +" + (p.delta || "") + " " + (p.currency || "") + " (" + pct + ")", href: "cost.html#CF-034" };
+      return { icon: bad, title: "비용 급증 · 원인 확인 필요", desc: (p.service || "") + " " + (p.date || "") + " · +" + (p.delta || "") + " " + (p.currency || "") + " (" + pct + ")", href: "/cost#CF-034" };
     }
     // 리소스 조회(동기화)·비용 새로고침(수집)·보고서 작성 완료 알림(4차 항목 2) — 각각 페이지에
     // 종속된 폴링만 있어 화면을 벗어나면 완료를 놓치던 세 기능을 벨로 보완한다.
     if (n.type === "resource_sync_succeeded") {
-      return { icon: ok, title: "리소스 조회 완료", desc: "새로 발견 " + (p.discovered || 0) + "건 · 생성 " + (p.created || 0) + "건 · 갱신 " + (p.updated || 0) + "건", href: "inventory.html" };
+      return { icon: ok, title: "리소스 조회 완료", desc: "새로 발견 " + (p.discovered || 0) + "건 · 생성 " + (p.created || 0) + "건 · 갱신 " + (p.updated || 0) + "건", href: "/inventory" };
     }
     if (n.type === "resource_sync_failed") {
-      return { icon: bad, title: "리소스 조회 실패", desc: "일부 계정에서 조회에 실패했습니다.", href: "inventory.html" };
+      return { icon: bad, title: "리소스 조회 실패", desc: "일부 계정에서 조회에 실패했습니다.", href: "/inventory" };
     }
     if (n.type === "cost_ingestion_succeeded") {
-      return { icon: ok, title: "비용 새로고침 완료", desc: (p.account_name || p.provider || "계정") + " · 갱신 " + (p.records_replaced || 0) + "건", href: "cost.html" };
+      return { icon: ok, title: "비용 새로고침 완료", desc: (p.account_name || p.provider || "계정") + " · 갱신 " + (p.records_replaced || 0) + "건", href: "/cost" };
     }
     if (n.type === "cost_ingestion_failed") {
-      return { icon: bad, title: "비용 새로고침 실패", desc: (p.account_name || p.provider || "계정") + " 새로고침에 실패했습니다.", href: "cost.html" };
+      return { icon: bad, title: "비용 새로고침 실패", desc: (p.account_name || p.provider || "계정") + " 새로고침에 실패했습니다.", href: "/cost" };
     }
     if (n.type === "report_generated") {
-      return { icon: ok, title: "보고서 생성 완료", desc: (p.period_from || "") + " ~ " + (p.period_to || ""), href: n.reference_id ? "report-view.html?id=" + n.reference_id : "reports.html" };
+      return { icon: ok, title: "보고서 생성 완료", desc: (p.period_from || "") + " ~ " + (p.period_to || ""), href: n.reference_id ? "/report-view?id=" + n.reference_id : "/reports" };
     }
     if (n.type === "report_generation_failed") {
-      return { icon: bad, title: "보고서 생성 실패", desc: (p.period_from || "") + " ~ " + (p.period_to || "") + " 생성에 실패했습니다.", href: "reports.html" };
+      return { icon: bad, title: "보고서 생성 실패", desc: (p.period_from || "") + " ~ " + (p.period_to || "") + " 생성에 실패했습니다.", href: "/reports" };
     }
     return { icon: ok, title: n.type || "알림", desc: n.message_key || "", href: href };
   }

@@ -21,7 +21,7 @@
 <body class="min-h-screen">
 
   <div class="mx-auto flex max-w-content items-center justify-between px-6 py-5">
-    <a href="main.html" class="flex items-center gap-2">
+    <a href="/main" class="flex items-center gap-2">
       <img src="assets/imgs/logo.png" alt="" class="h-8 w-8 object-contain" />
       <span class="text-lg font-bold" data-service-name>MultiCloud Ops</span>
     </a>
@@ -29,13 +29,13 @@
       <button type="button" data-theme-toggle onclick="MCUI.toggleTheme()" class="grid h-9 w-9 place-items-center rounded-lg text-lg hover:bg-muted" aria-label="테마 전환">🌙</button>
       <!-- 게스트 상태: 로그인/회원가입 (JS가 세션에 맞춰 토글) -->
       <span data-auth="guest" class="contents">
-        <a href="login.html" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">로그인</a>
-        <a href="signup.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">회원가입</a>
+        <a href="/login" class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted">로그인</a>
+        <a href="/signup" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">회원가입</a>
       </span>
       <!-- 로그인 상태: 사용자 이름 + 대시보드 -->
       <span data-auth="user" class="hidden items-center gap-1 sm:gap-2">
-        <a href="mypage.html" data-user-name class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted"></a>
-        <a href="dashboard.html" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">대시보드</a>
+        <a href="/mypage" data-user-name class="rounded-lg px-3 py-2 text-sm font-medium hover:bg-muted"></a>
+        <a href="/dashboard" class="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:opacity-90">대시보드</a>
       </span>
     </div>
   </div>
@@ -44,11 +44,11 @@
     <aside>
       <p class="mb-3 px-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">서비스 소개</p>
       <nav class="space-y-1">
-        <a href="intro-dashboard.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">대시보드</a>
-        <a href="intro-inventory.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">리소스 조회</a>
-        <a href="intro-provisioning.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">프로비저닝</a>
-        <a href="intro-cost.html" class="flex items-center justify-between rounded-lg border-l-2 border-primary bg-muted px-3 py-2 text-sm font-semibold">비용 관리</a>
-        <a href="intro-logs.html" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">로그 통합 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
+        <a href="/intro-dashboard" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">대시보드</a>
+        <a href="/intro-inventory" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">리소스 조회</a>
+        <a href="/intro-provisioning" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">프로비저닝</a>
+        <a href="/intro-cost" class="flex items-center justify-between rounded-lg border-l-2 border-primary bg-muted px-3 py-2 text-sm font-semibold">비용 관리</a>
+        <a href="/intro-logs" class="flex items-center justify-between rounded-lg border-l-2 border-transparent px-3 py-2 text-sm text-muted-foreground hover:bg-muted">로그 통합 관리 <span class="rounded border border-yellow px-1 text-[11px] text-yellow">준비 중</span></a>
       </nav>
     </aside>
 
@@ -66,7 +66,7 @@
         <li class="flex gap-2"><span class="text-primary">•</span> 평소보다 급증한 비용 탐지와 검토 목록</li>
       </ul>
 
-      <a href="login.html" class="mt-8 inline-block rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white hover:opacity-90">로그인하고 시작하기 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
+      <a href="/login" class="mt-8 inline-block rounded-xl bg-primary px-6 py-3 text-base font-semibold text-white hover:opacity-90">로그인하고 시작하기 <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:inline-block;vertical-align:-2px"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg></a>
       <p class="mt-3 text-xs text-muted-foreground">* 소개 문구·이미지는 확정 전 자리표시자입니다.</p>
     </section>
   </main>

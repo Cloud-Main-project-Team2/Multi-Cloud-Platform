@@ -27,7 +27,7 @@ def test_build_report_email_handles_no_data(db_session, make_user):
     assert user.name in text
     assert "아직 수집된 비용 데이터가 없습니다." in text
     assert "컴퓨트 리소스가 없습니다." in text
-    assert "reports.html" in text
+    assert "/reports" in text
 
     assert user.name in html_body
     assert "<html>" in html_body

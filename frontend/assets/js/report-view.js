@@ -443,7 +443,7 @@
         var detail = id ? "id=" + esc(id) : "아직 생성된 보고서가 없습니다 — 보고서 작성 페이지에서 먼저 생성하세요.";
         root.innerHTML = '<div class="p-10 text-center"><p style="font-size:15px;font-weight:600">보고서를 찾을 수 없습니다.</p>' +
           '<p style="margin-top:6px;font-size:13px;color:#5c6470">' + detail + '</p>' +
-          '<a href="reports.html" style="display:inline-block;margin-top:16px;font-size:13px;color:#145d91">← 보고서 목록으로</a></div>';
+          '<a href="/reports" style="display:inline-block;margin-top:16px;font-size:13px;color:#145d91">← 보고서 목록으로</a></div>';
         return;
       }
       Promise.all([fetchRealUtilization(report.clouds), fetchRealUnused(report.clouds)]).then(function (results) {

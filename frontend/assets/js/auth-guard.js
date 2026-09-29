@@ -15,7 +15,7 @@
 
   if (!window.MCPApi || !window.MCPApi.isSessionValid(session)) {
     if (window.MCPApi) window.MCPApi.clearSession();
-    window.location.replace("login.html");
+    window.location.replace("/login");
     return;
   }
 
@@ -95,7 +95,7 @@
       btn.addEventListener("click", function () {
         // 서버의 refresh token까지 폐기한 뒤 로그인 화면으로 이동.
         window.MCPApi.logout().then(function () {
-          window.location.href = "login.html";
+          window.location.href = "/login";
         });
       });
     });
