@@ -166,7 +166,7 @@ init/apply와 이미지 빌드 시간용이다. t3의 버스터블 크레딧이 
 메일의 링크를 이 값으로 만든다:
 
 ```python
-reset_link = f"{settings.frontend_base_url}/password-reset.html?token={token}"
+reset_link = f"{settings.frontend_base_url}/password-reset?token={token}"
 ```
 
 기본값이 `http://localhost:8080`이라 그대로 두면 **메일은 정상 발송되는데 링크를 누르면 사용자

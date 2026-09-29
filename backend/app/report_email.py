@@ -239,7 +239,7 @@ def _build_text(user: User, cost: dict, utilization: list[dict], provider_totals
 
     lines.append(
         "AI 분석 요약 섹션은 아직 준비 중입니다. 전체 보고서는 웹에서 확인하세요: "
-        + get_settings().frontend_base_url + "/reports.html"
+        + get_settings().frontend_base_url + "/reports"
     )
     return "\n".join(lines)
 
@@ -247,7 +247,7 @@ def _build_text(user: User, cost: dict, utilization: list[dict], provider_totals
 def _build_html(
     user: User, cost: dict, utilization: list[dict], provider_totals: dict, currency: str, category_breakdown: dict
 ) -> str:
-    reports_url = get_settings().frontend_base_url + "/reports.html"
+    reports_url = get_settings().frontend_base_url + "/reports"
     body = "".join([
         _section(
             f"비용 요약 — {_esc(cost['period']['display'])}", None,

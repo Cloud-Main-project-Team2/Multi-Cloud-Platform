@@ -465,7 +465,7 @@ def request_password_reset(
             )
         )
         db.commit()
-        reset_link = f"{settings.frontend_base_url}/password-reset.html?token={token}"
+        reset_link = f"{settings.frontend_base_url}/password-reset?token={token}"
         background_tasks.add_task(
             send_email,
             user.email,
