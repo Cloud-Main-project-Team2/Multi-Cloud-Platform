@@ -98,6 +98,7 @@ Phase 0 (repo skeleton + collaboration rules) complete. 1주차 종료 시점(20
 | 메인 히어로 높이·애니메이션 + 회원가입 폼 여백 축소 | `solcho/fe-landing-polish` | 조은솔 | in progress |
 | 대시보드 섹션 카드 클릭 시 관련 페이지 이동(인벤토리·비용 관리·프로비저닝) | `solcho/fe-dashboard-links` | 조은솔 | in progress |
 | 최종발표 데모 계정(`demo@exam.com`) — 3사 데이터 시드 + CSP 호출 없는 샌드박스 | `solcho/be-demo-seed` | 조은솔 | in progress |
+| 비밀번호 재설정 화면 단계 분리 — 메일 링크(`?token=`)로 열면 새 비밀번호 폼만 노출 + 규칙·불일치 안내 | `solcho/fe-password-reset-steps` | 조은솔 | in progress |
 
 > Keep this table updated as branches open, progress, and merge.
 
